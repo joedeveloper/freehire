@@ -2,7 +2,6 @@ package handler
 
 import (
 	"errors"
-	"math"
 	"strconv"
 
 	"github.com/gofiber/fiber/v2"
@@ -11,17 +10,9 @@ import (
 	"github.com/strelov1/hire/internal/db"
 )
 
-const (
-	defaultLimit = 20
-	maxLimit     = 100
-)
-
 // ListJobs returns a page of jobs using limit/offset pagination.
 func (h *Handler) ListJobs(c *fiber.Ctx) error {
-	limit := min(max(c.QueryInt("limit", defaultLimit), 1), maxLimit)
-	// Clamp offset into int32 range: the column binds as Postgres int4, and an
-	// unbounded query value would otherwise overflow on the int32 conversion.
-	offset := min(max(c.QueryInt("offset", 0), 0), math.MaxInt32)
+	limit, offset := pageParams(c)
 
 	jobs, err := h.queries.ListJobs(c.Context(), db.ListJobsParams{
 		Limit:  int32(limit),

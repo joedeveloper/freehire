@@ -8,11 +8,18 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type Company struct {
+	Slug      string             `json:"slug"`
+	Name      string             `json:"name"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
+}
+
 type Job struct {
 	ID          int64              `json:"id"`
 	Source      string             `json:"source"`
 	ExternalID  string             `json:"external_id"`
-	Url         string             `json:"url"`
+	URL         string             `json:"url"`
 	Title       string             `json:"title"`
 	Company     string             `json:"company"`
 	Location    string             `json:"location"`
@@ -21,4 +28,5 @@ type Job struct {
 	PostedAt    pgtype.Timestamptz `json:"posted_at"`
 	CreatedAt   pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
+	CompanySlug string             `json:"company_slug"`
 }

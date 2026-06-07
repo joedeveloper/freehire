@@ -9,9 +9,19 @@ import (
 )
 
 type Querier interface {
+	CountCompanies(ctx context.Context) (int64, error)
 	CountJobs(ctx context.Context) (int64, error)
+	GetCompany(ctx context.Context, slug string) (Company, error)
 	GetJob(ctx context.Context, id int64) (Job, error)
+	// Catalog page: companies with their job counts. The job count is computed on
+	// the fly (no denormalized counter yet). This is the one acknowledged place a
+	// join to jobs is acceptable; LEFT JOIN keeps companies with zero jobs visible.
+	ListCompanies(ctx context.Context, arg ListCompaniesParams) ([]ListCompaniesRow, error)
 	ListJobs(ctx context.Context, arg ListJobsParams) ([]Job, error)
+	ListJobsByCompany(ctx context.Context, arg ListJobsByCompanyParams) ([]Job, error)
+	// Single atomic write: upsert the company (only when the slug is non-empty,
+	// via the WHERE on the SELECT) and the job together, keeping the "one write =
+	// one job" property of the pipeline's write path.
 	UpsertJob(ctx context.Context, arg UpsertJobParams) (Job, error)
 }
 

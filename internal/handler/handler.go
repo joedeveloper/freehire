@@ -1,16 +1,32 @@
 package handler
 
 import (
+	"math"
+
 	"github.com/gofiber/fiber/v2"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/strelov1/hire/internal/db"
 )
 
+const (
+	defaultLimit = 20
+	maxLimit     = 100
+)
+
 // Handler holds dependencies shared across HTTP handlers.
 type Handler struct {
 	pool    *pgxpool.Pool
 	queries *db.Queries
+}
+
+// pageParams reads and clamps the shared limit/offset pagination query params.
+// The offset is clamped into int32 range because the column binds as a Postgres
+// int4, and an unbounded query value would otherwise overflow on the conversion.
+func pageParams(c *fiber.Ctx) (limit, offset int) {
+	limit = min(max(c.QueryInt("limit", defaultLimit), 1), maxLimit)
+	offset = min(max(c.QueryInt("offset", 0), 0), math.MaxInt32)
+	return limit, offset
 }
 
 // Register wires all routes onto the application.
@@ -22,4 +38,6 @@ func Register(app *fiber.App, pool *pgxpool.Pool) {
 	api := app.Group("/api/v1")
 	api.Get("/jobs", h.ListJobs)
 	api.Get("/jobs/:id", h.GetJob)
+	api.Get("/companies", h.ListCompanies)
+	api.Get("/companies/:slug", h.GetCompany)
 }

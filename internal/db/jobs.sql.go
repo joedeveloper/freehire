@@ -24,7 +24,7 @@ func (q *Queries) CountJobs(ctx context.Context) (int64, error) {
 }
 
 const getJob = `-- name: GetJob :one
-SELECT id, source, external_id, url, title, company, location, remote, description, posted_at, created_at, updated_at
+SELECT id, source, external_id, url, title, company, location, remote, description, posted_at, created_at, updated_at, company_slug
 FROM jobs
 WHERE id = $1
 `
@@ -36,7 +36,7 @@ func (q *Queries) GetJob(ctx context.Context, id int64) (Job, error) {
 		&i.ID,
 		&i.Source,
 		&i.ExternalID,
-		&i.Url,
+		&i.URL,
 		&i.Title,
 		&i.Company,
 		&i.Location,
@@ -45,12 +45,13 @@ func (q *Queries) GetJob(ctx context.Context, id int64) (Job, error) {
 		&i.PostedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.CompanySlug,
 	)
 	return i, err
 }
 
 const listJobs = `-- name: ListJobs :many
-SELECT id, source, external_id, url, title, company, location, remote, description, posted_at, created_at, updated_at
+SELECT id, source, external_id, url, title, company, location, remote, description, posted_at, created_at, updated_at, company_slug
 FROM jobs
 ORDER BY posted_at DESC NULLS LAST, id DESC
 LIMIT $1 OFFSET $2
@@ -74,7 +75,7 @@ func (q *Queries) ListJobs(ctx context.Context, arg ListJobsParams) ([]Job, erro
 			&i.ID,
 			&i.Source,
 			&i.ExternalID,
-			&i.Url,
+			&i.URL,
 			&i.Title,
 			&i.Company,
 			&i.Location,
@@ -83,6 +84,55 @@ func (q *Queries) ListJobs(ctx context.Context, arg ListJobsParams) ([]Job, erro
 			&i.PostedAt,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.CompanySlug,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listJobsByCompany = `-- name: ListJobsByCompany :many
+SELECT id, source, external_id, url, title, company, location, remote, description, posted_at, created_at, updated_at, company_slug
+FROM jobs
+WHERE company_slug = $1
+ORDER BY posted_at DESC NULLS LAST, id DESC
+LIMIT $2 OFFSET $3
+`
+
+type ListJobsByCompanyParams struct {
+	CompanySlug string `json:"company_slug"`
+	Limit       int32  `json:"limit"`
+	Offset      int32  `json:"offset"`
+}
+
+func (q *Queries) ListJobsByCompany(ctx context.Context, arg ListJobsByCompanyParams) ([]Job, error) {
+	rows, err := q.db.Query(ctx, listJobsByCompany, arg.CompanySlug, arg.Limit, arg.Offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Job{}
+	for rows.Next() {
+		var i Job
+		if err := rows.Scan(
+			&i.ID,
+			&i.Source,
+			&i.ExternalID,
+			&i.URL,
+			&i.Title,
+			&i.Company,
+			&i.Location,
+			&i.Remote,
+			&i.Description,
+			&i.PostedAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.CompanySlug,
 		); err != nil {
 			return nil, err
 		}
@@ -95,42 +145,58 @@ func (q *Queries) ListJobs(ctx context.Context, arg ListJobsParams) ([]Job, erro
 }
 
 const upsertJob = `-- name: UpsertJob :one
+WITH company_upsert AS (
+    INSERT INTO companies (slug, name)
+    SELECT $6, $5
+    WHERE $6 <> ''
+    ON CONFLICT (slug) DO UPDATE SET
+        name       = EXCLUDED.name,
+        updated_at = now()
+)
 INSERT INTO jobs (
-    source, external_id, url, title, company, location, remote, description, posted_at
+    source, external_id, url, title, company, company_slug, location, remote, description, posted_at
 ) VALUES (
-    $1, $2, $3, $4, $5, $6, $7, $8, $9
+    $1, $2, $3, $4,
+    $5, $6, $7, $8,
+    $9, $10
 )
 ON CONFLICT (source, external_id) DO UPDATE SET
-    url         = EXCLUDED.url,
-    title       = EXCLUDED.title,
-    company     = EXCLUDED.company,
-    location    = EXCLUDED.location,
-    remote      = EXCLUDED.remote,
-    description = EXCLUDED.description,
-    posted_at   = EXCLUDED.posted_at,
-    updated_at  = now()
-RETURNING id, source, external_id, url, title, company, location, remote, description, posted_at, created_at, updated_at
+    url          = EXCLUDED.url,
+    title        = EXCLUDED.title,
+    company      = EXCLUDED.company,
+    company_slug = EXCLUDED.company_slug,
+    location     = EXCLUDED.location,
+    remote       = EXCLUDED.remote,
+    description  = EXCLUDED.description,
+    posted_at    = EXCLUDED.posted_at,
+    updated_at   = now()
+RETURNING id, source, external_id, url, title, company, location, remote, description, posted_at, created_at, updated_at, company_slug
 `
 
 type UpsertJobParams struct {
 	Source      string             `json:"source"`
 	ExternalID  string             `json:"external_id"`
-	Url         string             `json:"url"`
+	URL         string             `json:"url"`
 	Title       string             `json:"title"`
 	Company     string             `json:"company"`
+	CompanySlug string             `json:"company_slug"`
 	Location    string             `json:"location"`
 	Remote      bool               `json:"remote"`
 	Description string             `json:"description"`
 	PostedAt    pgtype.Timestamptz `json:"posted_at"`
 }
 
+// Single atomic write: upsert the company (only when the slug is non-empty,
+// via the WHERE on the SELECT) and the job together, keeping the "one write =
+// one job" property of the pipeline's write path.
 func (q *Queries) UpsertJob(ctx context.Context, arg UpsertJobParams) (Job, error) {
 	row := q.db.QueryRow(ctx, upsertJob,
 		arg.Source,
 		arg.ExternalID,
-		arg.Url,
+		arg.URL,
 		arg.Title,
 		arg.Company,
+		arg.CompanySlug,
 		arg.Location,
 		arg.Remote,
 		arg.Description,
@@ -141,7 +207,7 @@ func (q *Queries) UpsertJob(ctx context.Context, arg UpsertJobParams) (Job, erro
 		&i.ID,
 		&i.Source,
 		&i.ExternalID,
-		&i.Url,
+		&i.URL,
 		&i.Title,
 		&i.Company,
 		&i.Location,
@@ -150,6 +216,7 @@ func (q *Queries) UpsertJob(ctx context.Context, arg UpsertJobParams) (Job, erro
 		&i.PostedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.CompanySlug,
 	)
 	return i, err
 }
