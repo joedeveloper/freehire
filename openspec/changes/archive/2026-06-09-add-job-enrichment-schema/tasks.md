@@ -3,9 +3,10 @@
 - [x] 1.1 Add `migrations/0003_job_enrichment.sql` adding to `jobs`:
   `enrichment JSONB NOT NULL DEFAULT '{}'`, `enriched_at TIMESTAMPTZ` (nullable),
   `enrichment_version INT NOT NULL DEFAULT 0`.
-- [ ] 1.2 Recreate the dev volume (`docker compose down -v && make up`) and
-  confirm the three columns exist via `make psql` (`\d jobs`). _(requires Docker;
-  run on a Docker host — not available in this environment)_
+- [x] 1.2 Recreate the dev volume (`docker compose down -v && make up`) and
+  confirm the three columns exist via `make psql` (`\d jobs`). _(verified on
+  OrbStack: `enrichment jsonb NOT NULL DEFAULT '{}'`, `enriched_at timestamptz`
+  nullable, `enrichment_version integer NOT NULL DEFAULT 0`.)_
 
 ## 2. Enrichment contract (`internal/enrich`)
 
@@ -49,8 +50,10 @@
 
 - [x] 5.1 `go build ./... && go vet ./...` clean.
 - [x] 5.2 `go test ./internal/enrich/...` passes.
-- [ ] 5.3 Insert one enriched job via `make psql`, then `curl` the list, detail,
+- [x] 5.3 Insert one enriched job via `make psql`, then `curl` the list, detail,
   and company-nested endpoints to confirm enrichment + provenance are exposed and
   that an un-enriched job shows `enrichment: {}`, `enriched_at: null`,
-  `enrichment_version: 0`. _(requires Docker; not available in this environment.
-  Serialization contract verified in Go instead — see 4.2.)_
+  `enrichment_version: 0`. _(verified on OrbStack: list, `/jobs/:id`, and
+  `/companies/acme` all expose enrichment + provenance; un-enriched job returns
+  `enrichment: {}`, `enriched_at: null`, `enrichment_version: 0`; enriched job
+  returns the raw JSON payload, not base64.)_
