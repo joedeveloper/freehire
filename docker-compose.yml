@@ -22,6 +22,9 @@ services:
     environment:
       PORT: "8080"
       DATABASE_URL: "postgres://hire:hire@db:5432/hire?sslmode=disable"
+      # Required by the auth surface (server fails fast if empty). Dev default —
+      # set a real JWT_SECRET in any non-local deployment.
+      JWT_SECRET: "${JWT_SECRET:-dev-insecure-secret-change-me}"
     ports:
       - "${HIRE_HOST_PORT:-8080}:8080"
     depends_on:
