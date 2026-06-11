@@ -133,8 +133,8 @@ func (c *Client) Search(ctx context.Context, p SearchParams) (SearchResult, erro
 		return SearchResult{}, fmt.Errorf("search: query: %w", err)
 	}
 
-	hits := make([]JobDocument, 0, resp.Hits.Len())
-	if err := resp.Hits.Decode(&hits); err != nil {
+	var hits []JobDocument
+	if err := resp.Hits.DecodeInto(&hits); err != nil {
 		return SearchResult{}, fmt.Errorf("search: decode hits: %w", err)
 	}
 	return SearchResult{Hits: hits, Total: resp.EstimatedTotalHits}, nil
@@ -157,14 +157,17 @@ func (c *Client) awaitTask(ctx context.Context, taskUID int64) error {
 func indexSettings() *meilisearch.Settings {
 	return &meilisearch.Settings{
 		SearchableAttributes: []string{"title", "company", "description", "location"},
+		// Enrichment facets are nested, so they are filtered via dot paths.
 		FilterableAttributes: []string{
 			"source", "remote", "company_slug",
-			"work_mode", "employment_type", "seniority", "category", "domains",
-			"countries", "company_type", "company_size", "visa_sponsorship",
-			"salary_currency", "salary_period", "skills",
-			"salary_min", "salary_max", "experience_years_min",
+			"enrichment.work_mode", "enrichment.employment_type", "enrichment.seniority",
+			"enrichment.category", "enrichment.domains", "enrichment.countries",
+			"enrichment.company_type", "enrichment.company_size", "enrichment.visa_sponsorship",
+			"enrichment.salary_currency", "enrichment.salary_period", "enrichment.skills",
+			"enrichment.salary_min", "enrichment.salary_max", "enrichment.experience_years_min",
 		},
-		SortableAttributes: []string{"posted_at", "salary_min", "salary_max"},
+		// posted_at is an RFC3339 UTC string and sorts chronologically as text.
+		SortableAttributes: []string{"posted_at", "enrichment.salary_min", "enrichment.salary_max"},
 		RankingRules:       []string{"words", "sort", "typo", "proximity", "attribute", "exactness"},
 		// Typo tolerance is left at Meilisearch's defaults (on, with sensible min
 		// word sizes). We deliberately do not send a TypoTolerance struct: the SDK

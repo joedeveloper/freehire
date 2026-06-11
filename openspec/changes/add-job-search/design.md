@@ -72,12 +72,22 @@ is live on main: the internal `id` is never exposed and jobs are addressed by
 `public_slug` (the canonical `handler.jobResponse` wire shape omits `id`). The
 search path honors the same contract. `id` is the Meilisearch primary key
 (natural unique key, valid id charset — unlike a slug, which may carry Unicode),
-so the stored document carries it, but the `GET /api/v1/jobs/search` response
-**strips `id`** and identifies each hit by `public_slug`, mirroring the public
-job shape (`public_slug` + the source/display fields). `JobDocument` uses plain
-JSON-friendly types (string/int64/bool/[]string) — not pgtype — to keep the
-index shape simple; the handler emits the public field set under the same JSON
-keys.
+so the stored document carries it as `JobDocument{ID; JobView}` — the embedded
+`JobView` flattens into the document JSON, and the `GET /api/v1/jobs/search`
+response returns the `JobView` alone, so `id` is **stripped structurally**, not
+by a mapping step.
+
+**One job wire shape across the whole API.** `JobView` is byte-for-byte the same
+shape the list/detail endpoints serve: the source/display fields, RFC3339 UTC
+timestamps, and the **nested `enrichment` object** (not flattened facets). This
+matters because the SPA renders search hits with the very same components as the
+list (e.g. `JobRow` reads `job.enrichment` and `job.posted_at`). To filter and
+sort on the nested facets, Meilisearch uses **dot paths** (`enrichment.seniority`,
+`enrichment.salary_min`); `posted_at` is an RFC3339 UTC string, which sorts
+chronologically as text (verified in the integration test), so no separate unix
+field is needed. *Alternative — flat facet fields on the document + handler
+re-nesting:* rejected; nesting keeps the index document identical to the API job
+and the mapping trivial.
 
 ### 3. Index settings + hybrid embedder configured in `EnsureIndex`
 

@@ -74,7 +74,7 @@ func TestSearchJobs_PassesParamsAndShapesResponse(t *testing.T) {
 	if !ok {
 		t.Fatalf("Filter = %#v, want [][]string", fake.got.Filter)
 	}
-	if !filterHas(groups, `seniority = "senior"`) || !filterHas(groups, "remote = true") {
+	if !filterHas(groups, `enrichment.seniority = "senior"`) || !filterHas(groups, "remote = true") {
 		t.Errorf("Filter missing facets: %#v", groups)
 	}
 

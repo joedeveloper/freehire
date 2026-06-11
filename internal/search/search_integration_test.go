@@ -83,6 +83,7 @@ func TestIntegration_EnsureIndexIndexAndSearch(t *testing.T) {
 			ID: 2, Title: "Junior Frontend Developer", Company: "Beta", Location: "Remote",
 			Remote: true, Description: "React and TypeScript UI work.",
 			PublicSlug: "junior-frontend-developer-beta-bbb",
+			PostedAt:   pgtype.Timestamptz{Time: time.Date(2025, 6, 1, 0, 0, 0, 0, time.UTC), Valid: true},
 			Enrichment: enrichedJSON(t, enrich.Enrichment{Seniority: "junior", Category: "frontend"}),
 		},
 	}
@@ -112,16 +113,26 @@ func TestIntegration_EnsureIndexIndexAndSearch(t *testing.T) {
 		}
 	})
 
-	t.Run("facet filter narrows by seniority", func(t *testing.T) {
+	t.Run("facet filter narrows by nested seniority", func(t *testing.T) {
 		res, err := c.Search(ctx, SearchParams{
-			Filter: Filter([]string{Eq("seniority", "senior")}),
+			Filter: Filter([]string{Eq("enrichment.seniority", "senior")}),
 			Limit:  10,
 		})
 		if err != nil {
 			t.Fatalf("Search: %v", err)
 		}
-		if len(res.Hits) != 1 || res.Hits[0].Seniority != "senior" {
+		if len(res.Hits) != 1 || res.Hits[0].Enrichment.Seniority != "senior" {
 			t.Fatalf("filtered hits = %+v", res.Hits)
+		}
+	})
+
+	t.Run("sort by posted_at string orders chronologically", func(t *testing.T) {
+		res, err := c.Search(ctx, SearchParams{Sort: []string{"posted_at:desc"}, Limit: 10})
+		if err != nil {
+			t.Fatalf("Search: %v", err)
+		}
+		if len(res.Hits) != 2 || res.Hits[0].PublicSlug != "junior-frontend-developer-beta-bbb" {
+			t.Fatalf("posted_at:desc order = %+v", res.Hits)
 		}
 	})
 

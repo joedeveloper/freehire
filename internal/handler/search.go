@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"strconv"
 
 	"github.com/gofiber/fiber/v2"
 
@@ -20,17 +21,32 @@ type searcher interface {
 // keyword search.
 const defaultSemanticRatio = 0.5
 
-// searchStringFacets are the equality facets whose query-param name matches the
-// index attribute name. Repeated params (?seniority=a&seniority=b) are ORed.
-var searchStringFacets = []string{
-	"source", "company_slug", "work_mode", "employment_type", "seniority",
-	"category", "domains", "countries", "company_type", "company_size",
-	"salary_currency", "salary_period", "skills",
+// searchStringFacets maps an equality-facet query param to its index attribute.
+// Enrichment facets live under the nested "enrichment" object, so they filter on
+// a dot path. Repeated params (?seniority=a&seniority=b) are ORed.
+var searchStringFacets = map[string]string{
+	"source":          "source",
+	"company_slug":    "company_slug",
+	"work_mode":       "enrichment.work_mode",
+	"employment_type": "enrichment.employment_type",
+	"seniority":       "enrichment.seniority",
+	"category":        "enrichment.category",
+	"domains":         "enrichment.domains",
+	"countries":       "enrichment.countries",
+	"company_type":    "enrichment.company_type",
+	"company_size":    "enrichment.company_size",
+	"salary_currency": "enrichment.salary_currency",
+	"salary_period":   "enrichment.salary_period",
+	"skills":          "enrichment.skills",
 }
 
-// searchSortable is the allowlist of fields a client may sort by; anything else
-// is ignored so a bad param cannot make Meilisearch reject the query.
-var searchSortable = map[string]bool{"posted_at": true, "salary_min": true, "salary_max": true}
+// searchSortable is the allowlist of sort params mapped to their index attribute;
+// anything else is ignored so a bad param cannot make Meilisearch reject the query.
+var searchSortable = map[string]string{
+	"posted_at":  "posted_at",
+	"salary_min": "enrichment.salary_min",
+	"salary_max": "enrichment.salary_max",
+}
 
 // SearchJobs runs a full-text + hybrid search over the jobs index. It is public
 // (unauthenticated) like the other job reads. Response: {"data": [job view...],
@@ -74,15 +90,15 @@ func (h *Handler) SearchJobs(c *fiber.Ctx) error {
 // searchSort builds the Meilisearch sort directive from ?sort=<field>&order=<dir>.
 // Returns nil (relevance order) when no valid sortable field is given.
 func searchSort(c *fiber.Ctx) []string {
-	field := c.Query("sort")
-	if !searchSortable[field] {
+	attr, ok := searchSortable[c.Query("sort")]
+	if !ok {
 		return nil
 	}
 	order := c.Query("order", "desc")
 	if order != "asc" && order != "desc" {
 		order = "desc"
 	}
-	return []string{field + ":" + order}
+	return []string{attr + ":" + order}
 }
 
 // buildSearchFilter turns facet query params into a Meilisearch filter: values
@@ -90,30 +106,31 @@ func searchSort(c *fiber.Ctx) []string {
 func buildSearchFilter(c *fiber.Ctx) any {
 	var groups [][]string
 
-	for _, facet := range searchStringFacets {
-		if vals := queryValues(c, facet); len(vals) > 0 {
+	for param, attr := range searchStringFacets {
+		if vals := queryValues(c, param); len(vals) > 0 {
 			group := make([]string, len(vals))
 			for i, v := range vals {
-				group[i] = search.Eq(facet, v)
+				group[i] = search.Eq(attr, v)
 			}
 			groups = append(groups, group)
 		}
 	}
 
-	for _, facet := range []string{"remote", "visa_sponsorship"} {
-		if raw := c.Query(facet); raw != "" {
-			groups = append(groups, []string{search.EqBool(facet, raw == "true")})
-		}
+	if raw := c.Query("remote"); raw != "" {
+		groups = append(groups, []string{search.EqBool("remote", raw == "true")})
+	}
+	if raw := c.Query("visa_sponsorship"); raw != "" {
+		groups = append(groups, []string{search.EqBool("enrichment.visa_sponsorship", raw == "true")})
 	}
 
 	if n, ok := queryInt(c, "salary_min"); ok {
-		groups = append(groups, []string{search.Gte("salary_min", n)})
+		groups = append(groups, []string{search.Gte("enrichment.salary_min", n)})
 	}
 	if n, ok := queryInt(c, "salary_max"); ok {
-		groups = append(groups, []string{search.Lte("salary_max", n)})
+		groups = append(groups, []string{search.Lte("enrichment.salary_max", n)})
 	}
 	if n, ok := queryInt(c, "experience_years_min"); ok {
-		groups = append(groups, []string{search.Gte("experience_years_min", n)})
+		groups = append(groups, []string{search.Gte("enrichment.experience_years_min", n)})
 	}
 
 	return search.Filter(groups...)
@@ -131,10 +148,13 @@ func queryValues(c *fiber.Ctx, key string) []string {
 	return out
 }
 
-// queryInt reads an integer query param, reporting whether it was present.
+// queryInt reads an integer query param, reporting whether a valid number was
+// given. A missing or non-numeric value reports false so no bogus `>= 0` filter
+// fragment is emitted (Fiber's QueryInt would silently return 0 on parse error).
 func queryInt(c *fiber.Ctx, key string) (int, bool) {
-	if c.Query(key) == "" {
+	n, err := strconv.Atoi(c.Query(key))
+	if err != nil {
 		return 0, false
 	}
-	return c.QueryInt(key), true
+	return n, true
 }
