@@ -36,3 +36,27 @@ func TestLoad_JWTTTLFallsBackOnGarbage(t *testing.T) {
 		t.Errorf("JWTTTL = %v, want 24h fallback", got)
 	}
 }
+
+func TestLoad_MeiliURLDefaultsWhenUnset(t *testing.T) {
+	t.Setenv("MEILI_URL", "")
+
+	if got := Load().MeiliURL; got != "http://localhost:7700" {
+		t.Errorf("MeiliURL = %q, want default", got)
+	}
+}
+
+func TestLoad_MeiliURLFromEnv(t *testing.T) {
+	t.Setenv("MEILI_URL", "http://meili:7700")
+
+	if got := Load().MeiliURL; got != "http://meili:7700" {
+		t.Errorf("MeiliURL = %q, want env value", got)
+	}
+}
+
+func TestLoad_MeiliKeyFromEnv(t *testing.T) {
+	t.Setenv("MEILI_MASTER_KEY", "master-key")
+
+	if got := Load().MeiliKey; got != "master-key" {
+		t.Errorf("MeiliKey = %q, want %q", got, "master-key")
+	}
+}

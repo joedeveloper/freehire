@@ -68,6 +68,14 @@ export async function getJob(slug: string): Promise<Job> {
   return body.data;
 }
 
+/** Full-text + hybrid search over jobs. Results are the same Job wire shape as
+ *  listJobs, so views render them with the same components. `meta.total` is an
+ *  estimate from the search engine. */
+export async function searchJobs(q: string, limit: number, offset: number): Promise<Slice<Job>> {
+  const params = new URLSearchParams({ q, limit: String(limit), offset: String(offset) });
+  return toSlice(await get<Page<Job>>(`/api/v1/jobs/search?${params}`), offset);
+}
+
 export async function listCompanies(limit: number, offset: number): Promise<Slice<CompanyListItem>> {
   return toSlice(await get<Page<CompanyListItem>>(`/api/v1/companies${query(limit, offset)}`), offset);
 }

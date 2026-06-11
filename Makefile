@@ -1,10 +1,13 @@
-.PHONY: help run build tidy sqlc up down logs migrate psql
+.PHONY: help run reindex build tidy sqlc up down logs migrate psql
 
 help: ## Show available commands
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-10s\033[0m %s\n", $$1, $$2}'
 
 run: ## Run the server locally (requires a running Postgres)
 	go run ./cmd/server
+
+reindex: ## Reindex jobs into Meilisearch (requires running Postgres + Meilisearch)
+	go run ./cmd/reindex
 
 build: ## Build the binary
 	go build -o bin/hire ./cmd/server

@@ -23,6 +23,13 @@ type Settings struct {
 	// the cookie works over http://localhost in dev; set COOKIE_SECURE=true in
 	// any HTTPS deployment.
 	CookieSecure bool
+
+	// Meilisearch backs the job search endpoint and the reindex command. Shared
+	// via Load (both cmd/server and cmd/reindex read it). Search is optional:
+	// MeiliKey empty ⇒ search is disabled and the server still starts (see
+	// cmd/server), so the requirement is enforced at the call site, not here.
+	MeiliURL string
+	MeiliKey string
 }
 
 // Load reads configuration from the environment, falling back to sensible defaults.
@@ -34,6 +41,8 @@ func Load() Settings {
 		JWTSecret:      os.Getenv("JWT_SECRET"),
 		JWTTTL:         envDuration("JWT_TTL", 24*time.Hour),
 		CookieSecure:   envBool("COOKIE_SECURE", false),
+		MeiliURL:       env("MEILI_URL", "http://localhost:7700"),
+		MeiliKey:       os.Getenv("MEILI_MASTER_KEY"),
 	}
 }
 

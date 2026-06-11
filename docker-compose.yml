@@ -17,6 +17,19 @@ services:
       timeout: 5s
       retries: 5
 
+  # Search backend for GET /api/v1/jobs/search and the reindex command. The
+  # huggingFace embedder downloads and runs its model inside this container, so
+  # the model is cached in the meilisearch_data volume across restarts.
+  meilisearch:
+    image: getmeili/meilisearch:v1.13
+    environment:
+      MEILI_MASTER_KEY: "${MEILI_MASTER_KEY:-dev-insecure-meili-key}"
+      MEILI_ENV: development
+    ports:
+      - "${MEILI_HOST_PORT:-7700}:7700"
+    volumes:
+      - meilisearch_data:/meili_data
+
   app:
     build: .
     environment:
@@ -25,6 +38,10 @@ services:
       # Required by the auth surface (server fails fast if empty). Dev default —
       # set a real JWT_SECRET in any non-local deployment.
       JWT_SECRET: "${JWT_SECRET:-dev-insecure-secret-change-me}"
+      # Search is optional: an empty MEILI_MASTER_KEY disables the search
+      # endpoint without affecting the rest of the API.
+      MEILI_URL: "http://meilisearch:7700"
+      MEILI_MASTER_KEY: "${MEILI_MASTER_KEY:-dev-insecure-meili-key}"
     ports:
       - "${HIRE_HOST_PORT:-8080}:8080"
     depends_on:
@@ -33,3 +50,4 @@ services:
 
 volumes:
   pgdata:
+  meilisearch_data:

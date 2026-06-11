@@ -15,6 +15,7 @@ import (
 	"github.com/strelov1/freehire/internal/config"
 	"github.com/strelov1/freehire/internal/database"
 	"github.com/strelov1/freehire/internal/handler"
+	"github.com/strelov1/freehire/internal/search"
 )
 
 func main() {
@@ -41,7 +42,14 @@ func main() {
 	app.Use(recover.New())
 	app.Use(logger.New())
 
-	handler.Register(app, pool, cfg.FrontendOrigin, cfg.JWTSecret, cfg.JWTTTL, cfg.CookieSecure)
+	// Search is optional: without a Meilisearch key the client stays nil and the
+	// search endpoint reports 503, leaving the rest of the API fully functional.
+	var searchClient *search.Client
+	if cfg.MeiliKey != "" {
+		searchClient = search.NewClient(cfg.MeiliURL, cfg.MeiliKey)
+	}
+
+	handler.Register(app, pool, cfg.FrontendOrigin, cfg.JWTSecret, cfg.JWTTTL, cfg.CookieSecure, searchClient)
 
 	// Run the server in a goroutine so main can wait for a shutdown signal.
 	// Fiber's Listen returns nil on graceful shutdown, so any error is fatal.
