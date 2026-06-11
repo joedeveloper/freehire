@@ -1,5 +1,6 @@
 <script lang="ts">
   import { MapPin } from '@lucide/svelte';
+  import { workArrangement } from '$lib/enrichment';
   import type { Job } from '$lib/types';
   import { Badge } from '$lib/ui';
   import { formatDate } from '$lib/utils';
@@ -9,6 +10,9 @@
   let { job }: { job: Job } = $props();
 
   const posted = $derived(formatDate(job.posted_at));
+  // Prefer the enriched work mode over the raw remote flag, so the card and the
+  // detail page agree (see workArrangement).
+  const arrangement = $derived(workArrangement(job));
 </script>
 
 <a
@@ -28,8 +32,8 @@
       </p>
     </div>
     <div class="flex shrink-0 flex-col items-end gap-1">
-      {#if job.remote}
-        <Badge variant="secondary">Remote</Badge>
+      {#if arrangement}
+        <Badge variant="secondary">{arrangement}</Badge>
       {/if}
       {#if posted}
         <span class="text-xs text-muted-foreground">{posted}</span>

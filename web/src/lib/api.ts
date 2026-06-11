@@ -3,7 +3,7 @@
 // return a `Slice` so callers (and the Paginator) stay ignorant of how each one
 // signals more pages.
 
-import type { Job, Company, CompanyListItem, ListMeta, User } from './types';
+import type { Job, Company, CompanyListItem, ListMeta, User, UserJob } from './types';
 
 // Relative base: the SPA and API share one origin (a dev Vite proxy forwards
 // /api to the backend), so the browser sends the httpOnly auth cookie with
@@ -117,4 +117,26 @@ export async function logout(): Promise<void> {
 export async function me(): Promise<User> {
   const res = await request<{ data: User }>('/api/v1/auth/me');
   return res.data;
+}
+
+// --- Per-user job interactions ----------------------------------------------
+//
+// Both require a session (the auth cookie). Callers gate on auth state before
+// invoking — the SPA never sends these for a signed-out visitor.
+
+/** POST to a job-interaction endpoint and return the resulting record. */
+async function postJobInteraction(id: number, action: 'view' | 'apply'): Promise<UserJob> {
+  const res = await request<{ data: UserJob }>(`/api/v1/jobs/${id}/${action}`, { method: 'POST' });
+  return res.data;
+}
+
+/** Record that the current user viewed a job; returns their interaction
+ *  (including whether they have already applied). */
+export function recordJobView(id: number): Promise<UserJob> {
+  return postJobInteraction(id, 'view');
+}
+
+/** Mark a job as applied for the current user. */
+export function markJobApplied(id: number): Promise<UserJob> {
+  return postJobInteraction(id, 'apply');
 }
