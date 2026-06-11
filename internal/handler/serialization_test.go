@@ -7,7 +7,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgtype"
 
-	"github.com/strelov1/hire/internal/db"
+	"github.com/strelov1/freehire/internal/db"
 )
 
 // The jobs read endpoints return db.Job directly via c.JSON, so the struct's

@@ -16,7 +16,7 @@ Non-negotiable. Bias toward caution over speed; use judgment on trivial tasks.
 
 ## What this is
 
-`hire` is an open-source IT job aggregator backend. Intended shape: many source parsers feed a pipeline that normalizes jobs into one schema, deduplicates them, and enriches them with AI; served over an HTTP API with rich filters.
+`freehire` ([freehire.dev](https://freehire.dev)) is an open-source IT job aggregator backend. Intended shape: many source parsers feed a pipeline that normalizes jobs into one schema, deduplicates them, and enriches them with AI; served over an HTTP API with rich filters.
 
 **Current state: early backend.** Fiber HTTP server with `/health`, `/api/v1/jobs[/:id]`, companies endpoints, and a `/api/v1/auth` surface (register/login/me with stateless JWT); Postgres via sqlc with `jobs`, `companies`, and `users` tables; a typed, versioned enrichment schema on `jobs`; and a standalone AI enrichment worker (`cmd/enrich`) that fills it from job descriptions via a durable outbox queue. **Source parsers and the ingest pipeline do not exist yet** — the enrichment worker currently backfills from existing rows. A Svelte SPA lives under `web/` and consumes the API (including layout-level auth).
 

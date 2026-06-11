@@ -10,8 +10,8 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 
-	"github.com/strelov1/hire/internal/auth"
-	"github.com/strelov1/hire/internal/db"
+	"github.com/strelov1/freehire/internal/auth"
+	"github.com/strelov1/freehire/internal/db"
 )
 
 const minPasswordLen = 8

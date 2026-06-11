@@ -1,4 +1,4 @@
-module github.com/strelov1/hire
+module github.com/strelov1/freehire
 
 go 1.25.0
 

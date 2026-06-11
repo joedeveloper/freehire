@@ -1,6 +1,6 @@
-# hire
+# freehire
 
-Open-source IT job aggregator: many source parsers, normalization into a single schema, and an AI enrichment layer on top. Fully open and transparent, designed to make adding new sources easy.
+[freehire.dev](https://freehire.dev) — open-source IT job aggregator: many source parsers, normalization into a single schema, and an AI enrichment layer on top. Fully open and transparent, designed to make adding new sources easy.
 
 > This is a backend scaffold. For now it only contains the skeleton: Fiber + Postgres + sqlc. Parsers, the pipeline, and the AI layer come next.
 

@@ -9,7 +9,7 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 
-	"github.com/strelov1/hire/internal/auth"
+	"github.com/strelov1/freehire/internal/auth"
 )
 
 // registerApp mounts only the register route on a handler with no DB. The

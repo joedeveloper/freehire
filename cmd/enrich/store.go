@@ -9,8 +9,8 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/strelov1/hire/internal/db"
-	"github.com/strelov1/hire/internal/enrich"
+	"github.com/strelov1/freehire/internal/db"
+	"github.com/strelov1/freehire/internal/enrich"
 )
 
 // dbStore adapts the generated queries + connection pool to enrich.Store. It is the

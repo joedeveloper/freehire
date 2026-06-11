@@ -3,7 +3,7 @@ package handler
 import (
 	"github.com/gofiber/fiber/v2"
 
-	"github.com/strelov1/hire/internal/db"
+	"github.com/strelov1/freehire/internal/db"
 )
 
 // ListCompanies returns a page of companies with their job counts. Counts are

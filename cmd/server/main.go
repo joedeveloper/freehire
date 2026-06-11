@@ -12,9 +12,9 @@ import (
 	"github.com/gofiber/fiber/v2/middleware/logger"
 	"github.com/gofiber/fiber/v2/middleware/recover"
 
-	"github.com/strelov1/hire/internal/config"
-	"github.com/strelov1/hire/internal/database"
-	"github.com/strelov1/hire/internal/handler"
+	"github.com/strelov1/freehire/internal/config"
+	"github.com/strelov1/freehire/internal/database"
+	"github.com/strelov1/freehire/internal/handler"
 )
 
 func main() {

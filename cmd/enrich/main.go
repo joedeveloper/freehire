@@ -8,9 +8,9 @@ import (
 	"context"
 	"log"
 
-	"github.com/strelov1/hire/internal/config"
-	"github.com/strelov1/hire/internal/database"
-	"github.com/strelov1/hire/internal/enrich"
+	"github.com/strelov1/freehire/internal/config"
+	"github.com/strelov1/freehire/internal/database"
+	"github.com/strelov1/freehire/internal/enrich"
 )
 
 func main() {

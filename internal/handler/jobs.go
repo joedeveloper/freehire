@@ -5,7 +5,7 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 
-	"github.com/strelov1/hire/internal/db"
+	"github.com/strelov1/freehire/internal/db"
 )
 
 // ListJobs returns a page of jobs using limit/offset pagination.
