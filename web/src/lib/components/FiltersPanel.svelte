@@ -28,24 +28,7 @@
     {/if}
   </div>
 
-  {#each FACETS as def (def.param)}
-    <FacetSection {def} {store} />
-  {/each}
-
   <div class="border-b border-border pb-4">
-    <h3 class="mb-2 text-sm font-semibold tracking-tight">Visa</h3>
-    <label class="flex cursor-pointer items-center gap-2 text-sm">
-      <input
-        type="checkbox"
-        class="size-4 rounded border-border"
-        checked={store.value.visa}
-        onchange={(e) => store.setVisa(e.currentTarget.checked)}
-      />
-      <span>Visa sponsorship</span>
-    </label>
-  </div>
-
-  <div>
     <div class="mb-2 flex items-center justify-between">
       <h3 class="text-sm font-semibold tracking-tight">Min salary</h3>
       <span class="text-xs font-medium text-muted-foreground">
@@ -66,5 +49,22 @@
       <span>Any</span>
       <span>{SALARY_MAX.toLocaleString('en-US')}+</span>
     </div>
+  </div>
+
+  {#each FACETS as def (def.param)}
+    <FacetSection {def} {store} />
+  {/each}
+
+  <div>
+    <h3 class="mb-2 text-sm font-semibold tracking-tight">Visa</h3>
+    <label class="flex cursor-pointer items-center gap-2 text-sm">
+      <input
+        type="checkbox"
+        class="size-4 rounded border-border"
+        checked={store.value.visa}
+        onchange={(e) => store.setVisa(e.currentTarget.checked)}
+      />
+      <span>Visa sponsorship</span>
+    </label>
   </div>
 </div>
