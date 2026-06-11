@@ -101,22 +101,85 @@ func TestFromRow_NilEnrichmentByteSliceIsSafe(t *testing.T) {
 	}
 }
 
-func TestJob_NeverSerializesInternalID(t *testing.T) {
-	// The wire shape must not leak the internal numeric id — it is enumerable
-	// and its growth leaks inventory size.
-	view, err := FromRow(db.Job{ID: 99, Title: "x", PublicSlug: "x-99"})
+// Job's JSON encoding IS the API contract for every jobs read endpoint. These
+// tests lock two requirements: the internal numeric id is never exposed and the
+// public slug is (specs/job-public-identity), and the enrichment payload
+// survives the mapping (specs/job-enrichment): an unenriched job serializes
+// enrichment as {} (not null), and an enriched payload keeps its fields.
+
+func TestJobJSON_HidesIDExposesSlug(t *testing.T) {
+	fields := marshalToFields(t, db.Job{
+		ID:         123,
+		Title:      "Go Developer",
+		PublicSlug: "go-developer-acme-t35nijto",
+	})
+
+	if _, leaked := fields["id"]; leaked {
+		t.Error("wire shape leaks the internal numeric id")
+	}
+	if got := string(fields["public_slug"]); got != `"go-developer-acme-t35nijto"` {
+		t.Errorf("public_slug: want the slug, got %s", got)
+	}
+}
+
+// Un-enriched job: enrichment is {} (not null), enriched_at is null,
+// enrichment_version is 0.
+func TestJobJSON_Unenriched(t *testing.T) {
+	fields := marshalToFields(t, db.Job{ID: 1, Title: "Go Developer"})
+
+	if got := string(fields["enrichment"]); got != "{}" {
+		t.Errorf("enrichment: want {}, got %s", got)
+	}
+	if got := string(fields["enriched_at"]); got != "null" {
+		t.Errorf("enriched_at: want null, got %s", got)
+	}
+	if got := string(fields["enrichment_version"]); got != "0" {
+		t.Errorf("enrichment_version: want 0, got %s", got)
+	}
+}
+
+// Enriched job: the JSONB payload survives the typed decode/encode round-trip,
+// enriched_at is the RFC3339 UTC timestamp, version is set.
+func TestJobJSON_Enriched(t *testing.T) {
+	enrichedAt := time.Date(2026, 6, 9, 12, 0, 0, 0, time.UTC)
+	fields := marshalToFields(t, db.Job{
+		ID:                2,
+		Title:             "Senior Go Developer",
+		Enrichment:        json.RawMessage(`{"seniority":"senior","work_mode":"remote"}`),
+		EnrichedAt:        pgtype.Timestamptz{Time: enrichedAt, Valid: true},
+		EnrichmentVersion: 1,
+	})
+
+	var enrichment map[string]any
+	if err := json.Unmarshal(fields["enrichment"], &enrichment); err != nil {
+		t.Fatalf("enrichment is not a JSON object: %v", err)
+	}
+	if enrichment["seniority"] != "senior" || enrichment["work_mode"] != "remote" {
+		t.Errorf("enrichment payload not preserved: %v", enrichment)
+	}
+	if got := string(fields["enriched_at"]); got != `"2026-06-09T12:00:00Z"` {
+		t.Errorf("enriched_at: want the timestamp, got %s", got)
+	}
+	if got := string(fields["enrichment_version"]); got != "1" {
+		t.Errorf("enrichment_version: want 1, got %s", got)
+	}
+}
+
+// marshalToFields maps a db.Job through the wire shape and returns its
+// top-level JSON fields — the actual public contract.
+func marshalToFields(t *testing.T, job db.Job) map[string]json.RawMessage {
+	t.Helper()
+	view, err := FromRow(job)
 	if err != nil {
 		t.Fatalf("FromRow: %v", err)
 	}
-	raw, err := json.Marshal(view)
+	data, err := json.Marshal(view)
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}
-	var m map[string]any
-	if err := json.Unmarshal(raw, &m); err != nil {
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(data, &fields); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
-	if _, leaked := m["id"]; leaked {
-		t.Errorf("internal id leaked in wire shape: %s", raw)
-	}
+	return fields
 }
