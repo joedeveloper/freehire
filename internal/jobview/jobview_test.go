@@ -66,38 +66,18 @@ func TestFromRow_MapsCoreAndNestedEnrichment(t *testing.T) {
 	}
 }
 
-func TestFromRow_UnenrichedHasZeroEnrichment(t *testing.T) {
-	view, err := FromRow(db.Job{
-		ID:         1,
-		Title:      "Go Developer",
-		Company:    "Acme",
-		PublicSlug: "go-developer-acme-x",
-		Enrichment: []byte("{}"),
-	})
-	if err != nil {
-		t.Fatalf("FromRow: %v", err)
-	}
-
-	if view.Title != "Go Developer" {
-		t.Errorf("Title = %q, want mapped", view.Title)
-	}
-	if view.Enrichment.Seniority != "" || view.Enrichment.SalaryMin != nil || len(view.Enrichment.Skills) != 0 {
-		t.Errorf("expected zero enrichment, got %+v", view.Enrichment)
-	}
-	if view.PostedAt != nil {
-		t.Errorf("PostedAt = %v, want nil for an unset timestamp", view.PostedAt)
-	}
-}
-
-func TestFromRow_NilEnrichmentByteSliceIsSafe(t *testing.T) {
-	// A job whose enrichment column round-trips as a nil/empty byte slice must
-	// not fail decoding — it is simply unenriched.
-	view, err := FromRow(db.Job{ID: 2, Title: "x", PublicSlug: "x-2", Enrichment: nil})
-	if err != nil {
-		t.Fatalf("FromRow with nil enrichment: %v", err)
-	}
-	if view.Enrichment.Seniority != "" {
-		t.Errorf("expected no enrichment, got seniority %q", view.Enrichment.Seniority)
+func TestFromRow_EmptyEnrichmentIsZero(t *testing.T) {
+	// An unenriched job's column arrives as "{}" (the table default) or, in
+	// edge cases, a nil byte slice. Both must decode to the zero Enrichment,
+	// never fail.
+	for _, payload := range [][]byte{[]byte("{}"), nil} {
+		view, err := FromRow(db.Job{ID: 1, Title: "x", PublicSlug: "x-1", Enrichment: payload})
+		if err != nil {
+			t.Fatalf("FromRow with enrichment %q: %v", payload, err)
+		}
+		if view.Enrichment.Seniority != "" || view.Enrichment.SalaryMin != nil || len(view.Enrichment.Skills) != 0 {
+			t.Errorf("enrichment %q: expected zero enrichment, got %+v", payload, view.Enrichment)
+		}
 	}
 }
 
@@ -129,6 +109,9 @@ func TestJobJSON_Unenriched(t *testing.T) {
 
 	if got := string(fields["enrichment"]); got != "{}" {
 		t.Errorf("enrichment: want {}, got %s", got)
+	}
+	if got := string(fields["posted_at"]); got != "null" {
+		t.Errorf("posted_at: want null for an unset timestamp, got %s", got)
 	}
 	if got := string(fields["enriched_at"]); got != "null" {
 		t.Errorf("enriched_at: want null, got %s", got)
