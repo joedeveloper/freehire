@@ -24,20 +24,35 @@ function parse(path: string): Route {
 
 class Router {
   path = $state(window.location.pathname);
+  // The raw query string (including the leading '?'), kept reactive so views can
+  // drive state (e.g. job filters) from the URL and have it survive reloads,
+  // sharing, and back/forward.
+  search = $state(window.location.search);
   // Parsed once per path change and shared across consumers, rather than
   // re-running the regexes on every getter read.
   route = $derived<Route>(parse(this.path));
+  query = $derived(new URLSearchParams(this.search));
 
-  /** Push a new path and re-render. No-op if already there. */
+  /** Push a new path and re-render, clearing any query. No-op if unchanged. */
   navigate(to: string) {
-    if (to === this.path) return;
+    if (to === this.path && this.search === '') return;
     window.history.pushState({}, '', to);
     this.path = to;
+    this.search = '';
+  }
+
+  /** Replace the current entry's query in place — used for live filter changes,
+   *  so toggling a facet doesn't push a history entry each time. */
+  setQuery(params: URLSearchParams) {
+    const qs = params.toString();
+    this.search = qs ? `?${qs}` : '';
+    window.history.replaceState({}, '', this.path + this.search);
   }
 
   /** Sync to the current URL after browser back/forward. */
   syncFromLocation() {
     this.path = window.location.pathname;
+    this.search = window.location.search;
   }
 }
 

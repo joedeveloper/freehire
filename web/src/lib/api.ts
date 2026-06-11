@@ -68,11 +68,17 @@ export async function getJob(slug: string): Promise<Job> {
   return body.data;
 }
 
-/** Full-text + hybrid search over jobs. Results are the same Job wire shape as
- *  listJobs, so views render them with the same components. `meta.total` is an
- *  estimate from the search engine. */
-export async function searchJobs(q: string, limit: number, offset: number): Promise<Slice<Job>> {
-  const params = new URLSearchParams({ q, limit: String(limit), offset: String(offset) });
+/** Full-text + hybrid search over jobs. `facets` carries the query text and any
+ *  facet filters (built by the caller); pagination is appended here. Results are
+ *  the same Job wire shape as listJobs, so views render them with the same
+ *  components. `meta.total` is an estimate from the search engine. */
+export async function searchJobs(facets: URLSearchParams, limit: number, offset: number): Promise<Slice<Job>> {
+  const params = new URLSearchParams(facets);
+  // With no text query there is nothing to embed, so browse by keyword/filters
+  // only — semantic ranking of an empty query is meaningless.
+  if (!params.get('q')) params.set('semantic_ratio', '0');
+  params.set('limit', String(limit));
+  params.set('offset', String(offset));
   return toSlice(await get<Page<Job>>(`/api/v1/jobs/search?${params}`), offset);
 }
 

@@ -1,5 +1,6 @@
 <script lang="ts">
   import { router } from '$lib/router.svelte';
+  import { cn } from '$lib/utils';
   import TopBar from '$lib/components/TopBar.svelte';
   import JobsView from '$lib/components/JobsView.svelte';
   import JobView from '$lib/components/JobView.svelte';
@@ -31,7 +32,7 @@
 
 <TopBar />
 
-<main class="mx-auto max-w-3xl px-4 py-6">
+<main class={cn('mx-auto px-4 py-6', route.name === 'jobs' ? 'max-w-6xl' : 'max-w-3xl')}>
   {#if route.name === 'jobs'}
     <JobsView />
   {:else if route.name === 'job'}
