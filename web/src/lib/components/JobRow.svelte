@@ -1,46 +1,56 @@
 <script lang="ts">
-  import { MapPin } from '@lucide/svelte';
-  import { workArrangement } from '$lib/enrichment';
+  import { Globe } from '@lucide/svelte';
+  import { cardTags, formatSalary } from '$lib/enrichment';
   import type { Job } from '$lib/types';
-  import { Badge } from '$lib/ui';
-  import { formatDate } from '$lib/utils';
+  import { timeAgo } from '$lib/utils';
 
   // Single source of truth for how a job appears in any list (jobs list and
-  // company detail). The whole row is a link to the job detail.
+  // company detail). The whole card is a link to the job detail.
   let { job }: { job: Job } = $props();
 
-  const posted = $derived(formatDate(job.posted_at));
-  // Prefer the enriched work mode over the raw remote flag, so the card and the
-  // detail page agree (see workArrangement).
-  const arrangement = $derived(workArrangement(job));
+  const tags = $derived(cardTags(job));
+  const salary = $derived(job.enrichment ? formatSalary(job.enrichment) : null);
+  const skills = $derived(job.enrichment?.skills ?? []);
+  // How recently it was posted is a key signal, so it leads the header.
+  const posted = $derived(timeAgo(job.posted_at));
+
+  const MAX_SKILLS = 5;
+  const shownSkills = $derived(skills.slice(0, MAX_SKILLS));
+  const extraSkills = $derived(skills.length - MAX_SKILLS);
 </script>
 
 <a
   href={`/jobs/${job.public_slug}`}
-  class="block rounded-lg border border-border px-4 py-3 transition-colors hover:bg-accent"
+  class="block rounded-xl border border-border bg-card p-4 transition-colors hover:bg-accent"
 >
   <div class="flex items-start justify-between gap-3">
-    <div class="min-w-0">
-      <p class="truncate font-medium">{job.title}</p>
-      <p class="mt-0.5 truncate text-sm text-muted-foreground">
+    <div class="flex min-w-0 flex-wrap items-center gap-2">
+      <span class="inline-flex items-center gap-1.5 font-semibold">
+        <Globe class="size-4 shrink-0 text-muted-foreground" />
         {job.company || 'Unknown company'}
-        {#if job.location}
-          <span class="inline-flex items-center gap-1">
-            · <MapPin class="size-3" />{job.location}
-          </span>
-        {/if}
-      </p>
+      </span>
+      {#each tags as tag (tag)}
+        <span class="rounded-md bg-secondary px-2 py-0.5 text-xs font-medium text-secondary-foreground">{tag}</span>
+      {/each}
     </div>
-    <div class="flex shrink-0 flex-col items-end gap-1">
-      {#if arrangement}
-        <Badge variant="secondary">{arrangement}</Badge>
-      {/if}
-      {#if posted}
-        <span class="text-xs text-muted-foreground">{posted}</span>
-      {/if}
-    </div>
+    {#if posted}
+      <span class="shrink-0 text-xs text-muted-foreground">{posted}</span>
+    {/if}
   </div>
-  <div class="mt-2 flex items-center gap-2">
-    <Badge variant="outline">{job.source}</Badge>
+
+  <h3 class="mt-2 line-clamp-2 text-lg font-semibold tracking-tight">{job.title}</h3>
+
+  <div class="mt-3 flex items-end justify-between gap-3">
+    <div class="flex min-w-0 flex-wrap items-center gap-1.5">
+      {#each shownSkills as skill (skill)}
+        <span class="rounded-md bg-secondary px-2 py-0.5 text-xs text-secondary-foreground">{skill}</span>
+      {/each}
+      {#if extraSkills > 0}
+        <span class="text-xs text-muted-foreground">+{extraSkills} skills</span>
+      {/if}
+    </div>
+    {#if salary}
+      <span class="shrink-0 text-base font-bold tracking-tight">{salary}</span>
+    {/if}
   </div>
 </a>

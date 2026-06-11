@@ -146,6 +146,25 @@ export function workArrangement(job: { remote: boolean; enrichment?: Enrichment 
 }
 
 /**
+ * The short tag row shown on a list card's header: work arrangement, primary
+ * country, employment type, and grade — only those that are stated, in that
+ * order. Compact by design (the full facet set lives on the detail page).
+ */
+export function cardTags(job: { remote: boolean; enrichment?: Enrichment }): string[] {
+  const e = job.enrichment;
+  const tags: string[] = [];
+
+  const arrangement = workArrangement(job);
+  if (arrangement) tags.push(arrangement);
+  const country = e?.countries?.[0];
+  if (country) tags.push(country.toUpperCase());
+  if (e?.employment_type) tags.push(label(EMPLOYMENT, e.employment_type));
+  if (e?.seniority) tags.push(label(SENIORITY, e.seniority));
+
+  return tags;
+}
+
+/**
  * Ordered facets for the summary meta-row. Only facets with a stated value are
  * included, so an empty enrichment yields an empty list and the row hides
  * entirely. Order moves from work arrangement → role → eligibility → company,
