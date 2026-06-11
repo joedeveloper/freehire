@@ -3,7 +3,7 @@
 - [x] 1.1 Add `migrations/0006_user_jobs.sql`: `user_jobs` table (`user_id` BIGINT FK→`users(id)` ON DELETE CASCADE, `job_id` BIGINT FK→`jobs(id)` ON DELETE CASCADE, `viewed_at` timestamptz NOT NULL default now(), `applied_at` timestamptz NULLABLE) with `PRIMARY KEY (user_id, job_id)`
 - [x] 1.2 Add `internal/db/queries/user_jobs.sql`: `RecordJobView` (upsert on `(user_id, job_id)`, `DO UPDATE SET viewed_at = now()`, `RETURNING *`) and `MarkJobApplied` (upsert with `applied_at = now()`, `DO UPDATE SET applied_at = now()`, `RETURNING *`)
 - [x] 1.3 Run `make sqlc` and commit the regenerated `internal/db` code
-- [ ] 1.4 Recreate the dev DB volume (`docker compose down -v && make up`) to apply the new migration _(deferred: needs Docker)_
+- [x] 1.4 Recreate the dev DB volume (`docker compose down -v && make up`) to apply the new migration
 
 ## 2. DB query tests
 
@@ -26,6 +26,6 @@
 ## 5. Verification
 
 - [x] 5.1 `go build ./... && go vet ./... && go test ./...` all pass
-- [ ] 5.2 Manual e2e (API): signed-in `POST /jobs/:id/view` → 200 with interaction; `POST /jobs/:id/apply` → `applied_at` set; both without a cookie → 401; `GET /jobs/:id` still works with no cookie _(deferred: needs Docker + the migration applied)_
-- [ ] 5.3 Manual e2e (web): open a job signed in → view recorded; follow Apply → confirm Yes → "You applied" badge; reopen → badge persists; No → no record; signed-out view unchanged _(deferred: needs Docker + the migration applied)_
+- [x] 5.2 Manual e2e (API): signed-in `POST /jobs/:id/view` → 200 with interaction; `POST /jobs/:id/apply` → `applied_at` set; both without a cookie → 401; `GET /jobs/:id` still works with no cookie
+- [x] 5.3 Manual e2e (web): open a job signed in → view recorded; follow Apply → confirm Yes → "You applied" badge; reopen → badge persists; No → no record; signed-out view unchanged
 - [x] 5.4 Update `AGENT.md` (layout + conventions) to document the `user_jobs` table, the view/apply endpoints, and the SPA interaction surface
