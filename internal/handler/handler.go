@@ -10,6 +10,7 @@ import (
 
 	"github.com/strelov1/freehire/internal/auth"
 	"github.com/strelov1/freehire/internal/db"
+	"github.com/strelov1/freehire/internal/search"
 )
 
 const (
@@ -23,6 +24,9 @@ type Handler struct {
 	queries      *db.Queries
 	issuer       *auth.Issuer
 	cookieSecure bool
+	// search is the job-search backend. Nil when Meilisearch is unconfigured —
+	// the search endpoint then reports 503 and the rest of the API is unaffected.
+	search searcher
 }
 
 // pageParams reads and clamps the shared limit/offset pagination query params.
@@ -41,12 +45,17 @@ func pageParams(c *fiber.Ctx) (limit, offset int) {
 // under one origin (a dev Vite proxy mirrors the production reverse proxy), so
 // the cookie rides along with no CORS. The CORS allowlist is not credentialed —
 // it only permits non-credentialed cross-origin reads of the public endpoints.
-func Register(app *fiber.App, pool *pgxpool.Pool, frontendOrigin, jwtSecret string, jwtTTL time.Duration, cookieSecure bool) {
+func Register(app *fiber.App, pool *pgxpool.Pool, frontendOrigin, jwtSecret string, jwtTTL time.Duration, cookieSecure bool, searchClient *search.Client) {
 	h := &Handler{
 		pool:         pool,
 		queries:      db.New(pool),
 		issuer:       auth.NewIssuer(jwtSecret, jwtTTL),
 		cookieSecure: cookieSecure,
+	}
+	// Assign only when configured: a nil *search.Client wrapped in the searcher
+	// interface would be a non-nil interface and defeat the nil check.
+	if searchClient != nil {
+		h.search = searchClient
 	}
 
 	app.Use(cors.New(cors.Config{AllowOrigins: frontendOrigin}))
@@ -55,6 +64,8 @@ func Register(app *fiber.App, pool *pgxpool.Pool, frontendOrigin, jwtSecret stri
 
 	api := app.Group("/api/v1")
 	api.Get("/jobs", h.ListJobs)
+	// Literal route before the :slug param route so "search" is not read as a slug.
+	api.Get("/jobs/search", h.SearchJobs)
 	api.Get("/jobs/:slug", h.GetJob)
 	api.Get("/companies", h.ListCompanies)
 	api.Get("/companies/:slug", h.GetCompany)

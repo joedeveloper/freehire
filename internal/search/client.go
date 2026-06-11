@@ -166,13 +166,12 @@ func indexSettings() *meilisearch.Settings {
 		},
 		SortableAttributes: []string{"posted_at", "salary_min", "salary_max"},
 		RankingRules:       []string{"words", "sort", "typo", "proximity", "attribute", "exactness"},
-		TypoTolerance: &meilisearch.TypoTolerance{
-			Enabled: true,
-			MinWordSizeForTypos: meilisearch.MinWordSizeForTypos{
-				OneTypo:  3,
-				TwoTypos: 6,
-			},
-		},
+		// Typo tolerance is left at Meilisearch's defaults (on, with sensible min
+		// word sizes). We deliberately do not send a TypoTolerance struct: the SDK
+		// always serializes newer fields (e.g. disableOnNumbers) that older
+		// Meilisearch versions reject, and the spec only requires typo tolerance to
+		// exist, not specific thresholds. Re-add explicit tuning when the pinned
+		// server and SDK fields align.
 		Pagination: &meilisearch.Pagination{MaxTotalHits: maxTotalHits},
 		Embedders: map[string]meilisearch.Embedder{
 			embedderName: {

@@ -8,17 +8,17 @@ import (
 	"github.com/strelov1/freehire/internal/enrich"
 )
 
-// JobDocument is the shape of a job as stored in the Meilisearch index and
-// returned by a search. ID is the index primary key and is internal: it is
-// never exposed by the public API (the search handler strips it and identifies
-// jobs by PublicSlug, consistent with the rest of the public job reads).
+// JobView is the public shape of a job in the search index: everything a client
+// may see and everything Meilisearch filters/sorts on. It deliberately has no
+// internal id — the id is carried only by the enclosing JobDocument, so a search
+// response built from JobView cannot leak it. Jobs are identified by PublicSlug,
+// consistent with the rest of the public job reads.
 //
 // Types are deliberately plain JSON values (string/int64/bool/slices) rather
 // than pgtype, so the index shape stays simple and self-describing. Enrichment
 // is flattened into first-class facet fields here so Meilisearch can filter and
 // sort on them directly; an unenriched job simply leaves them empty.
-type JobDocument struct {
-	ID          int64  `json:"id"`
+type JobView struct {
 	PublicSlug  string `json:"public_slug"`
 	Source      string `json:"source"`
 	ExternalID  string `json:"external_id"`
@@ -51,22 +51,34 @@ type JobDocument struct {
 	ExperienceYearsMin *int     `json:"experience_years_min,omitempty"`
 }
 
+// JobDocument is a job as stored in the Meilisearch index: the internal id (the
+// primary key) plus the public JobView. The embedded view flattens into the
+// document JSON, so the stored document is `{ "id": ..., "public_slug": ..., ... }`
+// and Meilisearch reads "id" as the primary key. The id is never returned to
+// clients — handlers respond with the JobView alone.
+type JobDocument struct {
+	ID int64 `json:"id"`
+	JobView
+}
+
 // FromJob maps a database job row to its index document. The enrichment JSONB is
 // decoded into typed facet fields; an empty or absent payload yields a document
 // with no facets (the job is still fully searchable by its text).
 func FromJob(j db.Job) (JobDocument, error) {
 	doc := JobDocument{
-		ID:          j.ID,
-		PublicSlug:  j.PublicSlug,
-		Source:      j.Source,
-		ExternalID:  j.ExternalID,
-		URL:         j.URL,
-		Title:       j.Title,
-		Company:     j.Company,
-		CompanySlug: j.CompanySlug,
-		Location:    j.Location,
-		Remote:      j.Remote,
-		Description: j.Description,
+		ID: j.ID,
+		JobView: JobView{
+			PublicSlug:  j.PublicSlug,
+			Source:      j.Source,
+			ExternalID:  j.ExternalID,
+			URL:         j.URL,
+			Title:       j.Title,
+			Company:     j.Company,
+			CompanySlug: j.CompanySlug,
+			Location:    j.Location,
+			Remote:      j.Remote,
+			Description: j.Description,
+		},
 	}
 
 	if j.PostedAt.Valid {

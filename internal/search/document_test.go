@@ -122,6 +122,27 @@ func TestFromJob_UnenrichedHasNoFacets(t *testing.T) {
 	}
 }
 
+func TestJobDocument_FlattensIDAndViewToTopLevelJSON(t *testing.T) {
+	// Meilisearch reads the primary key "id" from the top level of the document,
+	// and the embedded JobView must flatten (no nesting) so its fields are the
+	// searchable/filterable attributes. A json tag on JobView would break this.
+	doc := JobDocument{ID: 7, JobView: JobView{PublicSlug: "x-7", Title: "x"}}
+	raw, err := json.Marshal(doc)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	var m map[string]any
+	if err := json.Unmarshal(raw, &m); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if _, ok := m["id"]; !ok {
+		t.Errorf("missing top-level id in %s", raw)
+	}
+	if _, ok := m["public_slug"]; !ok {
+		t.Errorf("public_slug not flattened to top level in %s", raw)
+	}
+}
+
 func TestFromJob_EmptyEnrichmentByteSliceIsSafe(t *testing.T) {
 	// A job whose enrichment column round-trips as a nil/empty byte slice must
 	// not fail decoding — it is simply unenriched.
