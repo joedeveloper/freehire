@@ -25,19 +25,22 @@ const defaultSemanticRatio = 0.5
 // Enrichment facets live under the nested "enrichment" object, so they filter on
 // a dot path. Repeated params (?seniority=a&seniority=b) are ORed.
 var searchStringFacets = map[string]string{
-	"source":          "source",
-	"company_slug":    "company_slug",
-	"work_mode":       "enrichment.work_mode",
-	"employment_type": "enrichment.employment_type",
-	"seniority":       "enrichment.seniority",
-	"category":        "enrichment.category",
-	"domains":         "enrichment.domains",
-	"countries":       "enrichment.countries",
-	"company_type":    "enrichment.company_type",
-	"company_size":    "enrichment.company_size",
-	"salary_currency": "enrichment.salary_currency",
-	"salary_period":   "enrichment.salary_period",
-	"skills":          "enrichment.skills",
+	"source":           "source",
+	"company_slug":     "company_slug",
+	"work_mode":        "enrichment.work_mode",
+	"employment_type":  "enrichment.employment_type",
+	"seniority":        "enrichment.seniority",
+	"category":         "enrichment.category",
+	"domains":          "enrichment.domains",
+	"countries":        "enrichment.countries",
+	"company_type":     "enrichment.company_type",
+	"company_size":     "enrichment.company_size",
+	"salary_currency":  "enrichment.salary_currency",
+	"salary_period":    "enrichment.salary_period",
+	"skills":           "enrichment.skills",
+	"relocation":       "enrichment.relocation",
+	"english_level":    "enrichment.english_level",
+	"posting_language": "enrichment.posting_language",
 }
 
 // searchSortable is the allowlist of sort params mapped to their index attribute;
@@ -101,18 +104,31 @@ func searchSort(c *fiber.Ctx) []string {
 	return []string{attr + ":" + order}
 }
 
-// buildSearchFilter turns facet query params into a Meilisearch filter: values
-// within a facet are ORed, facets are ANDed. Returns nil when no facet is set.
+// buildSearchFilter turns facet query params into a Meilisearch filter. Within a
+// facet, included values are ORed by default (or ANDed when `<param>_mode=and`);
+// excluded values (`<param>_exclude=...`) become NOT fragments. Facets are ANDed.
+// Returns nil when no facet is set.
 func buildSearchFilter(c *fiber.Ctx) any {
 	var groups [][]string
 
 	for param, attr := range searchStringFacets {
 		if vals := queryValues(c, param); len(vals) > 0 {
-			group := make([]string, len(vals))
-			for i, v := range vals {
-				group[i] = search.Eq(attr, v)
+			if c.Query(param+"_mode") == "and" {
+				// Each value its own AND group: a job must match all of them.
+				for _, v := range vals {
+					groups = append(groups, []string{search.Eq(attr, v)})
+				}
+			} else {
+				group := make([]string, len(vals))
+				for i, v := range vals {
+					group[i] = search.Eq(attr, v)
+				}
+				groups = append(groups, group)
 			}
-			groups = append(groups, group)
+		}
+		// Excluded values: each is its own AND group so all are filtered out.
+		for _, v := range queryValues(c, param+"_exclude") {
+			groups = append(groups, []string{search.Neq(attr, v)})
 		}
 	}
 

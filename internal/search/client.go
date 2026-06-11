@@ -165,6 +165,7 @@ func indexSettings() *meilisearch.Settings {
 			"enrichment.company_type", "enrichment.company_size", "enrichment.visa_sponsorship",
 			"enrichment.salary_currency", "enrichment.salary_period", "enrichment.skills",
 			"enrichment.salary_min", "enrichment.salary_max", "enrichment.experience_years_min",
+			"enrichment.relocation", "enrichment.english_level", "enrichment.posting_language",
 		},
 		// posted_at is an RFC3339 UTC string and sorts chronologically as text.
 		SortableAttributes: []string{"posted_at", "enrichment.salary_min", "enrichment.salary_max"},

@@ -16,6 +16,12 @@ func Eq(attr, value string) string {
 	return attr + " = " + quote(value)
 }
 
+// Neq builds an inequality fragment `attr != "value"` (escaped), used by the
+// exclude facets to filter a value out.
+func Neq(attr, value string) string {
+	return attr + " != " + quote(value)
+}
+
 // EqBool builds an equality fragment against a boolean attribute (unquoted, as
 // Meilisearch compares booleans literally).
 func EqBool(attr string, v bool) string {

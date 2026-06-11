@@ -114,6 +114,38 @@ func TestSearchJobs_BackendErrorMaps500(t *testing.T) {
 	}
 }
 
+func TestSearchJobs_ExcludeAndAndMode(t *testing.T) {
+	fake := &fakeSearcher{}
+	app := searchApp(fake)
+
+	doGet(t, app, "/jobs/search?seniority=senior&seniority_exclude=junior&skills=go&skills=react&skills_mode=and")
+
+	groups, ok := fake.got.Filter.([][]string)
+	if !ok {
+		t.Fatalf("Filter = %#v, want [][]string", fake.got.Filter)
+	}
+	if !filterHas(groups, `enrichment.seniority = "senior"`) {
+		t.Error("missing include seniority=senior")
+	}
+	if !filterHas(groups, `enrichment.seniority != "junior"`) {
+		t.Error("missing exclude seniority!=junior")
+	}
+	// AND mode: each skill must be its own single-element group (ANDed), not one
+	// OR group of both.
+	for _, skill := range []string{"go", "react"} {
+		expr := `enrichment.skills = "` + skill + `"`
+		found := false
+		for _, g := range groups {
+			if len(g) == 1 && g[0] == expr {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("skills AND mode: %q not in its own group; groups=%#v", expr, groups)
+		}
+	}
+}
+
 func filterHas(groups [][]string, expr string) bool {
 	for _, g := range groups {
 		for _, e := range g {

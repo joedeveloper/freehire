@@ -1,23 +1,12 @@
 <script lang="ts">
   import type { FilterStore } from '$lib/filters.svelte';
-  import {
-    SENIORITY_OPTIONS,
-    CATEGORY_OPTIONS,
-    WORK_MODE_OPTIONS,
-    EMPLOYMENT_OPTIONS,
-    COMPANY_SIZE_OPTIONS,
-  } from '$lib/facets';
+  import { FACETS } from '$lib/facets';
   import FacetSection from './facets/FacetSection.svelte';
-  import CheckboxGroup from './facets/CheckboxGroup.svelte';
-  import TokenInput from './facets/TokenInput.svelte';
 
-  // The panel is pure presentation over the store: every control reads the
-  // store's current value and routes changes back through its methods.
+  // The panel is pure presentation over the store: it iterates the facet
+  // registry and renders each section, plus the two special controls (visa,
+  // min salary) that aren't multi-value facets.
   let { store }: { store: FilterStore } = $props();
-
-  // Category has many options; collapse to a short head until expanded.
-  let showAllCategories = $state(false);
-  const visibleCategories = $derived(showAllCategories ? CATEGORY_OPTIONS : CATEGORY_OPTIONS.slice(0, 6));
 
   function onSalaryInput(e: Event) {
     const raw = (e.currentTarget as HTMLInputElement).value;
@@ -27,76 +16,42 @@
 
 <div class="flex flex-col gap-4">
   <div class="flex items-center justify-between">
-    <h2 class="text-sm font-semibold tracking-tight">Filters</h2>
+    <h2 class="text-base font-semibold tracking-tight">Filters</h2>
     {#if store.active > 0}
-      <button type="button" class="text-xs text-muted-foreground hover:text-foreground" onclick={() => store.clear()}>
-        Clear all
+      <button type="button" class="text-xs text-muted-foreground transition-colors hover:text-foreground" onclick={() => store.clear()}>
+        Reset all
       </button>
     {/if}
   </div>
 
-  <FacetSection title="Seniority">
-    <CheckboxGroup options={SENIORITY_OPTIONS} selected={store.value.seniority} onToggle={(v) => store.toggle('seniority', v)} />
-  </FacetSection>
+  {#each FACETS as def (def.param)}
+    <FacetSection {def} {store} />
+  {/each}
 
-  <FacetSection title="Category">
-    <CheckboxGroup options={visibleCategories} selected={store.value.category} onToggle={(v) => store.toggle('category', v)} />
-    <button
-      type="button"
-      class="mt-1.5 text-xs text-muted-foreground hover:text-foreground"
-      onclick={() => (showAllCategories = !showAllCategories)}
-    >
-      {showAllCategories ? 'Show less' : `Show all (${CATEGORY_OPTIONS.length})`}
-    </button>
-  </FacetSection>
+  <div class="border-b border-border pb-4">
+    <h3 class="mb-2 text-sm font-semibold tracking-tight">Visa</h3>
+    <label class="flex cursor-pointer items-center gap-2 text-sm">
+      <input
+        type="checkbox"
+        class="size-4 rounded border-border"
+        checked={store.value.visa}
+        onchange={(e) => store.setVisa(e.currentTarget.checked)}
+      />
+      <span>Visa sponsorship</span>
+    </label>
+  </div>
 
-  <FacetSection title="Work mode">
-    <CheckboxGroup options={WORK_MODE_OPTIONS} selected={store.value.workMode} onToggle={(v) => store.toggle('workMode', v)} />
-  </FacetSection>
-
-  <FacetSection title="Employment">
-    <CheckboxGroup options={EMPLOYMENT_OPTIONS} selected={store.value.employmentType} onToggle={(v) => store.toggle('employmentType', v)} />
-  </FacetSection>
-
-  <FacetSection title="Company size">
-    <CheckboxGroup options={COMPANY_SIZE_OPTIONS} selected={store.value.companySize} onToggle={(v) => store.toggle('companySize', v)} />
-  </FacetSection>
-
-  <FacetSection title="Min salary">
+  <div>
+    <h3 class="mb-2 text-sm font-semibold tracking-tight">Min salary</h3>
     <input
       type="number"
       inputmode="numeric"
       min="0"
       step="1000"
-      placeholder="e.g. 80000"
+      placeholder="0"
       value={store.value.salaryMin ?? ''}
       oninput={onSalaryInput}
-      class="w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      class="h-9 w-full rounded-lg border border-input bg-transparent px-3 text-sm transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 dark:bg-input/30"
     />
-  </FacetSection>
-
-  <FacetSection title="Visa sponsorship">
-    <label class="flex cursor-pointer items-center gap-2 text-sm">
-      <input type="checkbox" class="size-4 rounded border-border" checked={store.value.visa} onchange={(e) => store.setVisa(e.currentTarget.checked)} />
-      <span>Offers visa sponsorship</span>
-    </label>
-  </FacetSection>
-
-  <FacetSection title="Skills">
-    <TokenInput
-      tokens={store.value.skills}
-      onAdd={(v) => store.add('skills', v)}
-      onRemove={(v) => store.remove('skills', v)}
-      placeholder="e.g. go, react"
-    />
-  </FacetSection>
-
-  <FacetSection title="Countries">
-    <TokenInput
-      tokens={store.value.countries}
-      onAdd={(v) => store.add('countries', v)}
-      onRemove={(v) => store.remove('countries', v)}
-      placeholder="ISO code, e.g. DE"
-    />
-  </FacetSection>
+  </div>
 </div>

@@ -7,6 +7,9 @@
   import AuthDialog from './AuthDialog.svelte';
 
   const name = $derived(router.route.name);
+  // Match the main content width per route so the logo/nav line up with the page
+  // below (the jobs page is wide for its filters sidebar; others stay narrow).
+  const containerWidth = $derived(name === 'jobs' ? 'max-w-6xl' : 'max-w-3xl');
 
   const links = [
     { href: '/', label: 'Jobs', match: ['jobs', 'job'] },
@@ -26,7 +29,7 @@
 </script>
 
 <header class="border-b border-border">
-  <div class="mx-auto flex h-14 max-w-3xl items-center gap-6 px-4">
+  <div class={cn('mx-auto flex h-14 items-center gap-6 px-4', containerWidth)}>
     <a href="/" class="text-sm font-semibold tracking-tight">freehire</a>
 
     <nav class="flex items-center gap-4 text-sm">

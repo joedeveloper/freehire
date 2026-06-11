@@ -1,91 +1,86 @@
 // Job search filters: the model, its URL <-> state (de)serialization, and a
 // reactive store that mirrors the filters into the URL query so they survive
-// reloads, sharing, and back/forward. Param names match exactly what the search
-// API (GET /api/v1/jobs/search) expects.
+// reloads, sharing, and back/forward. Param names match what the search API
+// (GET /api/v1/jobs/search) expects, including the `<param>_exclude` and
+// `skills_mode=and` conventions.
 
 import { router } from './router.svelte';
+import { FACETS } from './facets';
+
+/** One facet's selection plus whether it filters by inclusion or exclusion. */
+export interface FacetState {
+  values: string[];
+  exclude: boolean;
+}
 
 export interface JobFilters {
   q: string;
-  seniority: string[];
-  category: string[];
-  workMode: string[];
-  employmentType: string[];
-  companySize: string[];
+  /** Facet state keyed by the facet's query param (see FACETS). */
+  facets: Record<string, FacetState>;
+  /** Match all selected skills (AND) instead of any (OR). */
+  skillsAnd: boolean;
   visa: boolean;
   salaryMin: number | null;
-  skills: string[];
-  countries: string[];
 }
 
-/** Multi-value (array) facet fields, used to type the toggle/add/remove helpers. */
-export type MultiField = 'seniority' | 'category' | 'workMode' | 'employmentType' | 'companySize' | 'skills' | 'countries';
-
-// Each array field maps to a query-param name the backend understands.
-const PARAM: Record<MultiField, string> = {
-  seniority: 'seniority',
-  category: 'category',
-  workMode: 'work_mode',
-  employmentType: 'employment_type',
-  companySize: 'company_size',
-  skills: 'skills',
-  countries: 'countries',
-};
+function emptyFacets(): Record<string, FacetState> {
+  const out: Record<string, FacetState> = {};
+  for (const f of FACETS) out[f.param] = { values: [], exclude: false };
+  return out;
+}
 
 export function emptyFilters(): JobFilters {
-  return {
-    q: '',
-    seniority: [],
-    category: [],
-    workMode: [],
-    employmentType: [],
-    companySize: [],
-    visa: false,
-    salaryMin: null,
-    skills: [],
-    countries: [],
-  };
+  return { q: '', facets: emptyFacets(), skillsAnd: false, visa: false, salaryMin: null };
 }
 
-/** Serialize filters to URL query params (the same shape the search API reads). */
+/** Serialize filters to URL query params (the shape the search API reads). */
 export function filtersToParams(f: JobFilters): URLSearchParams {
   const p = new URLSearchParams();
   if (f.q) p.set('q', f.q);
-  for (const field of Object.keys(PARAM) as MultiField[]) {
-    for (const v of f[field]) p.append(PARAM[field], v);
+  for (const def of FACETS) {
+    const st = f.facets[def.param];
+    if (!st || st.values.length === 0) continue;
+    const key = st.exclude ? `${def.param}_exclude` : def.param;
+    for (const v of st.values) p.append(key, v);
+  }
+  const skills = f.facets.skills;
+  if (f.skillsAnd && skills && !skills.exclude && skills.values.length > 1) {
+    p.set('skills_mode', 'and');
   }
   if (f.visa) p.set('visa_sponsorship', 'true');
   if (f.salaryMin != null) p.set('salary_min', String(f.salaryMin));
   return p;
 }
 
-/** Parse filters back from URL query params. Unknown/invalid values are dropped. */
+/** Parse filters back from URL query params. Exclude takes precedence over
+ *  include when both appear for the same facet. */
 export function filtersFromParams(p: URLSearchParams): JobFilters {
+  const f = emptyFilters();
+  f.q = p.get('q') ?? '';
+  for (const def of FACETS) {
+    const exclude = p.getAll(`${def.param}_exclude`);
+    const include = p.getAll(def.param);
+    if (exclude.length > 0) f.facets[def.param] = { values: exclude, exclude: true };
+    else if (include.length > 0) f.facets[def.param] = { values: include, exclude: false };
+  }
+  f.skillsAnd = p.get('skills_mode') === 'and';
+  f.visa = p.get('visa_sponsorship') === 'true';
   const salary = Number(p.get('salary_min'));
-  return {
-    q: p.get('q') ?? '',
-    seniority: p.getAll('seniority'),
-    category: p.getAll('category'),
-    workMode: p.getAll('work_mode'),
-    employmentType: p.getAll('employment_type'),
-    companySize: p.getAll('company_size'),
-    visa: p.get('visa_sponsorship') === 'true',
-    salaryMin: p.get('salary_min') && !Number.isNaN(salary) ? salary : null,
-    skills: p.getAll('skills'),
-    countries: p.getAll('countries'),
-  };
+  f.salaryMin = p.get('salary_min') && !Number.isNaN(salary) ? salary : null;
+  return f;
 }
 
-/** Number of active facet constraints (the free-text q is not counted) — drives
- *  the mobile "Filters" badge. */
+/** Total selected facet values (plus visa/salary) — drives the mobile badge. */
 export function activeFilterCount(f: JobFilters): number {
-  const fields: MultiField[] = ['seniority', 'category', 'workMode', 'employmentType', 'companySize', 'skills', 'countries'];
-  const arrays = fields.reduce((n, field) => n + f[field].length, 0);
-  return arrays + (f.visa ? 1 : 0) + (f.salaryMin != null ? 1 : 0);
+  let n = 0;
+  for (const def of FACETS) n += f.facets[def.param]?.values.length ?? 0;
+  if (f.visa) n += 1;
+  if (f.salaryMin != null) n += 1;
+  return n;
 }
 
-/** Reactive filter state mirrored into the URL. Owned by the jobs view; mutations
- *  go through its methods so every change updates both the state and the URL. */
+/** Reactive filter state mirrored into the URL. Owned by the jobs view; all
+ *  mutations go through its methods so every change updates state and URL. */
 export class FilterStore {
   value = $state<JobFilters>(emptyFilters());
 
@@ -97,8 +92,8 @@ export class FilterStore {
     return activeFilterCount(this.value);
   }
 
-  #commit() {
-    router.setQuery(filtersToParams(this.value));
+  facet(param: string): FacetState {
+    return this.value.facets[param] ?? { values: [], exclude: false };
   }
 
   setQuery(q: string) {
@@ -116,24 +111,39 @@ export class FilterStore {
     this.#commit();
   }
 
-  /** Add the value to a facet if absent, remove it if present (checkbox groups). */
-  toggle(field: MultiField, v: string) {
-    const has = this.value[field].includes(v);
-    this.value = { ...this.value, [field]: has ? this.value[field].filter((x) => x !== v) : [...this.value[field], v] };
+  setSkillsAnd(on: boolean) {
+    this.value = { ...this.value, skillsAnd: on };
     this.#commit();
+  }
+
+  /** Add the value to a facet if absent, remove it if present (pills). */
+  toggle(param: string, v: string) {
+    const st = this.facet(param);
+    const has = st.values.includes(v);
+    this.#setFacet(param, { ...st, values: has ? st.values.filter((x) => x !== v) : [...st.values, v] });
   }
 
   /** Add a token to a facet (token inputs); no-op on blank or duplicate. */
-  add(field: MultiField, raw: string) {
+  add(param: string, raw: string) {
     const v = raw.trim();
-    if (!v || this.value[field].includes(v)) return;
-    this.value = { ...this.value, [field]: [...this.value[field], v] };
-    this.#commit();
+    const st = this.facet(param);
+    if (!v || st.values.includes(v)) return;
+    this.#setFacet(param, { ...st, values: [...st.values, v] });
   }
 
-  remove(field: MultiField, v: string) {
-    this.value = { ...this.value, [field]: this.value[field].filter((x) => x !== v) };
-    this.#commit();
+  remove(param: string, v: string) {
+    const st = this.facet(param);
+    this.#setFacet(param, { ...st, values: st.values.filter((x) => x !== v) });
+  }
+
+  /** Reset a single facet (values + exclude mode) — the per-section clear. */
+  clearFacet(param: string) {
+    this.#setFacet(param, { values: [], exclude: false });
+  }
+
+  /** Switch a facet between include and exclude mode (the "Исключить" link). */
+  setExclude(param: string, exclude: boolean) {
+    this.#setFacet(param, { ...this.facet(param), exclude });
   }
 
   clear() {
@@ -146,5 +156,14 @@ export class FilterStore {
   syncFromUrl() {
     if (router.query.toString() === filtersToParams(this.value).toString()) return;
     this.value = filtersFromParams(router.query);
+  }
+
+  #setFacet(param: string, st: FacetState) {
+    this.value = { ...this.value, facets: { ...this.value.facets, [param]: st } };
+    this.#commit();
+  }
+
+  #commit() {
+    router.setQuery(filtersToParams(this.value));
   }
 }

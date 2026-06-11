@@ -47,8 +47,8 @@
 </script>
 
 <div class="flex gap-6">
-  <aside class="hidden w-64 shrink-0 md:block">
-    <div class="sticky top-6 max-h-[calc(100vh-5rem)] overflow-y-auto pr-1">
+  <aside class="hidden w-72 shrink-0 md:block">
+    <div class="sticky top-6 max-h-[calc(100vh-5rem)] overflow-y-auto rounded-xl border border-border bg-card p-4">
       <FiltersPanel store={filters} />
     </div>
   </aside>
@@ -61,11 +61,11 @@
         oninput={(e) => filters.setQuery(e.currentTarget.value)}
         placeholder="Search jobs…"
         aria-label="Search jobs"
-        class="min-w-0 flex-1 rounded-md border border-border bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        class="h-9 min-w-0 flex-1 rounded-lg border border-input bg-transparent px-3 text-sm transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 dark:bg-input/30"
       />
       <button
         type="button"
-        class="shrink-0 rounded-md border border-border px-3 py-2 text-sm md:hidden"
+        class="h-9 shrink-0 rounded-lg border border-border bg-secondary px-3 text-sm font-medium text-secondary-foreground transition-colors hover:bg-accent md:hidden"
         onclick={() => (drawerOpen = true)}
       >
         Filters{#if filters.active > 0}&nbsp;({filters.active}){/if}

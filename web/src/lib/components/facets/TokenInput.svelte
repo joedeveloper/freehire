@@ -23,17 +23,21 @@
   }
 </script>
 
-<div class="flex flex-wrap items-center gap-1.5 rounded-md border border-border bg-background px-2 py-1.5 focus-within:ring-2 focus-within:ring-ring">
+<div
+  class="flex flex-wrap items-center gap-1.5 rounded-lg border border-input bg-transparent px-2 py-1.5 transition-colors focus-within:border-ring focus-within:ring-2 focus-within:ring-ring/50 dark:bg-input/30"
+>
   {#each tokens as token (token)}
-    <span class="inline-flex items-center gap-1 rounded bg-accent px-1.5 py-0.5 text-xs">
+    <span class="inline-flex items-center gap-1 rounded-full bg-secondary px-2 py-0.5 text-xs font-medium text-secondary-foreground">
       {token}
-      <button type="button" class="text-muted-foreground hover:text-foreground" onclick={() => onRemove(token)} aria-label={`Remove ${token}`}>×</button>
+      <button type="button" class="text-muted-foreground transition-colors hover:text-foreground" onclick={() => onRemove(token)} aria-label={`Remove ${token}`}>
+        ×
+      </button>
     </span>
   {/each}
   <input
     bind:value={draft}
     onkeydown={onKeydown}
     {placeholder}
-    class="min-w-[6rem] flex-1 bg-transparent text-sm outline-none"
+    class="min-w-[6rem] flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
   />
 </div>
