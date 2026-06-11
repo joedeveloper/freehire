@@ -1,0 +1,16 @@
+# Boards to crawl. Each entry names a company, the ATS platform it uses
+# (provider — must match a registered adapter), and the platform-specific board id.
+# Adding a company is an edit here; adding a platform is a new adapter in
+# internal/sources plus one line in sources.All.
+sources:
+  - company: Dropbox
+    provider: greenhouse
+    board: dropbox
+
+  - company: Spotify
+    provider: lever
+    board: spotify
+
+  - company: Ashby
+    provider: ashby
+    board: ashby

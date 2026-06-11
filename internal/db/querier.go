@@ -19,6 +19,12 @@ type Querier interface {
 	// the unique index on lower(email) rejects duplicates regardless of case.
 	CreateUser(ctx context.Context, arg CreateUserParams) (CreateUserRow, error)
 	DeleteEnrichmentEntry(ctx context.Context, id int64) error
+	// Transactional-outbox enqueue for the ingest write path: queue this one job for
+	// enrichment, gated on the same condition the backfill uses (unenriched or below the
+	// target schema version), so an already-enriched job is not re-queued. Idempotent via
+	// the outbox's UNIQUE (job_id, target_version). Run in the same transaction as the
+	// job's UpsertJob so a newly ingested job is queued atomically with its write.
+	EnqueueJobEnrichment(ctx context.Context, arg EnqueueJobEnrichmentParams) (int64, error)
 	// Idempotent backfill: enqueue every job that is unenriched or below the target
 	// schema version. ON CONFLICT keeps exactly one entry per (job_id, target_version),
 	// so running this every command invocation never duplicates work.
@@ -55,9 +61,10 @@ type Querier interface {
 	// Single atomic write: upsert the company (only when the slug is non-empty,
 	// via the WHERE on the SELECT) and the job together, keeping the "one write =
 	// one job" property of the pipeline's write path.
-	// NOTE: enrichment must be a non-nil json.RawMessage (pass []byte("{}") for an
-	// un-enriched job, never nil) — the column is NOT NULL and the '{}' default does
-	// not apply to an explicit NULL on INSERT.
+	// The enrichment columns are deliberately NOT written here: ingest carries no
+	// enrichment, so a new row takes the table defaults ('{}' / NULL / 0) and a
+	// re-ingest leaves any existing enrichment untouched. SetJobEnrichment (the
+	// enrichment worker) is the sole writer of those columns.
 	UpsertJob(ctx context.Context, arg UpsertJobParams) (Job, error)
 }
 

@@ -24,6 +24,33 @@ func (q *Queries) CountJobs(ctx context.Context) (int64, error) {
 	return count, err
 }
 
+const enqueueJobEnrichment = `-- name: EnqueueJobEnrichment :execrows
+INSERT INTO enrichment_outbox (job_id, target_version)
+SELECT id, $1::int
+FROM jobs
+WHERE id = $2::bigint
+  AND (enriched_at IS NULL OR enrichment_version < $1::int)
+ON CONFLICT (job_id, target_version) DO NOTHING
+`
+
+type EnqueueJobEnrichmentParams struct {
+	TargetVersion int32 `json:"target_version"`
+	JobID         int64 `json:"job_id"`
+}
+
+// Transactional-outbox enqueue for the ingest write path: queue this one job for
+// enrichment, gated on the same condition the backfill uses (unenriched or below the
+// target schema version), so an already-enriched job is not re-queued. Idempotent via
+// the outbox's UNIQUE (job_id, target_version). Run in the same transaction as the
+// job's UpsertJob so a newly ingested job is queued atomically with its write.
+func (q *Queries) EnqueueJobEnrichment(ctx context.Context, arg EnqueueJobEnrichmentParams) (int64, error) {
+	result, err := q.db.Exec(ctx, enqueueJobEnrichment, arg.TargetVersion, arg.JobID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const getJob = `-- name: GetJob :one
 SELECT id, source, external_id, url, title, company, location, remote, description, posted_at, created_at, updated_at, company_slug, enrichment, enriched_at, enrichment_version
 FROM jobs
@@ -193,13 +220,11 @@ WITH company_upsert AS (
         updated_at = now()
 )
 INSERT INTO jobs (
-    source, external_id, url, title, company, company_slug, location, remote, description, posted_at,
-    enrichment, enriched_at, enrichment_version
+    source, external_id, url, title, company, company_slug, location, remote, description, posted_at
 ) VALUES (
     $1, $2, $3, $4,
     $5, $6, $7, $8,
-    $9, $10,
-    $11, $12, $13
+    $9, $10
 )
 ON CONFLICT (source, external_id) DO UPDATE SET
     url          = EXCLUDED.url,
@@ -210,38 +235,30 @@ ON CONFLICT (source, external_id) DO UPDATE SET
     remote       = EXCLUDED.remote,
     description  = EXCLUDED.description,
     posted_at    = EXCLUDED.posted_at,
-    -- Full-replace, consistent with the raw fields above. Seam for phase 2: when
-    -- the ingest path (which carries no enrichment) and the enrichment path are
-    -- separated, decide whether a source re-ingest preserves existing enrichment.
-    enrichment         = EXCLUDED.enrichment,
-    enriched_at        = EXCLUDED.enriched_at,
-    enrichment_version = EXCLUDED.enrichment_version,
     updated_at   = now()
 RETURNING id, source, external_id, url, title, company, location, remote, description, posted_at, created_at, updated_at, company_slug, enrichment, enriched_at, enrichment_version
 `
 
 type UpsertJobParams struct {
-	Source            string             `json:"source"`
-	ExternalID        string             `json:"external_id"`
-	URL               string             `json:"url"`
-	Title             string             `json:"title"`
-	Company           string             `json:"company"`
-	CompanySlug       string             `json:"company_slug"`
-	Location          string             `json:"location"`
-	Remote            bool               `json:"remote"`
-	Description       string             `json:"description"`
-	PostedAt          pgtype.Timestamptz `json:"posted_at"`
-	Enrichment        json.RawMessage    `json:"enrichment"`
-	EnrichedAt        pgtype.Timestamptz `json:"enriched_at"`
-	EnrichmentVersion int32              `json:"enrichment_version"`
+	Source      string             `json:"source"`
+	ExternalID  string             `json:"external_id"`
+	URL         string             `json:"url"`
+	Title       string             `json:"title"`
+	Company     string             `json:"company"`
+	CompanySlug string             `json:"company_slug"`
+	Location    string             `json:"location"`
+	Remote      bool               `json:"remote"`
+	Description string             `json:"description"`
+	PostedAt    pgtype.Timestamptz `json:"posted_at"`
 }
 
 // Single atomic write: upsert the company (only when the slug is non-empty,
 // via the WHERE on the SELECT) and the job together, keeping the "one write =
 // one job" property of the pipeline's write path.
-// NOTE: enrichment must be a non-nil json.RawMessage (pass []byte("{}") for an
-// un-enriched job, never nil) — the column is NOT NULL and the '{}' default does
-// not apply to an explicit NULL on INSERT.
+// The enrichment columns are deliberately NOT written here: ingest carries no
+// enrichment, so a new row takes the table defaults ('{}' / NULL / 0) and a
+// re-ingest leaves any existing enrichment untouched. SetJobEnrichment (the
+// enrichment worker) is the sole writer of those columns.
 func (q *Queries) UpsertJob(ctx context.Context, arg UpsertJobParams) (Job, error) {
 	row := q.db.QueryRow(ctx, upsertJob,
 		arg.Source,
@@ -254,9 +271,6 @@ func (q *Queries) UpsertJob(ctx context.Context, arg UpsertJobParams) (Job, erro
 		arg.Remote,
 		arg.Description,
 		arg.PostedAt,
-		arg.Enrichment,
-		arg.EnrichedAt,
-		arg.EnrichmentVersion,
 	)
 	var i Job
 	err := row.Scan(
