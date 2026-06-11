@@ -13,15 +13,16 @@ import (
 )
 
 // userJobsApp mounts the view/apply routes behind RequireAuth on a handler with
-// no DB. The auth-gate and id-parse cases below all reject before any query
-// runs, so the nil queries is never dereferenced. The DB-backed happy path and
-// idempotency are covered by the db-package integration test (TestUserJobs).
+// no DB. The auth-gate cases below reject before any query runs, so the nil
+// queries is never dereferenced. Slug resolution and the DB-backed happy path /
+// idempotency are covered by the db-package integration tests (GetJobBySlug,
+// TestUserJobs); an unknown slug surfaces as pgx.ErrNoRows → 404 via ErrorHandler.
 func userJobsApp() (*fiber.App, *auth.Issuer) {
 	iss := auth.NewIssuer("test-secret", time.Hour)
 	h := &Handler{issuer: iss}
 	app := fiber.New()
-	app.Post("/jobs/:id/view", auth.RequireAuth(iss), h.RecordView)
-	app.Post("/jobs/:id/apply", auth.RequireAuth(iss), h.MarkApplied)
+	app.Post("/jobs/:slug/view", auth.RequireAuth(iss), h.RecordView)
+	app.Post("/jobs/:slug/apply", auth.RequireAuth(iss), h.MarkApplied)
 	return app, iss
 }
 
@@ -40,39 +41,15 @@ func postUserJob(t *testing.T, app *fiber.App, path, token string) int {
 
 func TestRecordView_RequiresAuth(t *testing.T) {
 	app, _ := userJobsApp()
-	if got := postUserJob(t, app, "/jobs/1/view", ""); got != fiber.StatusUnauthorized {
+	if got := postUserJob(t, app, "/jobs/go-dev-acme-t35nijto/view", ""); got != fiber.StatusUnauthorized {
 		t.Errorf("status = %d, want 401", got)
 	}
 }
 
 func TestMarkApplied_RequiresAuth(t *testing.T) {
 	app, _ := userJobsApp()
-	if got := postUserJob(t, app, "/jobs/1/apply", ""); got != fiber.StatusUnauthorized {
+	if got := postUserJob(t, app, "/jobs/go-dev-acme-t35nijto/apply", ""); got != fiber.StatusUnauthorized {
 		t.Errorf("status = %d, want 401", got)
-	}
-}
-
-func TestRecordView_RejectsNonNumericID(t *testing.T) {
-	app, iss := userJobsApp()
-	token, err := iss.Issue(1)
-	if err != nil {
-		t.Fatalf("issue: %v", err)
-	}
-	// Authenticated, so RequireAuth passes; the handler rejects the bad id before
-	// any query runs.
-	if got := postUserJob(t, app, "/jobs/not-a-number/view", token); got != fiber.StatusBadRequest {
-		t.Errorf("status = %d, want 400", got)
-	}
-}
-
-func TestMarkApplied_RejectsNonNumericID(t *testing.T) {
-	app, iss := userJobsApp()
-	token, err := iss.Issue(1)
-	if err != nil {
-		t.Fatalf("issue: %v", err)
-	}
-	if got := postUserJob(t, app, "/jobs/not-a-number/apply", token); got != fiber.StatusBadRequest {
-		t.Errorf("status = %d, want 400", got)
 	}
 }
 

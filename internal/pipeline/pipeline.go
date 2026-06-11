@@ -18,7 +18,8 @@ import (
 const defaultConcurrency = 8
 
 // Job is a normalized posting ready to persist: the pipeline has set the platform as
-// source, namespaced the external id by board, and derived the company slug.
+// source, namespaced the external id by board, derived the company slug, and minted
+// the public slug.
 type Job struct {
 	Source      string
 	ExternalID  string
@@ -26,6 +27,7 @@ type Job struct {
 	Title       string
 	Company     string
 	CompanySlug string
+	PublicSlug  string
 	Location    string
 	Remote      bool
 	Description string
@@ -125,15 +127,20 @@ func (r Runner) ingestBoard(ctx context.Context, e sources.CompanyEntry) (ingest
 
 // normalizeJob turns a raw posting into a persistable Job: the platform becomes the
 // source, the external id is namespaced by board so two companies on one platform
-// cannot collide, and the company slug is derived with the shared normalizer.
+// cannot collide, the company slug is derived with the shared normalizer, and the
+// public slug is minted from the same (source, external_id) identity so it is stable
+// across re-ingests and deterministic with the dedup key.
 func normalizeJob(e sources.CompanyEntry, j sources.Job) Job {
+	source := e.Provider
+	externalID := fmt.Sprintf("%s:%s", e.Board, j.ExternalID)
 	return Job{
-		Source:      e.Provider,
-		ExternalID:  fmt.Sprintf("%s:%s", e.Board, j.ExternalID),
+		Source:      source,
+		ExternalID:  externalID,
 		URL:         j.URL,
 		Title:       j.Title,
 		Company:     j.Company,
 		CompanySlug: normalize.Slug(j.Company),
+		PublicSlug:  normalize.JobSlug(j.Title, j.Company, source, externalID),
 		Location:    j.Location,
 		Remote:      j.Remote,
 		Description: j.Description,

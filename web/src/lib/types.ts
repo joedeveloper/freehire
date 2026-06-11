@@ -2,7 +2,9 @@
 // Timestamps marshal as RFC3339 strings when present, or null.
 
 export interface Job {
-  id: number;
+  // Public, non-enumerable identifier used in URLs; the internal numeric id is
+  // never sent to the client.
+  public_slug: string;
   source: string;
   external_id: string;
   url: string;

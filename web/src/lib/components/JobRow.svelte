@@ -16,7 +16,7 @@
 </script>
 
 <a
-  href={`/jobs/${job.id}`}
+  href={`/jobs/${job.public_slug}`}
   class="block rounded-lg border border-border px-4 py-3 transition-colors hover:bg-accent"
 >
   <div class="flex items-start justify-between gap-3">

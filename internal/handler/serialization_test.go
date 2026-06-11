@@ -10,14 +10,35 @@ import (
 	"github.com/strelov1/freehire/internal/db"
 )
 
-// The jobs read endpoints return db.Job directly via c.JSON, so the struct's
-// JSON encoding IS the API contract. These tests lock the enrichment exposure
-// requirement from the spec (specs/job-enrichment/spec.md).
+// The jobs read endpoints return a jobResponse (mapped from db.Job) via c.JSON,
+// so jobResponse's JSON encoding IS the API contract. These tests lock two
+// requirements: the internal numeric id is never exposed and the public slug is
+// (specs/job-public-identity), and the enrichment passthrough is preserved
+// (specs/job-enrichment).
 //
 // The "{} not null" guarantee rests on jobs.enrichment being NOT NULL DEFAULT
 // '{}': a row read from the DB always carries json.RawMessage("{}"), never nil.
 // A nil RawMessage marshals to null and would break the contract — this test
 // holds the line.
+
+// The internal bigint id must not leak; the public slug must be present.
+func TestJobResponseHidesIDExposesSlug(t *testing.T) {
+	job := db.Job{
+		ID:         123,
+		Title:      "Go Developer",
+		PublicSlug: "go-developer-acme-t35nijto",
+		Enrichment: json.RawMessage("{}"),
+	}
+
+	fields := marshalToFields(t, job)
+
+	if _, ok := fields["id"]; ok {
+		t.Error("response leaks the internal numeric id")
+	}
+	if got := string(fields["public_slug"]); got != `"go-developer-acme-t35nijto"` {
+		t.Errorf("public_slug: want the slug, got %s", got)
+	}
+}
 
 // Un-enriched job: enrichment is {} (not null), enriched_at is null,
 // enrichment_version is 0.
@@ -74,9 +95,11 @@ func TestEnrichedJobSerialization(t *testing.T) {
 	}
 }
 
+// marshalToFields maps a db.Job through the wire DTO and returns its top-level
+// JSON fields — the actual public contract for the jobs endpoints.
 func marshalToFields(t *testing.T, job db.Job) map[string]json.RawMessage {
 	t.Helper()
-	data, err := json.Marshal(job)
+	data, err := json.Marshal(toJobResponse(job))
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}

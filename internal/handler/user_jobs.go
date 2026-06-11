@@ -1,8 +1,6 @@
 package handler
 
 import (
-	"strconv"
-
 	"github.com/gofiber/fiber/v2"
 	"github.com/jackc/pgx/v5/pgtype"
 
@@ -26,7 +24,7 @@ func toInteraction(row db.UserJob) interactionResponse {
 // RecordView records that the authenticated user viewed a job and returns the
 // resulting interaction, including whether they have already applied.
 func (h *Handler) RecordView(c *fiber.Ctx) error {
-	userID, jobID, err := interactionParams(c)
+	userID, jobID, err := h.interactionParams(c)
 	if err != nil {
 		return err
 	}
@@ -42,7 +40,7 @@ func (h *Handler) RecordView(c *fiber.Ctx) error {
 // MarkApplied marks a job as applied for the authenticated user and returns the
 // updated interaction.
 func (h *Handler) MarkApplied(c *fiber.Ctx) error {
-	userID, jobID, err := interactionParams(c)
+	userID, jobID, err := h.interactionParams(c)
 	if err != nil {
 		return err
 	}
@@ -55,17 +53,19 @@ func (h *Handler) MarkApplied(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"data": toInteraction(row)})
 }
 
-// interactionParams resolves the authenticated user id and the :id job param
-// shared by the view/apply handlers. The user id is always present behind
-// RequireAuth; a non-numeric job id is a 400.
-func interactionParams(c *fiber.Ctx) (int64, int64, error) {
+// interactionParams resolves the authenticated user id and the internal job id
+// for the view/apply handlers. The job is addressed publicly by its :slug, which
+// is resolved to the internal bigint id (the user_jobs FK) via GetJobBySlug. The
+// user id is always present behind RequireAuth; an unknown slug surfaces as
+// pgx.ErrNoRows, which ErrorHandler maps to 404.
+func (h *Handler) interactionParams(c *fiber.Ctx) (int64, int64, error) {
 	userID, ok := auth.UserID(c)
 	if !ok {
 		return 0, 0, fiber.NewError(fiber.StatusUnauthorized, "unauthorized")
 	}
-	jobID, err := strconv.ParseInt(c.Params("id"), 10, 64)
+	job, err := h.queries.GetJobBySlug(c.Context(), c.Params("slug"))
 	if err != nil {
-		return 0, 0, fiber.NewError(fiber.StatusBadRequest, "invalid job id")
+		return 0, 0, err
 	}
-	return userID, jobID, nil
+	return userID, job.ID, nil
 }

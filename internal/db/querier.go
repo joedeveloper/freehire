@@ -31,6 +31,7 @@ type Querier interface {
 	EnqueuePendingJobs(ctx context.Context, targetVersion int32) (int64, error)
 	GetCompany(ctx context.Context, slug string) (Company, error)
 	GetJob(ctx context.Context, id int64) (Job, error)
+	GetJobBySlug(ctx context.Context, publicSlug string) (Job, error)
 	// Login lookup. Case-insensitive on email; returns password_hash so the handler
 	// can verify the password (and reject accounts that have none).
 	GetUserByEmail(ctx context.Context, lower string) (User, error)
@@ -65,6 +66,10 @@ type Querier interface {
 	// enrichment, so a new row takes the table defaults ('{}' / NULL / 0) and a
 	// re-ingest leaves any existing enrichment untouched. SetJobEnrichment (the
 	// enrichment worker) is the sole writer of those columns.
+	// public_slug is deliberately NOT in the DO UPDATE SET: the slug is minted once
+	// at insert and is the row's stable public identity. Re-ingest of the same
+	// (source, external_id) must not rewrite it, so external links stay valid even
+	// if the slug builder changes later (that would be a deliberate migration).
 	UpsertJob(ctx context.Context, arg UpsertJobParams) (Job, error)
 }
 

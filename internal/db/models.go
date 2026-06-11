@@ -45,6 +45,7 @@ type Job struct {
 	Enrichment        json.RawMessage    `json:"enrichment"`
 	EnrichedAt        pgtype.Timestamptz `json:"enriched_at"`
 	EnrichmentVersion int32              `json:"enrichment_version"`
+	PublicSlug        string             `json:"public_slug"`
 }
 
 type User struct {

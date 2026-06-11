@@ -35,6 +35,10 @@ func ingestParams(externalID, title string) UpsertJobParams {
 		Title:       title,
 		Company:     "Acme",
 		CompanySlug: "acme",
+		// Stable per external_id (not per title) so a re-ingest with an edited
+		// title carries the same slug — mirroring the pipeline, which mints the
+		// slug from (source, external_id), not from volatile fields.
+		PublicSlug:  "pslug-" + externalID,
 		Location:    "Remote",
 		Remote:      true,
 		Description: "Build things.",

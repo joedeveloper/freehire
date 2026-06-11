@@ -35,7 +35,7 @@
   {#if route.name === 'jobs'}
     <JobsView />
   {:else if route.name === 'job'}
-    <JobView id={route.id} />
+    <JobView slug={route.slug} />
   {:else if route.name === 'companies'}
     <CompaniesView />
   {:else if route.name === 'company'}

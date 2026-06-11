@@ -9,6 +9,11 @@ SELECT *
 FROM jobs
 WHERE id = $1;
 
+-- name: GetJobBySlug :one
+SELECT *
+FROM jobs
+WHERE public_slug = $1;
+
 -- name: CountJobs :one
 SELECT count(*)
 FROM jobs;
@@ -37,12 +42,18 @@ WITH company_upsert AS (
         updated_at = now()
 )
 INSERT INTO jobs (
-    source, external_id, url, title, company, company_slug, location, remote, description, posted_at
+    source, external_id, url, title, company, company_slug, location, remote, description, posted_at,
+    public_slug
 ) VALUES (
     sqlc.arg(source), sqlc.arg(external_id), sqlc.arg(url), sqlc.arg(title),
     sqlc.arg(company), sqlc.arg(company_slug), sqlc.arg(location), sqlc.arg(remote),
-    sqlc.arg(description), sqlc.arg(posted_at)
+    sqlc.arg(description), sqlc.arg(posted_at),
+    sqlc.arg(public_slug)
 )
+-- public_slug is deliberately NOT in the DO UPDATE SET: the slug is minted once
+-- at insert and is the row's stable public identity. Re-ingest of the same
+-- (source, external_id) must not rewrite it, so external links stay valid even
+-- if the slug builder changes later (that would be a deliberate migration).
 ON CONFLICT (source, external_id) DO UPDATE SET
     url          = EXCLUDED.url,
     title        = EXCLUDED.title,

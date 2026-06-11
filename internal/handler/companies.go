@@ -6,6 +6,18 @@ import (
 	"github.com/strelov1/freehire/internal/db"
 )
 
+// companyDetailResponse is the public shape of a company together with a page of
+// its jobs. Its Jobs field is []jobResponse, not []db.Job, so the internal job
+// id cannot leak through this endpoint — the type enforces the DTO mapping.
+type companyDetailResponse struct {
+	Company db.Company    `json:"company"`
+	Jobs    []jobResponse `json:"jobs"`
+}
+
+func newCompanyDetailResponse(company db.Company, jobs []db.Job) companyDetailResponse {
+	return companyDetailResponse{Company: company, Jobs: toJobResponses(jobs)}
+}
+
 // ListCompanies returns a page of companies with their job counts. Counts are
 // computed at query time; there is no denormalized counter yet.
 func (h *Handler) ListCompanies(c *fiber.Ctx) error {
@@ -57,10 +69,5 @@ func (h *Handler) GetCompany(c *fiber.Ctx) error {
 		return fiber.NewError(fiber.StatusInternalServerError, "failed to list company jobs")
 	}
 
-	return c.JSON(fiber.Map{
-		"data": fiber.Map{
-			"company": company,
-			"jobs":    jobs,
-		},
-	})
+	return c.JSON(fiber.Map{"data": newCompanyDetailResponse(company, jobs)})
 }

@@ -6,6 +6,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/strelov1/freehire/internal/normalize"
 	"github.com/strelov1/freehire/internal/sources"
 )
 
@@ -79,6 +80,12 @@ func TestRunNormalizesAndNamespaces(t *testing.T) {
 	}
 	if j.Title != "Senior Go Developer" || j.URL != "u" || !j.Remote {
 		t.Errorf("passthrough fields wrong: %+v", j)
+	}
+	// public_slug is minted from the stored identity (title, company, source,
+	// namespaced external_id) so it is deterministic with the dedup key.
+	wantSlug := normalize.JobSlug(j.Title, j.Company, j.Source, j.ExternalID)
+	if j.PublicSlug == "" || j.PublicSlug != wantSlug {
+		t.Errorf("PublicSlug = %q, want %q", j.PublicSlug, wantSlug)
 	}
 }
 

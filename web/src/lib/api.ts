@@ -63,8 +63,8 @@ export async function listJobs(limit: number, offset: number): Promise<Slice<Job
   return toSlice(await get<Page<Job>>(`/api/v1/jobs${query(limit, offset)}`), offset);
 }
 
-export async function getJob(id: string): Promise<Job> {
-  const body = await get<{ data: Job }>(`/api/v1/jobs/${id}`);
+export async function getJob(slug: string): Promise<Job> {
+  const body = await get<{ data: Job }>(`/api/v1/jobs/${slug}`);
   return body.data;
 }
 
@@ -125,18 +125,18 @@ export async function me(): Promise<User> {
 // invoking — the SPA never sends these for a signed-out visitor.
 
 /** POST to a job-interaction endpoint and return the resulting record. */
-async function postJobInteraction(id: number, action: 'view' | 'apply'): Promise<UserJob> {
-  const res = await request<{ data: UserJob }>(`/api/v1/jobs/${id}/${action}`, { method: 'POST' });
+async function postJobInteraction(slug: string, action: 'view' | 'apply'): Promise<UserJob> {
+  const res = await request<{ data: UserJob }>(`/api/v1/jobs/${slug}/${action}`, { method: 'POST' });
   return res.data;
 }
 
 /** Record that the current user viewed a job; returns their interaction
  *  (including whether they have already applied). */
-export function recordJobView(id: number): Promise<UserJob> {
-  return postJobInteraction(id, 'view');
+export function recordJobView(slug: string): Promise<UserJob> {
+  return postJobInteraction(slug, 'view');
 }
 
 /** Mark a job as applied for the current user. */
-export function markJobApplied(id: number): Promise<UserJob> {
-  return postJobInteraction(id, 'apply');
+export function markJobApplied(slug: string): Promise<UserJob> {
+  return postJobInteraction(slug, 'apply');
 }

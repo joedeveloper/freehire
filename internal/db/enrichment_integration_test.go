@@ -26,6 +26,7 @@ func startPostgres(t *testing.T) *pgxpool.Pool {
 		"0001_init.sql", "0002_companies.sql",
 		"0003_job_enrichment.sql", "0004_enrichment_outbox.sql",
 		"0005_users.sql", "0006_user_jobs.sql",
+		"0007_job_public_slug.sql",
 	} {
 		abs, err := filepath.Abs(filepath.Join("..", "..", "migrations", f))
 		if err != nil {
@@ -62,8 +63,8 @@ func insertJob(t *testing.T, pool *pgxpool.Pool, externalID string) int64 {
 	t.Helper()
 	var id int64
 	err := pool.QueryRow(context.Background(),
-		`INSERT INTO jobs (source, external_id, url, title)
-		 VALUES ('test', $1, 'http://example.test', 'A job') RETURNING id`,
+		`INSERT INTO jobs (source, external_id, url, title, public_slug)
+		 VALUES ('test', $1, 'http://example.test', 'A job', 'job-' || $1) RETURNING id`,
 		externalID).Scan(&id)
 	if err != nil {
 		t.Fatalf("insert job: %v", err)

@@ -8,7 +8,7 @@
   import { formatDate } from '$lib/utils';
   import States from './States.svelte';
 
-  let { id }: { id: string } = $props();
+  let { slug }: { slug: string } = $props();
 
   let job = $state.raw<Job | null>(null);
   let status = $state<'loading' | 'error' | 'ready'>('loading');
@@ -19,30 +19,30 @@
   let showApplyPrompt = $state(false);
   const applied = $derived(interaction?.applied_at != null);
 
-  // Reload whenever the route id changes.
+  // Reload whenever the route slug changes.
   $effect(() => {
-    const current = id;
+    const current = slug;
     status = 'loading';
     job = null;
     interaction = null;
     showApplyPrompt = false;
     getJob(current)
       .then((j) => {
-        if (current !== id) return;
+        if (current !== slug) return;
         job = j;
         status = 'ready';
         // Record a view for signed-in users: silent history that also tells us
         // whether they already applied. A failed view must not break the page.
         if (authStore.isAuthenticated) {
-          recordJobView(j.id)
+          recordJobView(j.public_slug)
             .then((rec) => {
-              if (current === id) interaction = rec;
+              if (current === slug) interaction = rec;
             })
             .catch(() => {});
         }
       })
       .catch(() => {
-        if (current !== id) return;
+        if (current !== slug) return;
         status = 'error';
       });
   });
@@ -56,7 +56,7 @@
   async function confirmApplied() {
     if (!job) return;
     try {
-      interaction = await markJobApplied(job.id);
+      interaction = await markJobApplied(job.public_slug);
     } catch {
       // Leave the prompt up so the user can retry; nothing else to do.
       return;

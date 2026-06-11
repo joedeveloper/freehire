@@ -4,7 +4,7 @@
 
 export type Route =
   | { name: 'jobs' }
-  | { name: 'job'; id: string }
+  | { name: 'job'; slug: string }
   | { name: 'companies' }
   | { name: 'company'; slug: string }
   | { name: 'notfound' };
@@ -13,8 +13,8 @@ function parse(path: string): Route {
   if (path === '/' || path === '') return { name: 'jobs' };
   if (path === '/companies') return { name: 'companies' };
 
-  const jobId = path.match(/^\/jobs\/(.+)$/)?.[1];
-  if (jobId) return { name: 'job', id: decodeURIComponent(jobId) };
+  const jobSlug = path.match(/^\/jobs\/(.+)$/)?.[1];
+  if (jobSlug) return { name: 'job', slug: decodeURIComponent(jobSlug) };
 
   const companySlug = path.match(/^\/companies\/(.+)$/)?.[1];
   if (companySlug) return { name: 'company', slug: decodeURIComponent(companySlug) };

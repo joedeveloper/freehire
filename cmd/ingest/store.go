@@ -40,6 +40,7 @@ func (s *dbStore) Save(ctx context.Context, job pipeline.Job) error {
 		Title:       job.Title,
 		Company:     job.Company,
 		CompanySlug: job.CompanySlug,
+		PublicSlug:  job.PublicSlug,
 		Location:    job.Location,
 		Remote:      job.Remote,
 		Description: job.Description,

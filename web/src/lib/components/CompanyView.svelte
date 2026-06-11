@@ -41,7 +41,7 @@
       <States state="empty" message="No jobs for this company yet." />
     {:else}
       <div class="flex flex-col gap-3">
-        {#each pager.items as job (job.id)}
+        {#each pager.items as job (job.public_slug)}
           <JobRow {job} />
         {/each}
       </div>
