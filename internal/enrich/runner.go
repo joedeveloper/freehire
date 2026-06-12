@@ -137,6 +137,9 @@ func (rn *run) enrich(ctx context.Context, job JobInput) (Enrichment, error) {
 			lastErr = err
 			continue
 		}
+		// Drop any out-of-vocabulary enum values rather than failing the whole
+		// payload over one stray field; Validate is then a guard that should pass.
+		enr.Sanitize()
 		if err := enr.Validate(); err != nil {
 			lastErr = err
 			continue
