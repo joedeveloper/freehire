@@ -70,6 +70,13 @@ type User struct {
 	CreatedAt    pgtype.Timestamptz `json:"created_at"`
 }
 
+type UserIdentity struct {
+	Provider       string             `json:"provider"`
+	ProviderUserID string             `json:"provider_user_id"`
+	UserID         int64              `json:"user_id"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+}
+
 type UserJob struct {
 	UserID    int64              `json:"user_id"`
 	JobID     int64              `json:"job_id"`

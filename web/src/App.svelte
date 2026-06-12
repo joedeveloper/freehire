@@ -20,6 +20,9 @@
     const href = anchor.getAttribute('href');
     if (!href || anchor.target === '_blank' || anchor.hasAttribute('download')) return;
     if (anchor.origin !== window.location.origin) return;
+    // API URLs are never client routes: the OAuth start links must perform a
+    // real navigation so the server can redirect to the provider.
+    if (anchor.pathname.startsWith('/api/')) return;
 
     e.preventDefault();
     router.navigate(anchor.pathname);

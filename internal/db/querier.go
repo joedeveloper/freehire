@@ -31,6 +31,9 @@ type Querier interface {
 	// Register a new account. email is stored as given (the handler lowercases it);
 	// the unique index on lower(email) rejects duplicates regardless of case.
 	CreateUser(ctx context.Context, arg CreateUserParams) (CreateUserRow, error)
+	// Link a provider identity to an account (first OAuth sign-in). The composite
+	// primary key rejects a duplicate identity.
+	CreateUserIdentity(ctx context.Context, arg CreateUserIdentityParams) error
 	DeleteEnrichmentEntry(ctx context.Context, id int64) error
 	// Drop companies no longer referenced by any job — the stale rows left behind
 	// when a slug-builder change re-keys jobs onto new slugs.
@@ -58,6 +61,8 @@ type Querier interface {
 	GetUserByEmail(ctx context.Context, lower string) (User, error)
 	// Profile lookup for the authenticated user. Never selects password_hash.
 	GetUserByID(ctx context.Context, id int64) (GetUserByIDRow, error)
+	// OAuth sign-in fast path: resolve a provider identity straight to its user.
+	GetUserByIdentity(ctx context.Context, arg GetUserByIdentityParams) (GetUserByIdentityRow, error)
 	// Crawl write path: store a fetched post once. ON CONFLICT DO NOTHING makes
 	// re-crawling idempotent — a stored post (pending, done, or dead-lettered) is
 	// never reset. extracted_at is non-NULL when the ingest prefilter already

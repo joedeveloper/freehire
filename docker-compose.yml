@@ -38,6 +38,17 @@ services:
       # Required by the auth surface (server fails fast if empty). Dev default —
       # set a real JWT_SECRET in any non-local deployment.
       JWT_SECRET: "${JWT_SECRET:-dev-insecure-secret-change-me}"
+      # OAuth callbacks redirect the browser back to this origin; it also
+      # derives the per-provider callback URL registered at each provider.
+      FRONTEND_ORIGIN: "${FRONTEND_ORIGIN:-http://localhost:5173}"
+      # OAuth sign-in is optional: a provider with empty credentials is simply
+      # disabled (no button in the SPA, its routes 404). Set the values in .env.
+      OAUTH_GOOGLE_CLIENT_ID: "${OAUTH_GOOGLE_CLIENT_ID:-}"
+      OAUTH_GOOGLE_CLIENT_SECRET: "${OAUTH_GOOGLE_CLIENT_SECRET:-}"
+      OAUTH_GITHUB_CLIENT_ID: "${OAUTH_GITHUB_CLIENT_ID:-}"
+      OAUTH_GITHUB_CLIENT_SECRET: "${OAUTH_GITHUB_CLIENT_SECRET:-}"
+      OAUTH_LINKEDIN_CLIENT_ID: "${OAUTH_LINKEDIN_CLIENT_ID:-}"
+      OAUTH_LINKEDIN_CLIENT_SECRET: "${OAUTH_LINKEDIN_CLIENT_SECRET:-}"
       # Search is optional: an empty MEILI_MASTER_KEY disables the search
       # endpoint without affecting the rest of the API.
       MEILI_URL: "http://meilisearch:7700"

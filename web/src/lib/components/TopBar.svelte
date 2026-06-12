@@ -5,6 +5,7 @@
   import { Button } from '$lib/ui';
   import ThemeToggle from './ThemeToggle.svelte';
   import AuthDialog from './AuthDialog.svelte';
+  import UserMenu from './UserMenu.svelte';
 
   const name = $derived(router.route.name);
 
@@ -13,15 +14,26 @@
     { href: '/companies', label: 'Companies', match: ['companies', 'company'] },
   ];
 
-  // The auth dialog lives at the layout level; the top bar buttons open it in
-  // the requested mode. Open state is separate from mode so `mode` stays a
-  // non-null value the dialog can two-way bind for its sign-in/register toggle.
+  // The auth dialog lives at the layout level and always opens in sign-in
+  // mode (its own footer toggle switches to register). Open state is separate
+  // from mode so `mode` stays a non-null value the dialog can two-way bind.
   let dialogOpen = $state(false);
   let dialogMode = $state<'login' | 'register'>('login');
+  // A failed OAuth callback redirects back with ?auth_error; surface it by
+  // reopening the dialog with an inline message and cleaning the URL.
+  let dialogError = $state<string | null>(null);
 
-  function open(mode: 'login' | 'register') {
-    dialogMode = mode;
+  function openDialog() {
+    dialogMode = 'login';
+    dialogError = null;
     dialogOpen = true;
+  }
+
+  if (new URLSearchParams(window.location.search).has('auth_error')) {
+    dialogError = 'Sign-in failed. Please try again.';
+    dialogMode = 'login';
+    dialogOpen = true;
+    window.history.replaceState(window.history.state, '', window.location.pathname);
   }
 </script>
 
@@ -45,13 +57,9 @@
 
     <div class="ml-auto flex items-center gap-3">
       {#if authStore.isAuthenticated}
-        <span class="hidden max-w-[16rem] truncate text-sm text-muted-foreground sm:inline">{authStore.user?.email}</span>
-        <Button variant="ghost" size="sm" onclick={() => void authStore.logout()}>Log out</Button>
+        <UserMenu />
       {:else}
-        <Button variant="ghost" size="sm" onclick={() => open('login')}>Sign in</Button>
-        <!-- On narrow phones the header can't fit both CTAs alongside the nav;
-             Register collapses into the dialog's "Create one" toggle below sm. -->
-        <Button variant="primary" size="sm" class="hidden sm:inline-flex" onclick={() => open('register')}>Register</Button>
+        <Button variant="primary" size="sm" onclick={openDialog}>Sign in</Button>
       {/if}
       <ThemeToggle />
     </div>
@@ -59,5 +67,5 @@
 </header>
 
 {#if dialogOpen}
-  <AuthDialog bind:mode={dialogMode} onClose={() => (dialogOpen = false)} />
+  <AuthDialog bind:mode={dialogMode} initialError={dialogError} onClose={() => (dialogOpen = false)} />
 {/if}

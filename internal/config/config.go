@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -24,6 +25,12 @@ type Settings struct {
 	// any HTTPS deployment.
 	CookieSecure bool
 
+	// OAuth holds per-provider client credentials keyed by provider name
+	// (google, github, linkedin). OAuth sign-in is optional: a provider with
+	// incomplete credentials is simply disabled (enforced where the provider
+	// registry is built, not here), and the server starts either way.
+	OAuth map[string]OAuthCredentials
+
 	// Meilisearch backs the job search endpoint and the reindex command. Shared
 	// via Load (both cmd/server and cmd/reindex read it). Search is optional:
 	// MeiliKey empty ⇒ search is disabled and the server still starts (see
@@ -31,6 +38,16 @@ type Settings struct {
 	MeiliURL string
 	MeiliKey string
 }
+
+// OAuthCredentials is one OAuth provider's client id/secret pair.
+type OAuthCredentials struct {
+	ClientID     string
+	ClientSecret string
+}
+
+// oauthProviders are the providers whose credentials Load reads from the
+// environment (OAUTH_<PROVIDER>_CLIENT_ID / OAUTH_<PROVIDER>_CLIENT_SECRET).
+var oauthProviders = []string{"google", "github", "linkedin"}
 
 // Load reads configuration from the environment, falling back to sensible defaults.
 func Load() Settings {
@@ -41,9 +58,22 @@ func Load() Settings {
 		JWTSecret:      os.Getenv("JWT_SECRET"),
 		JWTTTL:         envDuration("JWT_TTL", 24*time.Hour),
 		CookieSecure:   envBool("COOKIE_SECURE", false),
+		OAuth:          loadOAuth(),
 		MeiliURL:       env("MEILI_URL", "http://localhost:7700"),
 		MeiliKey:       os.Getenv("MEILI_MASTER_KEY"),
 	}
+}
+
+func loadOAuth() map[string]OAuthCredentials {
+	creds := make(map[string]OAuthCredentials, len(oauthProviders))
+	for _, p := range oauthProviders {
+		prefix := "OAUTH_" + strings.ToUpper(p)
+		creds[p] = OAuthCredentials{
+			ClientID:     os.Getenv(prefix + "_CLIENT_ID"),
+			ClientSecret: os.Getenv(prefix + "_CLIENT_SECRET"),
+		}
+	}
+	return creds
 }
 
 func env(key, fallback string) string {

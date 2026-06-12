@@ -60,3 +60,22 @@ func TestLoad_MeiliKeyFromEnv(t *testing.T) {
 		t.Errorf("MeiliKey = %q, want %q", got, "master-key")
 	}
 }
+
+func TestLoad_OAuthCredentialsFromEnv(t *testing.T) {
+	t.Setenv("OAUTH_GOOGLE_CLIENT_ID", "gid")
+	t.Setenv("OAUTH_GOOGLE_CLIENT_SECRET", "gsecret")
+
+	got := Load().OAuth["google"]
+	if got.ClientID != "gid" || got.ClientSecret != "gsecret" {
+		t.Errorf("OAuth[google] = %+v, want gid/gsecret", got)
+	}
+}
+
+func TestLoad_OAuthUnsetProviderIsZero(t *testing.T) {
+	t.Setenv("OAUTH_LINKEDIN_CLIENT_ID", "")
+	t.Setenv("OAUTH_LINKEDIN_CLIENT_SECRET", "")
+
+	if got := Load().OAuth["linkedin"]; got != (OAuthCredentials{}) {
+		t.Errorf("OAuth[linkedin] = %+v, want zero", got)
+	}
+}

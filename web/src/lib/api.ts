@@ -132,6 +132,14 @@ export function login(email: string, password: string): Promise<User> {
   return postAuth('/api/v1/auth/login', { email, password });
 }
 
+/** Names of OAuth providers enabled on the server (google/github/linkedin).
+ *  The dialog renders one "Continue with …" button per name; sign-in itself is
+ *  a full-page redirect through /api/v1/auth/oauth/:provider/start. */
+export async function oauthProviders(): Promise<string[]> {
+  const res = await request<{ data: string[] }>('/api/v1/auth/oauth/providers');
+  return res.data;
+}
+
 /** Clear the session cookie server-side. */
 export async function logout(): Promise<void> {
   await call('/api/v1/auth/logout', { method: 'POST' });

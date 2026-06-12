@@ -1,17 +1,40 @@
 <script lang="ts">
   import { authStore } from '$lib/auth.svelte';
-  import { ApiError } from '$lib/api';
+  import { ApiError, oauthProviders } from '$lib/api';
   import { Button } from '$lib/ui';
+  import ProviderIcon from './ProviderIcon.svelte';
 
   // `mode` is bindable so the in-dialog toggle can switch between sign in and
-  // register without the parent re-opening it.
-  let { mode = $bindable(), onClose }: { mode: 'login' | 'register'; onClose: () => void } =
-    $props();
+  // register without the parent re-opening it. `initialError` lets the layout
+  // surface a failed OAuth callback (the ?auth_error redirect) in the dialog.
+  let {
+    mode = $bindable(),
+    onClose,
+    initialError = null,
+  }: { mode: 'login' | 'register'; onClose: () => void; initialError?: string | null } = $props();
 
   let email = $state('');
   let password = $state('');
-  let error = $state<string | null>(null);
+  // The initial capture is deliberate: the dialog is recreated on every open
+  // (it renders under {#if}), so the seed error never goes stale.
+  // svelte-ignore state_referenced_locally
+  let error = $state<string | null>(initialError);
   let submitting = $state(false);
+
+  const providerLabels: Record<string, string> = {
+    google: 'Google',
+    github: 'GitHub',
+    linkedin: 'LinkedIn',
+  };
+
+  // Enabled OAuth providers; an unreachable endpoint just means no provider
+  // buttons — the email/password form must keep working either way.
+  let providers = $state<string[]>([]);
+  oauthProviders()
+    .then((names) => {
+      providers = names.filter((n) => n in providerLabels);
+    })
+    .catch(() => {});
 
   const title = $derived(mode === 'login' ? 'Sign in' : 'Create account');
 
@@ -58,6 +81,23 @@
     class="relative w-full max-w-sm rounded-lg border border-border bg-background p-6 shadow-lg"
   >
     <h2 class="mb-4 text-base font-semibold tracking-tight">{title}</h2>
+
+    {#if providers.length > 0}
+      <div class="mb-4 flex flex-col gap-2">
+        {#each providers as provider (provider)}
+          <Button variant="outline" href={`/api/v1/auth/oauth/${provider}/start`}>
+            <ProviderIcon {provider} />
+            Continue with {providerLabels[provider]}
+          </Button>
+        {/each}
+      </div>
+
+      <div class="mb-4 flex items-center gap-3 text-xs text-muted-foreground">
+        <span class="h-px flex-1 bg-border"></span>
+        or
+        <span class="h-px flex-1 bg-border"></span>
+      </div>
+    {/if}
 
     <form class="flex flex-col gap-3" onsubmit={submit}>
       <label class="flex flex-col gap-1 text-sm">
