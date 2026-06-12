@@ -6,6 +6,7 @@ package pipeline
 import (
 	"context"
 	"fmt"
+	"log"
 	"sync"
 	"time"
 
@@ -101,11 +102,15 @@ func (r Runner) Run(ctx context.Context, entries []sources.CompanyEntry) (Stats,
 func (r Runner) ingestBoard(ctx context.Context, e sources.CompanyEntry) (ingested, failed int) {
 	src, ok := r.Registry[e.Provider]
 	if !ok {
+		log.Printf("ingest: %s/%s: unknown provider %q", e.Company, e.Board, e.Provider)
 		return 0, 1
 	}
 
 	raw, err := src.Fetch(ctx, e)
 	if err != nil {
+		// Log the cause so a failed board is diagnosable (the source error carries
+		// the HTTP status / timeout); the run still isolates and continues.
+		log.Printf("ingest: %s board %q (%s) failed: %v", e.Provider, e.Board, e.Company, err)
 		return 0, 1
 	}
 
