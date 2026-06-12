@@ -51,8 +51,8 @@ first (RED). Web tasks verify via `svelte-check` + lint (no unit runner).
 
 ## 9. Frontend: `Badge variant="secondary"` for JobRow chips
 
-- [ ] 9.1 In `web/src/lib/components/JobRow.svelte` replace both inline secondary-chip spans (tag + skill) with `<Badge variant="secondary">…</Badge>` (import from `$lib/ui`), matching `JobView.svelte`. Render both as plain Badge (no `font-normal` override).
-- [ ] 9.2 `npm run check` + lint clean; visual glance at the jobs/company list rows.
+- [x] 9.1 In `web/src/lib/components/JobRow.svelte` replace both inline secondary-chip spans (tag + skill) with `<Badge variant="secondary">…</Badge>` (import from `$lib/ui`), matching `JobView.svelte`. Render both as plain Badge (no `font-normal` override).
+- [x] 9.2 `npm run check` clean; JobRow eslint clean. Visual glance deferred to final verification.
 
 ## 10. Frontend: finish the generic And/Or facet toggle
 
