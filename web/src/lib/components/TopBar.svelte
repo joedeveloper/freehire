@@ -5,6 +5,7 @@
   import { Button } from '$lib/ui';
   import ThemeToggle from './ThemeToggle.svelte';
   import AuthDialog from './AuthDialog.svelte';
+  import UserMenu from './UserMenu.svelte';
 
   const name = $derived(router.route.name);
 
@@ -56,8 +57,7 @@
 
     <div class="ml-auto flex items-center gap-3">
       {#if authStore.isAuthenticated}
-        <span class="text-sm text-muted-foreground">{authStore.user?.email}</span>
-        <Button variant="ghost" size="sm" onclick={() => void authStore.logout()}>Log out</Button>
+        <UserMenu />
       {:else}
         <Button variant="primary" size="sm" onclick={openDialog}>Sign in</Button>
       {/if}

@@ -2,6 +2,7 @@
   import { authStore } from '$lib/auth.svelte';
   import { ApiError, oauthProviders } from '$lib/api';
   import { Button } from '$lib/ui';
+  import ProviderIcon from './ProviderIcon.svelte';
 
   // `mode` is bindable so the in-dialog toggle can switch between sign in and
   // register without the parent re-opening it. `initialError` lets the layout
@@ -85,6 +86,7 @@
       <div class="mb-4 flex flex-col gap-2">
         {#each providers as provider (provider)}
           <Button variant="outline" href={`/api/v1/auth/oauth/${provider}/start`}>
+            <ProviderIcon {provider} />
             Continue with {providerLabels[provider]}
           </Button>
         {/each}
