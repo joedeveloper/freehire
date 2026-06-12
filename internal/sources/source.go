@@ -6,6 +6,7 @@ package sources
 import (
 	"context"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -49,7 +50,45 @@ func All(c HTTPClient) map[string]Source {
 		NewWorkable(c),
 		NewRecruitee(c),
 		NewSmartRecruiters(c),
+		NewPersonio(c),
+		NewPinpoint(c),
+		NewRippling(c),
+		NewBambooHR(c),
 	)
+}
+
+// fetchDetails maps each posting to a Job via fetch, running fetch concurrently with a
+// bounded worker pool of the given size. A posting whose fetch returns ok=false is
+// dropped, so one failed detail request never aborts the board. The surviving jobs keep
+// their postings' relative order. Adapters whose list endpoint omits the description
+// (SmartRecruiters, Rippling, BambooHR) share this so the bound and isolation behave
+// identically across platforms.
+func fetchDetails[P any](postings []P, workers int, fetch func(P) (Job, bool)) []Job {
+	jobs := make([]Job, len(postings))
+	found := make([]bool, len(postings))
+	sem := make(chan struct{}, workers)
+	var wg sync.WaitGroup
+	for i, p := range postings {
+		wg.Add(1)
+		sem <- struct{}{}
+		go func(i int, p P) {
+			defer wg.Done()
+			defer func() { <-sem }()
+			if j, ok := fetch(p); ok {
+				jobs[i] = j
+				found[i] = true
+			}
+		}(i, p)
+	}
+	wg.Wait()
+
+	out := make([]Job, 0, len(jobs))
+	for i, j := range jobs {
+		if found[i] {
+			out = append(out, j)
+		}
+	}
+	return out
 }
 
 // isRemote infers a job's remote flag from its location text. Adapters share it so

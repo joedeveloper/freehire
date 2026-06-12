@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -29,6 +30,31 @@ func TestClientGetJSONDecodesAndSendsUserAgent(t *testing.T) {
 	}
 	if gotUA != "freehire-test" {
 		t.Errorf("User-Agent = %q, want %q", gotUA, "freehire-test")
+	}
+}
+
+func TestClientGetXMLDecodesAndSendsXMLAccept(t *testing.T) {
+	var gotAccept string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAccept = r.Header.Get("Accept")
+		w.Header().Set("Content-Type", "application/xml")
+		_, _ = w.Write([]byte(`<root><name>acme</name></root>`))
+	}))
+	defer srv.Close()
+
+	c := &Client{httpClient: srv.Client()}
+
+	var out struct {
+		Name string `xml:"name"`
+	}
+	if err := c.GetXML(context.Background(), srv.URL, &out); err != nil {
+		t.Fatalf("GetXML: %v", err)
+	}
+	if out.Name != "acme" {
+		t.Errorf("decoded name = %q, want %q", out.Name, "acme")
+	}
+	if !strings.Contains(gotAccept, "xml") {
+		t.Errorf("Accept = %q, want it to request xml", gotAccept)
 	}
 }
 

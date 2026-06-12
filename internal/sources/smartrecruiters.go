@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"sync"
 )
 
 // smartRecruitersBaseURL is the SmartRecruiters public postings API root.
@@ -53,34 +52,11 @@ func (s smartRecruiters) Fetch(ctx context.Context, e CompanyEntry) ([]Job, erro
 		return nil, err
 	}
 
-	// Each posting's description comes from its own detail request. Fan out with a
-	// bounded worker pool; a failed detail leaves a zero Job that is dropped below, so
-	// one bad posting never aborts the board.
-	jobs := make([]Job, len(postings))
-	found := make([]bool, len(postings))
-	sem := make(chan struct{}, smartRecruitersDetailWorkers)
-	var wg sync.WaitGroup
-	for i, p := range postings {
-		wg.Add(1)
-		sem <- struct{}{}
-		go func(i int, p smartRecruitersPosting) {
-			defer wg.Done()
-			defer func() { <-sem }()
-			if j, ok := s.detail(ctx, e, p); ok {
-				jobs[i] = j
-				found[i] = true
-			}
-		}(i, p)
-	}
-	wg.Wait()
-
-	out := make([]Job, 0, len(jobs))
-	for i, j := range jobs {
-		if found[i] {
-			out = append(out, j)
-		}
-	}
-	return out, nil
+	// Each posting's description comes from its own detail request, fanned out under a
+	// bounded worker pool.
+	return fetchDetails(postings, smartRecruitersDetailWorkers, func(p smartRecruitersPosting) (Job, bool) {
+		return s.detail(ctx, e, p)
+	}), nil
 }
 
 // listPostings pages through the board's postings, stopping when a page is empty or all

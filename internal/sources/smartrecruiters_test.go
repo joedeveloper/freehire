@@ -3,6 +3,7 @@ package sources
 import (
 	"context"
 	"encoding/json"
+	"encoding/xml"
 	"fmt"
 	"strings"
 	"sync"
@@ -24,12 +25,20 @@ func (r *routedHTTP) route(match, body string) *routedHTTP {
 }
 
 func (r *routedHTTP) GetJSON(_ context.Context, url string, v any) error {
+	return r.decode(url, json.Unmarshal, v)
+}
+
+func (r *routedHTTP) GetXML(_ context.Context, url string, v any) error {
+	return r.decode(url, xml.Unmarshal, v)
+}
+
+func (r *routedHTTP) decode(url string, unmarshal func([]byte, any) error, v any) error {
 	r.mu.Lock()
 	r.calls++
 	r.mu.Unlock()
 	for _, rt := range r.routes {
 		if strings.Contains(url, rt.match) {
-			return json.Unmarshal([]byte(rt.body), v)
+			return unmarshal([]byte(rt.body), v)
 		}
 	}
 	return fmt.Errorf("routedHTTP: no route for %s", url)

@@ -3,16 +3,19 @@ package sources
 import (
 	"context"
 	"encoding/json"
+	"encoding/xml"
 	"fmt"
+	"io"
 	"net/http"
 	"time"
 )
 
 // HTTPClient is the narrow transport an adapter needs: fetch a URL and decode its
-// JSON body into v. Adapters depend on this interface so tests inject a fake and
-// never touch the network; the real client is Client below.
+// JSON (or XML) body into v. Adapters depend on this interface so tests inject a fake
+// and never touch the network; the real client is Client below.
 type HTTPClient interface {
 	GetJSON(ctx context.Context, url string, v any) error
+	GetXML(ctx context.Context, url string, v any) error
 }
 
 // Client is the real HTTPClient: a timeout-bounded GET with a project User-Agent and
@@ -35,9 +38,25 @@ func NewClient() *Client {
 	}
 }
 
-// GetJSON fetches url and decodes its JSON body into v, retrying transient failures
-// up to maxRetries times with a fixed backoff between attempts.
+// GetJSON fetches url and decodes its JSON body into v.
 func (c *Client) GetJSON(ctx context.Context, url string, v any) error {
+	return c.get(ctx, url, "application/json", func(r io.Reader) error {
+		return json.NewDecoder(r).Decode(v)
+	})
+}
+
+// GetXML fetches url and decodes its XML body into v (used by adapters whose platform
+// publishes an XML feed, e.g. Personio).
+func (c *Client) GetXML(ctx context.Context, url string, v any) error {
+	return c.get(ctx, url, "application/xml", func(r io.Reader) error {
+		return xml.NewDecoder(r).Decode(v)
+	})
+}
+
+// get fetches url with the given Accept header and applies decode to a successful
+// response body, retrying transient failures (5xx / network) up to maxRetries times
+// with a fixed backoff. A 4xx is not retried — it will not recover on its own.
+func (c *Client) get(ctx context.Context, url, accept string, decode func(io.Reader) error) error {
 	var lastErr error
 	for attempt := 0; attempt <= c.maxRetries; attempt++ {
 		if attempt > 0 && c.retryDelay > 0 {
@@ -55,7 +74,7 @@ func (c *Client) GetJSON(ctx context.Context, url string, v any) error {
 		if c.userAgent != "" {
 			req.Header.Set("User-Agent", c.userAgent)
 		}
-		req.Header.Set("Accept", "application/json")
+		req.Header.Set("Accept", accept)
 
 		resp, err := c.httpClient.Do(req)
 		if err != nil {
@@ -65,7 +84,7 @@ func (c *Client) GetJSON(ctx context.Context, url string, v any) error {
 
 		switch {
 		case resp.StatusCode >= 200 && resp.StatusCode < 300:
-			err := json.NewDecoder(resp.Body).Decode(v)
+			err := decode(resp.Body)
 			resp.Body.Close()
 			if err != nil {
 				return fmt.Errorf("sources: decode %s: %w", url, err)

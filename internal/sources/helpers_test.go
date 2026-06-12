@@ -3,6 +3,7 @@ package sources
 import (
 	"context"
 	"encoding/json"
+	"encoding/xml"
 )
 
 // fakeHTTP is a test HTTPClient: it records the requested URL and decodes a canned
@@ -20,4 +21,12 @@ func (f *fakeHTTP) GetJSON(_ context.Context, url string, v any) error {
 		return f.err
 	}
 	return json.Unmarshal([]byte(f.body), v)
+}
+
+func (f *fakeHTTP) GetXML(_ context.Context, url string, v any) error {
+	f.gotURL = url
+	if f.err != nil {
+		return f.err
+	}
+	return xml.Unmarshal([]byte(f.body), v)
 }
