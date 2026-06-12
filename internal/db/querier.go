@@ -28,6 +28,9 @@ type Querier interface {
 	// search pagination reports the filtered total.
 	CountCompanies(ctx context.Context, search string) (int64, error)
 	CountJobs(ctx context.Context) (int64, error)
+	// Per-filter row counts for the my-jobs tabs, in one aggregate pass. "all" is
+	// every interaction row (viewed_at is always set).
+	CountUserJobs(ctx context.Context, userID int64) (CountUserJobsRow, error)
 	// Register a new account. email is stored as given (the handler lowercases it);
 	// the unique index on lower(email) rejects duplicates regardless of case.
 	CreateUser(ctx context.Context, arg CreateUserParams) (CreateUserRow, error)
@@ -84,6 +87,11 @@ type Querier interface {
 	// concurrent inserts/updates (which shift posted_at ordering) cannot make the
 	// scan skip or repeat rows the way OFFSET pagination would.
 	ListJobsByIDAfter(ctx context.Context, arg ListJobsByIDAfterParams) ([]Job, error)
+	// A user's job interactions joined with the job rows, most recently touched
+	// first (GREATEST ignores NULLs; viewed_at is always set). filter narrows to
+	// saved/applied subsets; 'all' is every interaction. Closed jobs stay listed:
+	// a user's history must not shrink when a posting closes.
+	ListUserJobs(ctx context.Context, arg ListUserJobsParams) ([]ListUserJobsRow, error)
 	// Mark a job as applied for a user. Idempotent and independent of a prior view:
 	// it inserts the row (viewed_at defaults) or updates applied_at in place.
 	MarkJobApplied(ctx context.Context, arg MarkJobAppliedParams) (UserJob, error)
@@ -104,6 +112,9 @@ type Querier interface {
 	// left in place — its expiry gates the retry to a later run and doubles as the
 	// crash reaper, so a failed post is never reprocessed within the same run.
 	RecordTelegramPostFailure(ctx context.Context, arg RecordTelegramPostFailureParams) (RecordTelegramPostFailureRow, error)
+	// Save (bookmark) a job for a user. Idempotent and independent of a prior view:
+	// it inserts the row (viewed_at defaults) or refreshes saved_at in place.
+	SaveJob(ctx context.Context, arg SaveJobParams) (UserJob, error)
 	// Targeted enrichment write used by the enrichment command: set only the payload
 	// and the provenance stamp, touching no raw source field. Kept separate from
 	// UpsertJob (the ingest full-upsert path) so ingest and enrichment stay decoupled.
@@ -113,6 +124,10 @@ type Querier interface {
 	// re-keys jobs, this re-keys companies to match. DISTINCT ON collapses a slug's
 	// name variants; ON CONFLICT folds collisions and refreshes existing rows.
 	SyncCompaniesFromJobs(ctx context.Context) error
+	// Clear a job's saved mark without deleting the interaction row, so view and
+	// apply history survive unsaving. No interaction row -> pgx.ErrNoRows; the
+	// handler treats that as "already not saved", never as a failure.
+	UnsaveJob(ctx context.Context, arg UnsaveJobParams) (UserJob, error)
 	// One-off backfill for a deliberate slug-builder change (see the UpsertJob note on
 	// why slugs are otherwise immutable). public_slug/company_slug are deterministic
 	// from the row's immutable fields, so recomputing and rewriting them is idempotent.

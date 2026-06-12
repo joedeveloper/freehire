@@ -1,11 +1,11 @@
 ## 1. Schema + queries (saved_at, save/unsave, my-jobs listing)
 
-- [ ] 1.1 New migration: `user_jobs.saved_at timestamptz` (nullable)
-- [ ] 1.2 Queries: `SaveJob` (upsert sets `saved_at = now()`), `UnsaveJob`
+- [x] 1.1 New migration: `user_jobs.saved_at timestamptz` (nullable)
+- [x] 1.2 Queries: `SaveJob` (upsert sets `saved_at = now()`), `UnsaveJob`
       (clears `saved_at`, keeps the row), `ListUserJobs` (join `jobs`, filter
       param, `GREATEST(...)` ordering, limit/offset), `CountUserJobs`
       (per-filter counts via `COUNT(*) FILTER`)
-- [ ] 1.3 `make sqlc`; integration tests (tagged) for save/unsave idempotency,
+- [x] 1.3 `make sqlc`; integration tests (tagged) for save/unsave idempotency,
       unsave preserves view/applied, listing filters + ordering + counts
 
 ## 2. API: save/unsave endpoints

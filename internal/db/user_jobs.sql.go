@@ -7,13 +7,116 @@ package db
 
 import (
 	"context"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
+
+const countUserJobs = `-- name: CountUserJobs :one
+SELECT count(*)                                        AS "all",
+       count(*) FILTER (WHERE saved_at   IS NOT NULL) AS saved,
+       count(*) FILTER (WHERE applied_at IS NOT NULL) AS applied
+FROM user_jobs
+WHERE user_id = $1
+`
+
+type CountUserJobsRow struct {
+	All     int64 `json:"all"`
+	Saved   int64 `json:"saved"`
+	Applied int64 `json:"applied"`
+}
+
+// Per-filter row counts for the my-jobs tabs, in one aggregate pass. "all" is
+// every interaction row (viewed_at is always set).
+func (q *Queries) CountUserJobs(ctx context.Context, userID int64) (CountUserJobsRow, error) {
+	row := q.db.QueryRow(ctx, countUserJobs, userID)
+	var i CountUserJobsRow
+	err := row.Scan(&i.All, &i.Saved, &i.Applied)
+	return i, err
+}
+
+const listUserJobs = `-- name: ListUserJobs :many
+SELECT jobs.id, jobs.source, jobs.external_id, jobs.url, jobs.title, jobs.company, jobs.location, jobs.remote, jobs.description, jobs.posted_at, jobs.created_at, jobs.updated_at, jobs.company_slug, jobs.enrichment, jobs.enriched_at, jobs.enrichment_version, jobs.public_slug, jobs.last_seen_at, jobs.closed_at, uj.viewed_at, uj.saved_at, uj.applied_at
+FROM user_jobs uj
+JOIN jobs ON jobs.id = uj.job_id
+WHERE uj.user_id = $1
+  AND ($4::text = 'all'
+       OR ($4::text = 'saved' AND uj.saved_at IS NOT NULL)
+       OR ($4::text = 'applied' AND uj.applied_at IS NOT NULL))
+ORDER BY GREATEST(uj.viewed_at, uj.saved_at, uj.applied_at) DESC, uj.job_id DESC
+LIMIT $2 OFFSET $3
+`
+
+type ListUserJobsParams struct {
+	UserID int64  `json:"user_id"`
+	Limit  int32  `json:"limit"`
+	Offset int32  `json:"offset"`
+	Filter string `json:"filter"`
+}
+
+type ListUserJobsRow struct {
+	Job       Job                `json:"job"`
+	ViewedAt  pgtype.Timestamptz `json:"viewed_at"`
+	SavedAt   pgtype.Timestamptz `json:"saved_at"`
+	AppliedAt pgtype.Timestamptz `json:"applied_at"`
+}
+
+// A user's job interactions joined with the job rows, most recently touched
+// first (GREATEST ignores NULLs; viewed_at is always set). filter narrows to
+// saved/applied subsets; 'all' is every interaction. Closed jobs stay listed:
+// a user's history must not shrink when a posting closes.
+func (q *Queries) ListUserJobs(ctx context.Context, arg ListUserJobsParams) ([]ListUserJobsRow, error) {
+	rows, err := q.db.Query(ctx, listUserJobs,
+		arg.UserID,
+		arg.Limit,
+		arg.Offset,
+		arg.Filter,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListUserJobsRow{}
+	for rows.Next() {
+		var i ListUserJobsRow
+		if err := rows.Scan(
+			&i.Job.ID,
+			&i.Job.Source,
+			&i.Job.ExternalID,
+			&i.Job.URL,
+			&i.Job.Title,
+			&i.Job.Company,
+			&i.Job.Location,
+			&i.Job.Remote,
+			&i.Job.Description,
+			&i.Job.PostedAt,
+			&i.Job.CreatedAt,
+			&i.Job.UpdatedAt,
+			&i.Job.CompanySlug,
+			&i.Job.Enrichment,
+			&i.Job.EnrichedAt,
+			&i.Job.EnrichmentVersion,
+			&i.Job.PublicSlug,
+			&i.Job.LastSeenAt,
+			&i.Job.ClosedAt,
+			&i.ViewedAt,
+			&i.SavedAt,
+			&i.AppliedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
 
 const markJobApplied = `-- name: MarkJobApplied :one
 INSERT INTO user_jobs (user_id, job_id, applied_at)
 VALUES ($1, $2, now())
 ON CONFLICT (user_id, job_id) DO UPDATE SET applied_at = now()
-RETURNING user_id, job_id, viewed_at, applied_at
+RETURNING user_id, job_id, viewed_at, applied_at, saved_at
 `
 
 type MarkJobAppliedParams struct {
@@ -31,6 +134,7 @@ func (q *Queries) MarkJobApplied(ctx context.Context, arg MarkJobAppliedParams) 
 		&i.JobID,
 		&i.ViewedAt,
 		&i.AppliedAt,
+		&i.SavedAt,
 	)
 	return i, err
 }
@@ -39,7 +143,7 @@ const recordJobView = `-- name: RecordJobView :one
 INSERT INTO user_jobs (user_id, job_id)
 VALUES ($1, $2)
 ON CONFLICT (user_id, job_id) DO UPDATE SET viewed_at = now()
-RETURNING user_id, job_id, viewed_at, applied_at
+RETURNING user_id, job_id, viewed_at, applied_at, saved_at
 `
 
 type RecordJobViewParams struct {
@@ -58,6 +162,62 @@ func (q *Queries) RecordJobView(ctx context.Context, arg RecordJobViewParams) (U
 		&i.JobID,
 		&i.ViewedAt,
 		&i.AppliedAt,
+		&i.SavedAt,
+	)
+	return i, err
+}
+
+const saveJob = `-- name: SaveJob :one
+INSERT INTO user_jobs (user_id, job_id, saved_at)
+VALUES ($1, $2, now())
+ON CONFLICT (user_id, job_id) DO UPDATE SET saved_at = now()
+RETURNING user_id, job_id, viewed_at, applied_at, saved_at
+`
+
+type SaveJobParams struct {
+	UserID int64 `json:"user_id"`
+	JobID  int64 `json:"job_id"`
+}
+
+// Save (bookmark) a job for a user. Idempotent and independent of a prior view:
+// it inserts the row (viewed_at defaults) or refreshes saved_at in place.
+func (q *Queries) SaveJob(ctx context.Context, arg SaveJobParams) (UserJob, error) {
+	row := q.db.QueryRow(ctx, saveJob, arg.UserID, arg.JobID)
+	var i UserJob
+	err := row.Scan(
+		&i.UserID,
+		&i.JobID,
+		&i.ViewedAt,
+		&i.AppliedAt,
+		&i.SavedAt,
+	)
+	return i, err
+}
+
+const unsaveJob = `-- name: UnsaveJob :one
+UPDATE user_jobs
+SET saved_at = NULL
+WHERE user_id = $1 AND job_id = $2
+RETURNING user_id, job_id, viewed_at, applied_at, saved_at
+`
+
+type UnsaveJobParams struct {
+	UserID int64 `json:"user_id"`
+	JobID  int64 `json:"job_id"`
+}
+
+// Clear a job's saved mark without deleting the interaction row, so view and
+// apply history survive unsaving. No interaction row -> pgx.ErrNoRows; the
+// handler treats that as "already not saved", never as a failure.
+func (q *Queries) UnsaveJob(ctx context.Context, arg UnsaveJobParams) (UserJob, error) {
+	row := q.db.QueryRow(ctx, unsaveJob, arg.UserID, arg.JobID)
+	var i UserJob
+	err := row.Scan(
+		&i.UserID,
+		&i.JobID,
+		&i.ViewedAt,
+		&i.AppliedAt,
+		&i.SavedAt,
 	)
 	return i, err
 }
