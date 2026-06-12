@@ -13,7 +13,9 @@ type Querier interface {
 	// concurrent workers take disjoint rows; the lease predicate reclaims entries whose
 	// worker died (stale claimed_at), so no separate reaper process is needed.
 	ClaimEnrichmentBatch(ctx context.Context, arg ClaimEnrichmentBatchParams) ([]ClaimEnrichmentBatchRow, error)
-	CountCompanies(ctx context.Context) (int64, error)
+	// Total companies matching the same optional name filter as ListCompanies, so
+	// search pagination reports the filtered total.
+	CountCompanies(ctx context.Context, search string) (int64, error)
 	CountJobs(ctx context.Context) (int64, error)
 	// Register a new account. email is stored as given (the handler lowercases it);
 	// the unique index on lower(email) rejects duplicates regardless of case.
@@ -40,6 +42,9 @@ type Querier interface {
 	// Catalog page: companies with their job counts. The job count is computed on
 	// the fly (no denormalized counter yet). This is the one acknowledged place a
 	// join to jobs is acceptable; LEFT JOIN keeps companies with zero jobs visible.
+	// An empty `search` short-circuits the ILIKE, so the same prepared statement
+	// serves both the full list and a name search (`search` is a case-insensitive
+	// substring of the name).
 	ListCompanies(ctx context.Context, arg ListCompaniesParams) ([]ListCompaniesRow, error)
 	ListJobs(ctx context.Context, arg ListJobsParams) ([]Job, error)
 	ListJobsByCompany(ctx context.Context, arg ListJobsByCompanyParams) ([]Job, error)

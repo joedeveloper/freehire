@@ -12,10 +12,13 @@ import (
 const countCompanies = `-- name: CountCompanies :one
 SELECT count(*)
 FROM companies
+WHERE $1::text = '' OR name ILIKE '%' || $1 || '%'
 `
 
-func (q *Queries) CountCompanies(ctx context.Context) (int64, error) {
-	row := q.db.QueryRow(ctx, countCompanies)
+// Total companies matching the same optional name filter as ListCompanies, so
+// search pagination reports the filtered total.
+func (q *Queries) CountCompanies(ctx context.Context, search string) (int64, error) {
+	row := q.db.QueryRow(ctx, countCompanies, search)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
@@ -43,14 +46,16 @@ const listCompanies = `-- name: ListCompanies :many
 SELECT c.slug, c.name, count(j.company_slug) AS job_count
 FROM companies c
 LEFT JOIN jobs j ON j.company_slug = c.slug
+WHERE $1::text = '' OR c.name ILIKE '%' || $1 || '%'
 GROUP BY c.slug, c.name
 ORDER BY c.name
-LIMIT $1 OFFSET $2
+LIMIT $3 OFFSET $2
 `
 
 type ListCompaniesParams struct {
-	Limit  int32 `json:"limit"`
-	Offset int32 `json:"offset"`
+	Search string `json:"search"`
+	Offset int32  `json:"offset"`
+	Limit  int32  `json:"limit"`
 }
 
 type ListCompaniesRow struct {
@@ -62,8 +67,11 @@ type ListCompaniesRow struct {
 // Catalog page: companies with their job counts. The job count is computed on
 // the fly (no denormalized counter yet). This is the one acknowledged place a
 // join to jobs is acceptable; LEFT JOIN keeps companies with zero jobs visible.
+// An empty `search` short-circuits the ILIKE, so the same prepared statement
+// serves both the full list and a name search (`search` is a case-insensitive
+// substring of the name).
 func (q *Queries) ListCompanies(ctx context.Context, arg ListCompaniesParams) ([]ListCompaniesRow, error) {
-	rows, err := q.db.Query(ctx, listCompanies, arg.Limit, arg.Offset)
+	rows, err := q.db.Query(ctx, listCompanies, arg.Search, arg.Offset, arg.Limit)
 	if err != nil {
 		return nil, err
 	}

@@ -16,11 +16,16 @@ type companyDetailResponse struct {
 }
 
 // ListCompanies returns a page of companies with their job counts. Counts are
-// computed at query time; there is no denormalized counter yet.
+// computed at query time; there is no denormalized counter yet. An optional `q`
+// query param filters companies by a case-insensitive name substring; an empty
+// or absent `q` returns the full list. meta.total reports the count matching the
+// filter so pagination over a search is correct.
 func (h *Handler) ListCompanies(c *fiber.Ctx) error {
 	limit, offset := pageParams(c)
+	search := c.Query("q")
 
 	companies, err := h.queries.ListCompanies(c.Context(), db.ListCompaniesParams{
+		Search: search,
 		Limit:  int32(limit),
 		Offset: int32(offset),
 	})
@@ -28,7 +33,7 @@ func (h *Handler) ListCompanies(c *fiber.Ctx) error {
 		return err
 	}
 
-	total, err := h.queries.CountCompanies(c.Context())
+	total, err := h.queries.CountCompanies(c.Context(), search)
 	if err != nil {
 		return err
 	}

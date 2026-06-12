@@ -91,8 +91,15 @@ export async function searchJobs(facets: URLSearchParams, limit: number, offset:
   return toSlice(await get<Page<Job>>(`/api/v1/jobs/search?${params}`), offset);
 }
 
-export async function listCompanies(limit: number, offset: number): Promise<Slice<CompanyListItem>> {
-  return toSlice(await get<Page<CompanyListItem>>(`/api/v1/companies${query(limit, offset)}`), offset);
+/** List companies, optionally filtered by a name query `q` (a case-insensitive
+ *  substring match; an empty `q` lists everything). `meta.total` reflects the
+ *  filtered count, so the Paginator pages over the matches. */
+export async function listCompanies(q: string, limit: number, offset: number): Promise<Slice<CompanyListItem>> {
+  const params = new URLSearchParams();
+  if (q) params.set('q', q);
+  params.set('limit', String(limit));
+  params.set('offset', String(offset));
+  return toSlice(await get<Page<CompanyListItem>>(`/api/v1/companies?${params}`), offset);
 }
 
 export async function getCompany(
