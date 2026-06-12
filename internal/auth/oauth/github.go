@@ -66,17 +66,22 @@ func (p *githubProvider) FetchIdentity(ctx context.Context, code string) (Identi
 	// Prefer the primary verified email; fall back to any verified one. An
 	// account with no verified email yields an identity without an email,
 	// which account resolution rejects.
-	id := Identity{ProviderUserID: strconv.FormatInt(user.ID, 10)}
+	var email string
 	for _, e := range emails {
 		if !e.Verified {
 			continue
 		}
 		if e.Primary {
-			return Identity{ProviderUserID: id.ProviderUserID, Email: e.Email, EmailVerified: true}, nil
+			email = e.Email
+			break
 		}
-		if !id.EmailVerified {
-			id.Email, id.EmailVerified = e.Email, true
+		if email == "" {
+			email = e.Email
 		}
 	}
-	return id, nil
+	return Identity{
+		ProviderUserID: strconv.FormatInt(user.ID, 10),
+		Email:          email,
+		EmailVerified:  email != "",
+	}, nil
 }

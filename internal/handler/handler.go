@@ -9,7 +9,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/strelov1/freehire/internal/auth"
-	oauthpkg "github.com/strelov1/freehire/internal/auth/oauth"
+	"github.com/strelov1/freehire/internal/auth/oauth"
 	"github.com/strelov1/freehire/internal/db"
 	"github.com/strelov1/freehire/internal/search"
 )
@@ -27,7 +27,7 @@ type Handler struct {
 	cookieSecure bool
 	// oauth maps enabled OAuth provider names to their implementations; empty
 	// when no provider is configured (the routes then 404 / list empty).
-	oauth map[string]oauthpkg.Provider
+	oauth map[string]oauth.Provider
 	// frontendOrigin is where OAuth callbacks send the browser back to.
 	frontendOrigin string
 	// search is the job-search backend. Nil when Meilisearch is unconfigured —
@@ -66,7 +66,7 @@ func listResponse(c *fiber.Ctx, data any, total int64, limit, offset int) error 
 // under one origin (a dev Vite proxy mirrors the production reverse proxy), so
 // the cookie rides along with no CORS. The CORS allowlist is not credentialed —
 // it only permits non-credentialed cross-origin reads of the public endpoints.
-func Register(app *fiber.App, pool *pgxpool.Pool, frontendOrigin, jwtSecret string, jwtTTL time.Duration, cookieSecure bool, oauthProviders map[string]oauthpkg.Provider, searchClient *search.Client) {
+func Register(app *fiber.App, pool *pgxpool.Pool, frontendOrigin, jwtSecret string, jwtTTL time.Duration, cookieSecure bool, oauthProviders map[string]oauth.Provider, searchClient *search.Client) {
 	h := &Handler{
 		pool:           pool,
 		queries:        db.New(pool),

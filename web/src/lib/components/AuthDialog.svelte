@@ -29,10 +29,11 @@
   // Enabled OAuth providers; an unreachable endpoint just means no provider
   // buttons — the email/password form must keep working either way.
   let providers = $state<string[]>([]);
-  oauthProviders().then(
-    (names) => (providers = names.filter((n) => n in providerLabels)),
-    () => {},
-  );
+  oauthProviders()
+    .then((names) => {
+      providers = names.filter((n) => n in providerLabels);
+    })
+    .catch(() => {});
 
   const title = $derived(mode === 'login' ? 'Sign in' : 'Create account');
 
