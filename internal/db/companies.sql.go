@@ -45,7 +45,7 @@ func (q *Queries) GetCompany(ctx context.Context, slug string) (Company, error) 
 const listCompanies = `-- name: ListCompanies :many
 SELECT c.slug, c.name, count(j.company_slug) AS job_count
 FROM companies c
-LEFT JOIN jobs j ON j.company_slug = c.slug
+LEFT JOIN jobs j ON j.company_slug = c.slug AND j.closed_at IS NULL
 WHERE $1::text = '' OR c.name ILIKE '%' || $1 || '%'
 GROUP BY c.slug, c.name
 ORDER BY c.name

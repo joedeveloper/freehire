@@ -177,3 +177,24 @@ func marshalToFields(t *testing.T, job db.Job) map[string]json.RawMessage {
 	}
 	return fields
 }
+
+// closed_at rides the wire shape so the SPA can render the closed state on the
+// detail page (lists never serve closed jobs — see the job-lifecycle spec).
+func TestFromRow_CarriesClosedAt(t *testing.T) {
+	closedAt := time.Date(2026, 6, 12, 10, 0, 0, 0, time.UTC)
+	v, err := FromRow(db.Job{ClosedAt: pgtype.Timestamptz{Time: closedAt, Valid: true}})
+	if err != nil {
+		t.Fatalf("FromRow: %v", err)
+	}
+	if v.ClosedAt == nil || *v.ClosedAt != "2026-06-12T10:00:00Z" {
+		t.Fatalf("ClosedAt = %v, want 2026-06-12T10:00:00Z", v.ClosedAt)
+	}
+
+	open, err := FromRow(db.Job{})
+	if err != nil {
+		t.Fatalf("FromRow open: %v", err)
+	}
+	if open.ClosedAt != nil {
+		t.Fatalf("open job ClosedAt = %v, want nil", *open.ClosedAt)
+	}
+}

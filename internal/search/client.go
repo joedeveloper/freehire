@@ -8,6 +8,7 @@ package search
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/meilisearch/meilisearch-go"
@@ -79,6 +80,24 @@ func (c *Client) IndexJobs(ctx context.Context, docs []JobDocument) error {
 	task, err := c.index.UpdateDocumentsWithContext(ctx, docs, &meilisearch.DocumentOptions{PrimaryKey: &pk})
 	if err != nil {
 		return fmt.Errorf("search: index documents: %w", err)
+	}
+	return c.awaitTask(ctx, task.TaskUID)
+}
+
+// DeleteJobs removes documents by primary key. Used by reindex to drop closed
+// jobs from the index; deleting an id that is not indexed is a no-op, keeping
+// re-runs idempotent.
+func (c *Client) DeleteJobs(ctx context.Context, ids []int64) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	keys := make([]string, len(ids))
+	for i, id := range ids {
+		keys[i] = strconv.FormatInt(id, 10)
+	}
+	task, err := c.index.DeleteDocumentsWithContext(ctx, keys, nil)
+	if err != nil {
+		return fmt.Errorf("search: delete documents: %w", err)
 	}
 	return c.awaitTask(ctx, task.TaskUID)
 }

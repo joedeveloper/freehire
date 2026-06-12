@@ -1,6 +1,7 @@
 -- name: ListJobs :many
 SELECT *
 FROM jobs
+WHERE closed_at IS NULL
 ORDER BY posted_at DESC NULLS LAST, id DESC
 LIMIT $1 OFFSET $2;
 
@@ -35,12 +36,13 @@ WHERE public_slug = $1;
 
 -- name: CountJobs :one
 SELECT count(*)
-FROM jobs;
+FROM jobs
+WHERE closed_at IS NULL;
 
 -- name: ListJobsByCompany :many
 SELECT *
 FROM jobs
-WHERE company_slug = $1
+WHERE company_slug = $1 AND closed_at IS NULL
 ORDER BY posted_at DESC NULLS LAST, id DESC
 LIMIT $2 OFFSET $3;
 
@@ -82,8 +84,21 @@ ON CONFLICT (source, external_id) DO UPDATE SET
     remote       = EXCLUDED.remote,
     description  = EXCLUDED.description,
     posted_at    = EXCLUDED.posted_at,
+    -- The crawl saw the posting: refresh liveness and reopen if it was closed.
+    last_seen_at = now(),
+    closed_at    = NULL,
     updated_at   = now()
 RETURNING *;
+
+-- name: CloseUnseenJobs :execrows
+-- Post-ingest sweep (see job-lifecycle spec): close every open job not seen since
+-- the cutoff. The caller owns the grace window (cutoff = now() - window) and the
+-- "run ingested something" guard, so a failed crawl never mass-closes the catalogue.
+UPDATE jobs
+SET closed_at  = now(),
+    updated_at = now()
+WHERE closed_at IS NULL
+  AND last_seen_at < sqlc.arg(cutoff);
 
 -- name: EnqueueJobEnrichment :execrows
 -- Transactional-outbox enqueue for the ingest write path: queue this one job for

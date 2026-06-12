@@ -34,23 +34,23 @@ func main() {
 
 	client := search.NewClient(cfg.MeiliURL, cfg.MeiliKey)
 
-	indexed, err := reindexAll(ctx, db.New(pool), client)
+	indexed, deleted, err := reindexAll(ctx, db.New(pool), client)
 	if err != nil {
 		log.Fatalf("reindex: %v", err)
 	}
 
-	log.Printf("reindex done: indexed=%d", indexed)
+	log.Printf("reindex done: indexed=%d deleted=%d", indexed, deleted)
 }
 
 // reindexAll ensures the index and streams every job through it in batches,
-// returning the number of jobs indexed. It pages by keyset (id > last seen), so
-// rows inserted or re-ordered during the run cannot be skipped or repeated.
-func reindexAll(ctx context.Context, q *db.Queries, client *search.Client) (int, error) {
+// returning how many documents were indexed (open jobs) and deleted (closed
+// jobs). It pages by keyset (id > last seen), so rows inserted or re-ordered
+// during the run cannot be skipped or repeated.
+func reindexAll(ctx context.Context, q *db.Queries, client *search.Client) (indexed, deleted int, err error) {
 	if err := client.EnsureIndex(ctx); err != nil {
-		return 0, err
+		return 0, 0, err
 	}
 
-	indexed := 0
 	var afterID int64
 	for {
 		jobs, err := q.ListJobsByIDAfter(ctx, db.ListJobsByIDAfterParams{
@@ -58,30 +58,50 @@ func reindexAll(ctx context.Context, q *db.Queries, client *search.Client) (int,
 			BatchSize: reindexBatchSize,
 		})
 		if err != nil {
-			return indexed, err
+			return indexed, deleted, err
 		}
 		if len(jobs) == 0 {
 			break
 		}
 		afterID = jobs[len(jobs)-1].ID
 
-		docs := make([]search.JobDocument, 0, len(jobs))
-		for _, j := range jobs {
-			doc, err := search.FromJob(j)
-			if err != nil {
-				return indexed, err
-			}
-			docs = append(docs, doc)
+		docs, deleteIDs, err := splitJobs(jobs)
+		if err != nil {
+			return indexed, deleted, err
 		}
 		if err := client.IndexJobs(ctx, docs); err != nil {
-			return indexed, err
+			return indexed, deleted, err
 		}
-		indexed += len(jobs)
+		if err := client.DeleteJobs(ctx, deleteIDs); err != nil {
+			return indexed, deleted, err
+		}
+		indexed += len(docs)
+		deleted += len(deleteIDs)
 
 		if len(jobs) < reindexBatchSize {
 			break
 		}
 	}
 
-	return indexed, nil
+	return indexed, deleted, nil
+}
+
+// splitJobs partitions a batch from the (deliberately unfiltered) reindex feed:
+// open jobs become index documents, closed jobs become deletions so they leave
+// the index (the index contains only open jobs — see the job-search spec).
+func splitJobs(jobs []db.Job) ([]search.JobDocument, []int64, error) {
+	docs := make([]search.JobDocument, 0, len(jobs))
+	var deleteIDs []int64
+	for _, j := range jobs {
+		if j.ClosedAt.Valid {
+			deleteIDs = append(deleteIDs, j.ID)
+			continue
+		}
+		doc, err := search.FromJob(j)
+		if err != nil {
+			return nil, nil, err
+		}
+		docs = append(docs, doc)
+	}
+	return docs, deleteIDs, nil
 }

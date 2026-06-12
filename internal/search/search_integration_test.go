@@ -149,6 +149,34 @@ func TestIntegration_EnsureIndexIndexAndSearch(t *testing.T) {
 		}
 	})
 
+	t.Run("deleting a closed job removes it from the index", func(t *testing.T) {
+		if err := c.DeleteJobs(ctx, []int64{2}); err != nil {
+			t.Fatalf("DeleteJobs: %v", err)
+		}
+		res, err := c.Search(ctx, SearchParams{Limit: 100})
+		if err != nil {
+			t.Fatalf("Search: %v", err)
+		}
+		if res.Total != 1 || res.Hits[0].ID != 1 {
+			t.Fatalf("after delete: total=%d hits=%+v, want only job 1", res.Total, res.Hits)
+		}
+		// Idempotent: deleting an id that is no longer indexed is a no-op.
+		if err := c.DeleteJobs(ctx, []int64{2}); err != nil {
+			t.Fatalf("re-DeleteJobs: %v", err)
+		}
+		// Reopened job: indexing it again restores the document.
+		if err := c.IndexJobs(ctx, docs[1:2]); err != nil {
+			t.Fatalf("re-IndexJobs reopened: %v", err)
+		}
+		res, err = c.Search(ctx, SearchParams{Limit: 100})
+		if err != nil {
+			t.Fatalf("Search: %v", err)
+		}
+		if res.Total != 2 {
+			t.Errorf("after reopen: total=%d, want 2", res.Total)
+		}
+	})
+
 	t.Run("hybrid search engages the embedder without error", func(t *testing.T) {
 		res, err := c.Search(ctx, SearchParams{Query: "backend engineering role", SemanticRatio: 0.5, Limit: 10})
 		if err != nil {

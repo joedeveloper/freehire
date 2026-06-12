@@ -23,18 +23,22 @@ import (
 // it as `{}`. Timestamps are RFC3339 UTC strings (or null) — the lexicographic
 // order is chronological, which the search index relies on for sorting.
 type Job struct {
-	PublicSlug        string            `json:"public_slug"`
-	Source            string            `json:"source"`
-	ExternalID        string            `json:"external_id"`
-	URL               string            `json:"url"`
-	Title             string            `json:"title"`
-	Company           string            `json:"company"`
-	CompanySlug       string            `json:"company_slug"`
-	Location          string            `json:"location"`
-	Description       string            `json:"description"`
-	PostedAt          *string           `json:"posted_at"`
-	CreatedAt         *string           `json:"created_at"`
-	UpdatedAt         *string           `json:"updated_at"`
+	PublicSlug  string  `json:"public_slug"`
+	Source      string  `json:"source"`
+	ExternalID  string  `json:"external_id"`
+	URL         string  `json:"url"`
+	Title       string  `json:"title"`
+	Company     string  `json:"company"`
+	CompanySlug string  `json:"company_slug"`
+	Location    string  `json:"location"`
+	Description string  `json:"description"`
+	PostedAt    *string `json:"posted_at"`
+	CreatedAt   *string `json:"created_at"`
+	UpdatedAt   *string `json:"updated_at"`
+	// ClosedAt is non-null when the posting is no longer open. Lists and the
+	// search index never contain closed jobs; only the detail endpoint serves
+	// them, and the SPA renders the closed state from this field.
+	ClosedAt          *string           `json:"closed_at"`
 	Enrichment        enrich.Enrichment `json:"enrichment"`
 	EnrichedAt        *string           `json:"enriched_at"`
 	EnrichmentVersion int32             `json:"enrichment_version"`
@@ -64,6 +68,7 @@ func FromRow(j db.Job) (Job, error) {
 		PostedAt:          rfc3339(j.PostedAt),
 		CreatedAt:         rfc3339(j.CreatedAt),
 		UpdatedAt:         rfc3339(j.UpdatedAt),
+		ClosedAt:          rfc3339(j.ClosedAt),
 		Enrichment:        e,
 		EnrichedAt:        rfc3339(j.EnrichedAt),
 		EnrichmentVersion: j.EnrichmentVersion,

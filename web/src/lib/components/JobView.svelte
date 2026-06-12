@@ -104,20 +104,30 @@
         </div>
 
         <div class="flex shrink-0 flex-col items-end gap-2">
-          <Button
-            variant="primary"
-            href={job.url}
-            target="_blank"
-            rel="noopener noreferrer"
-            onclick={onApplyClick}
-          >
-            Show <ArrowRight class="size-4" />
-          </Button>
+          {#if !job.closed_at}
+            <Button
+              variant="primary"
+              href={job.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              onclick={onApplyClick}
+            >
+              Show <ArrowRight class="size-4" />
+            </Button>
+          {/if}
           {#if applied}
             <Badge variant="secondary"><Check class="mr-1 size-3.5" /> You applied</Badge>
           {/if}
         </div>
       </div>
+
+      {#if job.closed_at}
+        {@const closed = formatDate(job.closed_at)}
+        <div class="rounded-md border border-border bg-secondary px-4 py-3 text-sm">
+          This position is no longer accepting applications{#if closed}
+            (closed {closed}){/if}.
+        </div>
+      {/if}
 
       {#if showApplyPrompt && !applied}
         <div

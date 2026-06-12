@@ -46,6 +46,8 @@ type Job struct {
 	EnrichedAt        pgtype.Timestamptz `json:"enriched_at"`
 	EnrichmentVersion int32              `json:"enrichment_version"`
 	PublicSlug        string             `json:"public_slug"`
+	LastSeenAt        pgtype.Timestamptz `json:"last_seen_at"`
+	ClosedAt          pgtype.Timestamptz `json:"closed_at"`
 }
 
 type User struct {

@@ -16,6 +16,9 @@ export interface Job {
   posted_at: string | null;
   created_at: string | null;
   updated_at: string | null;
+  // Non-null when the posting is no longer open. Lists never serve closed
+  // jobs; the detail page renders the closed state from this field.
+  closed_at: string | null;
   enrichment?: Enrichment;
   enriched_at?: string | null;
   enrichment_version?: number;

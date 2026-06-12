@@ -6,6 +6,8 @@ package db
 
 import (
 	"context"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type Querier interface {
@@ -13,6 +15,10 @@ type Querier interface {
 	// concurrent workers take disjoint rows; the lease predicate reclaims entries whose
 	// worker died (stale claimed_at), so no separate reaper process is needed.
 	ClaimEnrichmentBatch(ctx context.Context, arg ClaimEnrichmentBatchParams) ([]ClaimEnrichmentBatchRow, error)
+	// Post-ingest sweep (see job-lifecycle spec): close every open job not seen since
+	// the cutoff. The caller owns the grace window (cutoff = now() - window) and the
+	// "run ingested something" guard, so a failed crawl never mass-closes the catalogue.
+	CloseUnseenJobs(ctx context.Context, cutoff pgtype.Timestamptz) (int64, error)
 	// Total companies matching the same optional name filter as ListCompanies, so
 	// search pagination reports the filtered total.
 	CountCompanies(ctx context.Context, search string) (int64, error)

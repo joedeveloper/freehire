@@ -12,9 +12,29 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const closeUnseenJobs = `-- name: CloseUnseenJobs :execrows
+UPDATE jobs
+SET closed_at  = now(),
+    updated_at = now()
+WHERE closed_at IS NULL
+  AND last_seen_at < $1
+`
+
+// Post-ingest sweep (see job-lifecycle spec): close every open job not seen since
+// the cutoff. The caller owns the grace window (cutoff = now() - window) and the
+// "run ingested something" guard, so a failed crawl never mass-closes the catalogue.
+func (q *Queries) CloseUnseenJobs(ctx context.Context, cutoff pgtype.Timestamptz) (int64, error) {
+	result, err := q.db.Exec(ctx, closeUnseenJobs, cutoff)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const countJobs = `-- name: CountJobs :one
 SELECT count(*)
 FROM jobs
+WHERE closed_at IS NULL
 `
 
 func (q *Queries) CountJobs(ctx context.Context) (int64, error) {
@@ -52,7 +72,7 @@ func (q *Queries) EnqueueJobEnrichment(ctx context.Context, arg EnqueueJobEnrich
 }
 
 const getJob = `-- name: GetJob :one
-SELECT id, source, external_id, url, title, company, location, remote, description, posted_at, created_at, updated_at, company_slug, enrichment, enriched_at, enrichment_version, public_slug
+SELECT id, source, external_id, url, title, company, location, remote, description, posted_at, created_at, updated_at, company_slug, enrichment, enriched_at, enrichment_version, public_slug, last_seen_at, closed_at
 FROM jobs
 WHERE id = $1
 `
@@ -78,12 +98,14 @@ func (q *Queries) GetJob(ctx context.Context, id int64) (Job, error) {
 		&i.EnrichedAt,
 		&i.EnrichmentVersion,
 		&i.PublicSlug,
+		&i.LastSeenAt,
+		&i.ClosedAt,
 	)
 	return i, err
 }
 
 const getJobBySlug = `-- name: GetJobBySlug :one
-SELECT id, source, external_id, url, title, company, location, remote, description, posted_at, created_at, updated_at, company_slug, enrichment, enriched_at, enrichment_version, public_slug
+SELECT id, source, external_id, url, title, company, location, remote, description, posted_at, created_at, updated_at, company_slug, enrichment, enriched_at, enrichment_version, public_slug, last_seen_at, closed_at
 FROM jobs
 WHERE public_slug = $1
 `
@@ -109,6 +131,8 @@ func (q *Queries) GetJobBySlug(ctx context.Context, publicSlug string) (Job, err
 		&i.EnrichedAt,
 		&i.EnrichmentVersion,
 		&i.PublicSlug,
+		&i.LastSeenAt,
+		&i.ClosedAt,
 	)
 	return i, err
 }
@@ -131,8 +155,9 @@ func (q *Queries) GetJobIDBySlug(ctx context.Context, publicSlug string) (int64,
 }
 
 const listJobs = `-- name: ListJobs :many
-SELECT id, source, external_id, url, title, company, location, remote, description, posted_at, created_at, updated_at, company_slug, enrichment, enriched_at, enrichment_version, public_slug
+SELECT id, source, external_id, url, title, company, location, remote, description, posted_at, created_at, updated_at, company_slug, enrichment, enriched_at, enrichment_version, public_slug, last_seen_at, closed_at
 FROM jobs
+WHERE closed_at IS NULL
 ORDER BY posted_at DESC NULLS LAST, id DESC
 LIMIT $1 OFFSET $2
 `
@@ -169,6 +194,8 @@ func (q *Queries) ListJobs(ctx context.Context, arg ListJobsParams) ([]Job, erro
 			&i.EnrichedAt,
 			&i.EnrichmentVersion,
 			&i.PublicSlug,
+			&i.LastSeenAt,
+			&i.ClosedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -181,9 +208,9 @@ func (q *Queries) ListJobs(ctx context.Context, arg ListJobsParams) ([]Job, erro
 }
 
 const listJobsByCompany = `-- name: ListJobsByCompany :many
-SELECT id, source, external_id, url, title, company, location, remote, description, posted_at, created_at, updated_at, company_slug, enrichment, enriched_at, enrichment_version, public_slug
+SELECT id, source, external_id, url, title, company, location, remote, description, posted_at, created_at, updated_at, company_slug, enrichment, enriched_at, enrichment_version, public_slug, last_seen_at, closed_at
 FROM jobs
-WHERE company_slug = $1
+WHERE company_slug = $1 AND closed_at IS NULL
 ORDER BY posted_at DESC NULLS LAST, id DESC
 LIMIT $2 OFFSET $3
 `
@@ -221,6 +248,8 @@ func (q *Queries) ListJobsByCompany(ctx context.Context, arg ListJobsByCompanyPa
 			&i.EnrichedAt,
 			&i.EnrichmentVersion,
 			&i.PublicSlug,
+			&i.LastSeenAt,
+			&i.ClosedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -233,7 +262,7 @@ func (q *Queries) ListJobsByCompany(ctx context.Context, arg ListJobsByCompanyPa
 }
 
 const listJobsByIDAfter = `-- name: ListJobsByIDAfter :many
-SELECT id, source, external_id, url, title, company, location, remote, description, posted_at, created_at, updated_at, company_slug, enrichment, enriched_at, enrichment_version, public_slug
+SELECT id, source, external_id, url, title, company, location, remote, description, posted_at, created_at, updated_at, company_slug, enrichment, enriched_at, enrichment_version, public_slug, last_seen_at, closed_at
 FROM jobs
 WHERE id > $1
 ORDER BY id
@@ -275,6 +304,8 @@ func (q *Queries) ListJobsByIDAfter(ctx context.Context, arg ListJobsByIDAfterPa
 			&i.EnrichedAt,
 			&i.EnrichmentVersion,
 			&i.PublicSlug,
+			&i.LastSeenAt,
+			&i.ClosedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -342,8 +373,11 @@ ON CONFLICT (source, external_id) DO UPDATE SET
     remote       = EXCLUDED.remote,
     description  = EXCLUDED.description,
     posted_at    = EXCLUDED.posted_at,
+    -- The crawl saw the posting: refresh liveness and reopen if it was closed.
+    last_seen_at = now(),
+    closed_at    = NULL,
     updated_at   = now()
-RETURNING id, source, external_id, url, title, company, location, remote, description, posted_at, created_at, updated_at, company_slug, enrichment, enriched_at, enrichment_version, public_slug
+RETURNING id, source, external_id, url, title, company, location, remote, description, posted_at, created_at, updated_at, company_slug, enrichment, enriched_at, enrichment_version, public_slug, last_seen_at, closed_at
 `
 
 type UpsertJobParams struct {
@@ -404,6 +438,8 @@ func (q *Queries) UpsertJob(ctx context.Context, arg UpsertJobParams) (Job, erro
 		&i.EnrichedAt,
 		&i.EnrichmentVersion,
 		&i.PublicSlug,
+		&i.LastSeenAt,
+		&i.ClosedAt,
 	)
 	return i, err
 }

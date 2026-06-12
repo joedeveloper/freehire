@@ -7,7 +7,7 @@
 -- substring of the name).
 SELECT c.slug, c.name, count(j.company_slug) AS job_count
 FROM companies c
-LEFT JOIN jobs j ON j.company_slug = c.slug
+LEFT JOIN jobs j ON j.company_slug = c.slug AND j.closed_at IS NULL
 WHERE sqlc.arg('search')::text = '' OR c.name ILIKE '%' || sqlc.arg('search') || '%'
 GROUP BY c.slug, c.name
 ORDER BY c.name
