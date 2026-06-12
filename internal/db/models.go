@@ -50,6 +50,19 @@ type Job struct {
 	ClosedAt          pgtype.Timestamptz `json:"closed_at"`
 }
 
+type TelegramPost struct {
+	Channel     string             `json:"channel"`
+	MsgID       int64              `json:"msg_id"`
+	Text        string             `json:"text"`
+	PostedAt    pgtype.Timestamptz `json:"posted_at"`
+	FetchedAt   pgtype.Timestamptz `json:"fetched_at"`
+	Attempts    int32              `json:"attempts"`
+	ClaimedAt   pgtype.Timestamptz `json:"claimed_at"`
+	FailedAt    pgtype.Timestamptz `json:"failed_at"`
+	LastError   string             `json:"last_error"`
+	ExtractedAt pgtype.Timestamptz `json:"extracted_at"`
+}
+
 type User struct {
 	ID           int64              `json:"id"`
 	Email        string             `json:"email"`

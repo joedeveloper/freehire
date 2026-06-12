@@ -15,6 +15,11 @@ type Querier interface {
 	// concurrent workers take disjoint rows; the lease predicate reclaims entries whose
 	// worker died (stale claimed_at), so no separate reaper process is needed.
 	ClaimEnrichmentBatch(ctx context.Context, arg ClaimEnrichmentBatchParams) ([]ClaimEnrichmentBatchRow, error)
+	// Claim a batch of pending posts by stamping claimed_at. SKIP LOCKED lets
+	// concurrent workers take disjoint rows; the lease predicate reclaims posts whose
+	// worker died (stale claimed_at), so no separate reaper process is needed.
+	// Oldest post first so a backlog drains in posting order.
+	ClaimTelegramPosts(ctx context.Context, arg ClaimTelegramPostsParams) ([]ClaimTelegramPostsRow, error)
 	// Post-ingest sweep (see job-lifecycle spec): close every open job not seen since
 	// the cutoff. The caller owns the grace window (cutoff = now() - window) and the
 	// "run ingested something" guard, so a failed crawl never mass-closes the catalogue.
@@ -50,6 +55,11 @@ type Querier interface {
 	GetUserByEmail(ctx context.Context, lower string) (User, error)
 	// Profile lookup for the authenticated user. Never selects password_hash.
 	GetUserByID(ctx context.Context, id int64) (GetUserByIDRow, error)
+	// Crawl write path: store a fetched post once. ON CONFLICT DO NOTHING makes
+	// re-crawling idempotent — a stored post (pending, done, or dead-lettered) is
+	// never reset. extracted_at is non-NULL when the ingest prefilter already
+	// decided the post holds no vacancy, so it is recorded but never queued.
+	InsertTelegramPost(ctx context.Context, arg InsertTelegramPostParams) (int64, error)
 	// Catalog page: companies with their job counts. The job count is computed on
 	// the fly (no denormalized counter yet). This is the one acknowledged place a
 	// join to jobs is acceptable; LEFT JOIN keeps companies with zero jobs visible.
@@ -66,6 +76,9 @@ type Querier interface {
 	// Mark a job as applied for a user. Idempotent and independent of a prior view:
 	// it inserts the row (viewed_at defaults) or updates applied_at in place.
 	MarkJobApplied(ctx context.Context, arg MarkJobAppliedParams) (UserJob, error)
+	// Completion: the post was processed (jobs written, or no vacancy found). Run in
+	// the same transaction as the extracted jobs' UpsertJob calls.
+	MarkTelegramPostExtracted(ctx context.Context, arg MarkTelegramPostExtractedParams) error
 	// Count a failed attempt: bump attempts, record the error, and dead-letter (set
 	// failed_at) once attempts reach the max. The lease (claimed_at) is intentionally
 	// left in place — its expiry gates the retry to a later run and doubles as the
@@ -75,6 +88,11 @@ type Querier interface {
 	// the first view creates the row, a repeat view touches viewed_at. Returns the
 	// row so the caller learns the current applied_at in the same round-trip.
 	RecordJobView(ctx context.Context, arg RecordJobViewParams) (UserJob, error)
+	// Count a failed attempt: bump attempts, record the error, and dead-letter (set
+	// failed_at) once attempts reach the max. The lease (claimed_at) is intentionally
+	// left in place — its expiry gates the retry to a later run and doubles as the
+	// crash reaper, so a failed post is never reprocessed within the same run.
+	RecordTelegramPostFailure(ctx context.Context, arg RecordTelegramPostFailureParams) (RecordTelegramPostFailureRow, error)
 	// Targeted enrichment write used by the enrichment command: set only the payload
 	// and the provenance stamp, touching no raw source field. Kept separate from
 	// UpsertJob (the ingest full-upsert path) so ingest and enrichment stay decoupled.
