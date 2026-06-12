@@ -26,7 +26,7 @@
 </script>
 
 <header class="border-b border-border">
-  <div class="mx-auto flex h-14 max-w-6xl items-center gap-6 px-4">
+  <div class="mx-auto flex h-14 max-w-6xl items-center gap-3 px-4 sm:gap-6">
     <a href="/" class="text-sm font-semibold tracking-tight">FreeHire</a>
 
     <nav class="flex items-center gap-4 text-sm">
@@ -45,11 +45,13 @@
 
     <div class="ml-auto flex items-center gap-3">
       {#if authStore.isAuthenticated}
-        <span class="text-sm text-muted-foreground">{authStore.user?.email}</span>
+        <span class="hidden max-w-[16rem] truncate text-sm text-muted-foreground sm:inline">{authStore.user?.email}</span>
         <Button variant="ghost" size="sm" onclick={() => void authStore.logout()}>Log out</Button>
       {:else}
         <Button variant="ghost" size="sm" onclick={() => open('login')}>Sign in</Button>
-        <Button variant="primary" size="sm" onclick={() => open('register')}>Register</Button>
+        <!-- On narrow phones the header can't fit both CTAs alongside the nav;
+             Register collapses into the dialog's "Create one" toggle below sm. -->
+        <Button variant="primary" size="sm" class="hidden sm:inline-flex" onclick={() => open('register')}>Register</Button>
       {/if}
       <ThemeToggle />
     </div>
