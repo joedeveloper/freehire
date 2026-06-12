@@ -35,8 +35,8 @@ first (RED). Web tasks verify via `svelte-check` + lint (no unit runner).
 
 ## 6. Simplify: collapse smartRecruiters parallel slices
 
-- [ ] 6.1 In `internal/sources/smartrecruiters.go` replace `jobs []Job` + `found []bool` with a single `jobs := make([]*Job, len(postings))` (nil = skipped); write `jobs[i] = &j` on success; compact non-nil into `[]Job`. Add a one-line comment ("nil = detail fetch failed, skipped"). Do NOT use the `ExternalID != ""` sentinel.
-- [ ] 6.2 `go test ./internal/sources/...` green, incl. `TestSmartRecruitersFetchSkipsFailedDetail`; then full `go build && go vet && go test ./...`.
+- [x] 6.1 In `internal/sources/smartrecruiters.go` replace `jobs []Job` + `found []bool` with a single `jobs := make([]*Job, len(postings))` (nil = skipped); write `jobs[i] = &j` on success; compact non-nil into `[]Job`. Add a one-line comment ("nil = detail fetch failed, skipped"). Do NOT use the `ExternalID != ""` sentinel.
+- [x] 6.2 `go test ./internal/sources/...` green, incl. `TestSmartRecruitersFetchSkipsFailedDetail` (also `-race`); then full `go build && go vet && go test ./...`.
 
 ## 7. Frontend: inline the `get<T>()` pass-through
 
