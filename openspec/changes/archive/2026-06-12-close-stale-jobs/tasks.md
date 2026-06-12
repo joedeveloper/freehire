@@ -24,4 +24,4 @@
 
 ## 6. Rollout
 
-- [ ] 6.1 Apply the ALTER manually on prod (migration-runner seam stays open), deploy, verify a synthetic closed job disappears from list/search but resolves on detail
+- [x] 6.1 Apply the ALTER manually on prod (migration-runner seam stays open), deploy, verify a synthetic closed job disappears from list/search but resolves on detail
