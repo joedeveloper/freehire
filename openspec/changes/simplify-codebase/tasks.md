@@ -40,8 +40,8 @@ first (RED). Web tasks verify via `svelte-check` + lint (no unit runner).
 
 ## 7. Frontend: inline the `get<T>()` pass-through
 
-- [ ] 7.1 Delete `get<T>(path)` in `web/src/lib/api.ts`; replace its 5 call sites (`listJobs`, `getJob`, `searchJobs`, `listCompanies`, `getCompany`) with `request<T>(...)`. Keep `call` and `request`.
-- [ ] 7.2 `npm run check` (svelte-check) + lint clean.
+- [x] 7.1 Delete `get<T>(path)` in `web/src/lib/api.ts`; replace its 5 call sites (`listJobs`, `getJob`, `searchJobs`, `listCompanies`, `getCompany`) with `request<T>(...)`. Keep `call` and `request`.
+- [x] 7.2 `npm run check` (svelte-check) clean; eslint on api.ts clean (repo lint has pre-existing errors elsewhere, unrelated).
 
 ## 8. Frontend: extract `ui/input.svelte` primitive
 
