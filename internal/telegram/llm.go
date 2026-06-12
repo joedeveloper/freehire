@@ -1,0 +1,93 @@
+package telegram
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"strings"
+
+	"github.com/tmc/langchaingo/llms"
+	"github.com/tmc/langchaingo/llms/openai"
+)
+
+// LangChainExtractor implements Extractor over any OpenAI-compatible endpoint via
+// langchaingo — the same provider-agnostic setup as the enrichment worker. The
+// model is asked for a JSON object matching the Extraction contract.
+type LangChainExtractor struct {
+	llm llms.Model
+}
+
+// NewLangChainExtractor builds an extractor against an OpenAI-compatible endpoint.
+// No provider is hard-coded — any OpenAI-compatible backend works.
+func NewLangChainExtractor(baseURL, apiKey, model string) (*LangChainExtractor, error) {
+	llm, err := openai.New(
+		openai.WithBaseURL(baseURL),
+		openai.WithToken(apiKey),
+		openai.WithModel(model),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("telegram: build llm client: %w", err)
+	}
+	return &LangChainExtractor{llm: llm}, nil
+}
+
+// Extract asks the model to classify the post and extract its vacancies. It does
+// not validate the result — the runner validates before persisting.
+func (e *LangChainExtractor) Extract(ctx context.Context, text string, kind Kind) (Extraction, error) {
+	messages := []llms.MessageContent{
+		llms.TextParts(llms.ChatMessageTypeSystem, extractSystemPrompt(kind)),
+		llms.TextParts(llms.ChatMessageTypeHuman, text),
+	}
+	resp, err := e.llm.GenerateContent(ctx, messages, llms.WithJSONMode())
+	if err != nil {
+		return Extraction{}, fmt.Errorf("telegram: generate: %w", err)
+	}
+	if len(resp.Choices) == 0 {
+		return Extraction{}, fmt.Errorf("telegram: model returned no choices")
+	}
+	return parseExtraction(resp.Choices[0].Content)
+}
+
+// parseExtraction unmarshals the model's JSON response, tolerating a markdown
+// code fence some models add despite JSON mode.
+func parseExtraction(raw string) (Extraction, error) {
+	s := strings.TrimSpace(raw)
+	s = strings.TrimPrefix(s, "```json")
+	s = strings.TrimPrefix(s, "```")
+	s = strings.TrimSuffix(s, "```")
+	s = strings.TrimSpace(s)
+
+	var e Extraction
+	if err := json.Unmarshal([]byte(s), &e); err != nil {
+		return Extraction{}, fmt.Errorf("telegram: parse response: %w", err)
+	}
+	return e, nil
+}
+
+// extractSystemPrompt instructs the model to classify the post and extract each
+// vacancy. The channel kind steers expectations: a board post is one vacancy; an
+// authored post may bundle several (or none — channels mix in ads and digests).
+func extractSystemPrompt(kind Kind) string {
+	var b strings.Builder
+	b.WriteString("You read a Telegram channel post (Russian or English) and decide whether it advertises job vacancies.\n")
+	b.WriteString("Return ONLY a JSON object: {\"jobs\": [...]}. If the post is not a job advertisement ")
+	b.WriteString("(news, digest, course ad, meme), return {\"jobs\": []}.\n\n")
+
+	switch kind {
+	case KindAuthored:
+		b.WriteString("This channel posts editorial stories that may describe SEVERAL distinct roles at one company ")
+		b.WriteString("in a single post. Extract each distinct role as its own job.\n\n")
+	default:
+		b.WriteString("This channel is a job board: a post normally describes exactly one vacancy.\n\n")
+	}
+
+	b.WriteString("Each job object has these keys:\n")
+	b.WriteString("- title (required): the role title, e.g. \"Senior Go Engineer\".\n")
+	b.WriteString("- company: the hiring company named in the post; omit if not stated. Never use the channel name.\n")
+	b.WriteString("- location: city/country if stated, e.g. \"London\".\n")
+	b.WriteString("- remote (boolean): true only if the post says the role is remote.\n")
+	b.WriteString("- description (required): the post's text relevant to THIS role — responsibilities, requirements, ")
+	b.WriteString("salary, benefits, and how to apply (contacts, links). Plain text, keep the original language. ")
+	b.WriteString("Do not invent anything that is not in the post.\n")
+	return b.String()
+}

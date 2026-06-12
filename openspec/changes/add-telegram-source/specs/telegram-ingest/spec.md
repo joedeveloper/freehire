@@ -76,8 +76,9 @@ The system SHALL extract vacancies from pending posts via an LLM behind the
 existing provider abstraction. The extraction worker SHALL claim pending posts
 with a lease such that concurrent workers never process the same post, SHALL
 treat an expired lease as reclaimable, and SHALL extract zero or more
-structured vacancies per post (title, company, location, salary text, remote
-hint, description). An extraction payload that fails validation SHALL be
+structured vacancies per post (title, company, location, remote hint,
+description — salary and contacts stay inside the description, which the
+existing enrichment later structures). An extraction payload that fails validation SHALL be
 retried once and then dead-lettered; an invalid payload SHALL never be
 persisted. Zero extracted vacancies SHALL be a normal success.
 
