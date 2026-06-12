@@ -1,0 +1,102 @@
+# Telegram channels crawled by cmd/tg-ingest (see internal/telegram).
+#
+# kind steers the extraction prompt:
+#   authored — editorial channel; one post may bundle several vacancies (0..N)
+#   board    — job-board channel; one post is normally one vacancy
+#
+# Curated tier-1 list from the 2026-06-12 research: every channel verified to
+# have the public t.me/s preview enabled and a post within the last 30 days.
+# Aggregator-bot channels (reposting their own job sites, e.g. remoteyeah) are
+# deliberately excluded — they duplicate the ATS boards sources.yml already
+# covers. The vetted expansion backlog is ~343 channels.
+
+channels:
+  # --- Authored / curated ---
+  - channel: hrlunapark
+    kind: authored
+  - channel: normrabota
+    kind: authored
+  - channel: budujobs
+    kind: authored
+
+  # --- General IT boards ---
+  - channel: it_vakansii_jobs
+    kind: board
+  - channel: geekjobs
+    kind: board
+  - channel: vakansii_it
+    kind: board
+  - channel: zrabota
+    kind: board
+  - channel: habr_career
+    kind: board
+  - channel: huntmejob
+    kind: board
+  - channel: newdirections
+    kind: board
+
+  # --- Junior / internships ---
+  - channel: jobforjunior
+    kind: board
+  - channel: young_june
+    kind: board
+  - channel: juniors_rabota_jobs
+    kind: board
+  - channel: jobs_juniors_remote
+    kind: board
+  - channel: job_it_junior
+    kind: board
+  - channel: remotejun
+    kind: board
+  - channel: juno_jobs
+    kind: board
+  - channel: young_intern
+    kind: board
+  - channel: it_interns
+    kind: board
+  - channel: refer_me_it
+    kind: board
+
+  # --- Role-specific boards ---
+  - channel: product_jobs
+    kind: board
+  - channel: productjobgo
+    kind: board
+  - channel: hireproproduct
+    kind: board
+  - channel: forproducts
+    kind: board
+  - channel: foranalysts
+    kind: board
+  - channel: serious_tester
+    kind: board
+  - channel: forallqa
+    kind: board
+  - channel: job_python
+    kind: board
+
+  # --- Remote / relocation ---
+  - channel: Remoteit
+    kind: board
+  - channel: young_relocate
+    kind: board
+  - channel: remote_jobs_relocate
+    kind: board
+
+  # --- Corporate ---
+  - channel: ya_jobs
+    kind: board
+  - channel: ya_jobs_pm
+    kind: board
+  - channel: avito_career
+    kind: board
+  - channel: mtsbankcareer
+    kind: board
+
+  # --- Web3 ---
+  - channel: job_web3
+    kind: board
+  - channel: crypto_vacancy_web3
+    kind: board
+  - channel: careers_crypto
+    kind: board
