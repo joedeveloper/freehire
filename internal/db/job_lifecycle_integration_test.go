@@ -64,8 +64,8 @@ func TestUpsertJobRefreshesLivenessAndReopens(t *testing.T) {
 	if reingested.ClosedAt.Valid {
 		t.Fatal("re-ingest must reopen a closed job")
 	}
-	if !reingested.LastSeenAt.Time.After(job.LastSeenAt.Time.Add(-time.Minute)) ||
-		time.Since(reingested.LastSeenAt.Time) > time.Minute {
+	// The job was backdated 72h above, so a fresh stamp proves the refresh.
+	if time.Since(reingested.LastSeenAt.Time) > time.Minute {
 		t.Fatalf("re-ingest must refresh last_seen_at, got %v", reingested.LastSeenAt.Time)
 	}
 }
