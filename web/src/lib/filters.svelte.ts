@@ -24,9 +24,13 @@ export interface JobFilters {
   salaryMin: number | null;
 }
 
+function emptyFacet(): FacetState {
+  return { values: [], exclude: false, matchAll: false };
+}
+
 function emptyFacets(): Record<string, FacetState> {
   const out: Record<string, FacetState> = {};
-  for (const f of FACETS) out[f.param] = { values: [], exclude: false, matchAll: false };
+  for (const f of FACETS) out[f.param] = emptyFacet();
   return out;
 }
 
@@ -94,7 +98,7 @@ export class FilterStore {
   }
 
   facet(param: string): FacetState {
-    return this.value.facets[param] ?? { values: [], exclude: false, matchAll: false };
+    return this.value.facets[param] ?? emptyFacet();
   }
 
   setQuery(q: string) {
@@ -139,7 +143,7 @@ export class FilterStore {
 
   /** Reset a single facet (values + exclude mode) — the per-section clear. */
   clearFacet(param: string) {
-    this.#setFacet(param, { values: [], exclude: false, matchAll: false });
+    this.#setFacet(param, emptyFacet());
   }
 
   /** Switch a facet between include and exclude mode (the "Исключить" link). */
