@@ -60,13 +60,13 @@ selects host and language.
 The shared HTTP client SHALL allow an adapter to attach custom request headers to an
 individual request, in addition to the client's standard `User-Agent` and `Accept`,
 without changing the behavior of requests that send no custom header. This SHALL support
-sources that gate an otherwise-public JSON API behind a non-secret header (for example a
-public API key, or a framework data-fetch header), and the standard `User-Agent`/`Accept`
-and the retry/backoff behavior SHALL be unchanged.
+sources that gate an otherwise-public JSON API behind a non-secret header (for example
+MTS's public `x-api-key`), and the standard `User-Agent`/`Accept` and the retry/backoff
+behavior SHALL be unchanged.
 
 #### Scenario: Custom header is sent when provided
 
-- **WHEN** an adapter issues a request with a custom header (e.g. `x-api-key` or `RSC`)
+- **WHEN** an adapter issues a request with a custom header (e.g. `x-api-key`)
 - **THEN** the outgoing request carries that header alongside the standard headers
 
 #### Scenario: Existing adapters are unaffected
@@ -100,7 +100,7 @@ one posting SHALL drop only that posting rather than abort the board.
 
 The system SHALL register adapters for the single-company Russian career APIs `yandex`,
 `ozon`, `rwb`, `sber`, `alfabank`, `lamoda`, `kuper`, `aviasales`, `dodo`, `domclick`,
-`mtslink`, `tbank`, `mts`, `tochka`, and `vk`, so each can be listed in the boards
+`mtslink`, `tbank`, `mts`, and `vk`, so each can be listed in the boards
 configuration. Each adapter SHALL yield the normalized job shape (at least title, url,
 location, remote flag, description, and the platform's native posting id) with the
 `description` as sanitized HTML (or sanitized text for an API that publishes plain text)
