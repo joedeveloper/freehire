@@ -33,6 +33,13 @@ const (
 )
 
 func (t teamtailor) Fetch(ctx context.Context, e CompanyEntry) ([]Job, error) {
+	// base carries the scheme+host; relative job hrefs resolve against it (an absolute
+	// href resolves to itself), so it is parsed once rather than per listing page.
+	base, err := url.Parse(fmt.Sprintf("https://%s/", e.Board))
+	if err != nil {
+		return nil, fmt.Errorf("teamtailor: board %q: %w", e.Board, err)
+	}
+
 	var urls []string
 	seen := make(map[string]bool)
 	for page := 1; page <= ttMaxPages; page++ {
@@ -43,10 +50,6 @@ func (t teamtailor) Fetch(ctx context.Context, e CompanyEntry) ([]Job, error) {
 				return nil, fmt.Errorf("teamtailor: listing %s: %w", e.Board, err)
 			}
 			break // a later page failing ends enumeration with the jobs gathered so far
-		}
-		base, err := url.Parse(listURL)
-		if err != nil {
-			return nil, fmt.Errorf("teamtailor: listing url %s: %w", listURL, err)
 		}
 		// Stop on the first page that adds no new links: an empty page, or a board that
 		// serves the same page for any ?page=N (de-dup turns the repeat into zero new).
@@ -123,7 +126,6 @@ type ttPosting struct {
 	Title           string    `json:"title"`
 	Description     string    `json:"description"`
 	DatePosted      string    `json:"datePosted"`
-	EmploymentType  string    `json:"employmentType"`
 	JobLocationType string    `json:"jobLocationType"`
 	JobLocation     []ttPlace `json:"jobLocation"`
 }
