@@ -20,10 +20,10 @@
 
 ## 4. SPA: stage + notes on My Jobs
 
-- [ ] 4.1 `lib/types.ts`: `UserJob` / `MyJob` gain `stage: string | null` and `notes: string | null`. `lib/api.ts`: add `trackJob(slug, { stage?, notes? })` → `PATCH /api/v1/jobs/:slug/track`.
-- [ ] 4.2 Add the stage vocabulary + humanized labels in the SPA (mirroring `facets.ts`; note the Go source of truth).
-- [ ] 4.3 `MyJobsView.svelte`: per row, a stage badge (humanized) when set, a dropdown to change the stage (calls `trackJob({stage})`), and a notes textarea saved on blur (calls `trackJob({notes})`); optimistic local update.
-- [ ] 4.4 Verify the SPA: `npm run check` (svelte-check) + lint pass. No unit runner added.
+- [x] 4.1 `lib/types.ts`: `UserJob` / `MyJob` gain `stage: string | null` and `notes: string | null`. `lib/api.ts`: add `trackJob(slug, { stage?, notes? })` → `PATCH /api/v1/jobs/:slug/track`.
+- [x] 4.2 Add the stage vocabulary + humanized labels in the SPA (mirroring `facets.ts`; note the Go source of truth).
+- [x] 4.3 `MyJobsView.svelte`: per row, a stage badge (humanized) when set, a dropdown to change the stage (calls `trackJob({stage})`), and a notes textarea saved on blur (calls `trackJob({notes})`); optimistic local update.
+- [x] 4.4 Verify the SPA: `npm run check` (svelte-check) + lint pass. No unit runner added.
 
 ## 5. Verification & rollout
 
