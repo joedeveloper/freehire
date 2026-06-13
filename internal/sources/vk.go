@@ -4,25 +4,37 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+	"time"
 )
 
 // vk adapts VK's public careers API (team.vk.company), a single-company source with no
 // per-tenant board id (boardless). The list API paginates by a next URL and carries no
 // description, so each vacancy's body is scraped from its server-rendered job page (which
-// exposes schema.org JobPosting microdata, like SuccessFactors), fanned out under a bounded
-// worker pool.
+// exposes schema.org JobPosting microdata, like SuccessFactors).
+//
+// VK's edge (kittenx) rate-limit-challenges bursts by IP: once tripped it 302s to a JS
+// "429" challenge page that carries no microdata, so the scraped description comes back
+// empty. A concurrent fan-out trips this almost immediately. The adapter therefore fetches
+// details serially with a pause between requests (interval) to stay under the limit. A
+// posting that is still challenged keeps its list fields with an empty description rather
+// than being dropped, so the worst case is identical to no pacing — never a regression.
 type vk struct {
-	http HTTPClient
+	http     HTTPClient
+	interval time.Duration
 }
 
 const (
-	vkListURL       = "https://team.vk.company/career/api/v2/vacancies/?limit=50&offset=0"
-	vkVacancyURL    = "https://team.vk.company/vacancy/%d/"
-	vkDetailWorkers = 8
+	vkListURL    = "https://team.vk.company/career/api/v2/vacancies/?limit=50&offset=0"
+	vkVacancyURL = "https://team.vk.company/vacancy/%d/"
+	// vkDetailInterval paces the per-vacancy detail fetches under VK's IP rate limit.
+	vkDetailInterval = 5 * time.Second
 )
 
 // NewVK builds the VK adapter over the given HTTP client.
-func NewVK(c HTTPClient) Source { return vk{http: c} }
+func NewVK(c HTTPClient) Source { return newVK(c, vkDetailInterval) }
+
+// newVK builds the adapter with an explicit detail-fetch pace, so tests can disable it.
+func newVK(c HTTPClient, interval time.Duration) vk { return vk{http: c, interval: interval} }
 
 func (vk) Provider() string { return "vk" }
 
@@ -46,9 +58,22 @@ func (a vk) Fetch(ctx context.Context, e CompanyEntry) ([]Job, error) {
 		return nil, err
 	}
 
-	return fetchDetails(results, vkDetailWorkers, func(r vkResult) (Job, bool) {
-		return a.detail(ctx, e, r)
-	}), nil
+	jobs := make([]Job, 0, len(results))
+	for i, r := range results {
+		// Pause between detail fetches (not before the first) to stay under VK's rate
+		// limit, honoring cancellation so a stopped crawl returns promptly.
+		if i > 0 && a.interval > 0 {
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-time.After(a.interval):
+			}
+		}
+		if j, ok := a.detail(ctx, e, r); ok {
+			jobs = append(jobs, j)
+		}
+	}
+	return jobs, nil
 }
 
 // list pages through every vacancy by following the response's next URL until it is null.

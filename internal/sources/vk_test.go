@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 )
 
 // vkListPage builds one career/api/v2/vacancies page with the given next URL (empty → null)
@@ -58,7 +59,7 @@ func TestVKFetchPaginatesScrapesAndMaps(t *testing.T) {
 		route("/vacancy/100/", vkDetailHTML(`<p>Build services.</p><h3>Tasks</h3><ul><li>Code</li></ul><script>alert(1)</script>`)).
 		route("/vacancy/200/", vkDetailHTML(`<p>Keep it running.</p>`))
 
-	jobs, err := NewVK(fake).Fetch(context.Background(), CompanyEntry{Company: "VK", Provider: "vk"})
+	jobs, err := newVK(fake, 0).Fetch(context.Background(), CompanyEntry{Company: "VK", Provider: "vk"})
 	if err != nil {
 		t.Fatalf("Fetch: %v", err)
 	}
@@ -114,7 +115,7 @@ func TestVKFailedDetailDropsOnlyThatPosting(t *testing.T) {
 		)).
 		route("/vacancy/100/", vkDetailHTML(`<p>ok</p>`))
 
-	jobs, err := NewVK(fake).Fetch(context.Background(), CompanyEntry{Company: "VK"})
+	jobs, err := newVK(fake, 0).Fetch(context.Background(), CompanyEntry{Company: "VK"})
 	if err != nil {
 		t.Fatalf("Fetch: %v", err)
 	}
@@ -123,10 +124,49 @@ func TestVKFailedDetailDropsOnlyThatPosting(t *testing.T) {
 	}
 }
 
+func TestVKKeepsPostingWhenDetailHasNoDescription(t *testing.T) {
+	// VK's edge serves a challenge page (no JobPosting microdata) under rate limiting.
+	// The posting must stay live from its list fields with an empty description rather
+	// than being dropped — otherwise a rate-limit blip would slowly close the catalogue.
+	fake := (&routedHTTP{}).
+		route("offset=0", vkListPage("", vkResultJSON(100, "Engineer", "Москва", false))).
+		route("/vacancy/100/", `<html><body>rate-limit challenge, no microdata</body></html>`)
+
+	jobs, err := newVK(fake, 0).Fetch(context.Background(), CompanyEntry{Company: "VK"})
+	if err != nil {
+		t.Fatalf("Fetch: %v", err)
+	}
+	if len(jobs) != 1 || jobs[0].ExternalID != "100" {
+		t.Fatalf("want the posting kept, got %v", jobs)
+	}
+	if jobs[0].Description != "" {
+		t.Errorf("Description = %q, want empty", jobs[0].Description)
+	}
+}
+
+func TestVKPacingRespectsContextCancellation(t *testing.T) {
+	// Detail fetches are paced to stay under VK's rate limit; the pace must be
+	// context-aware, so a cancelled crawl returns promptly instead of sleeping.
+	fake := (&routedHTTP{}).
+		route("offset=0", vkListPage("",
+			vkResultJSON(100, "A", "Москва", false),
+			vkResultJSON(200, "B", "Москва", false),
+		)).
+		route("/vacancy/100/", vkDetailHTML(`<p>x</p>`)).
+		route("/vacancy/200/", vkDetailHTML(`<p>y</p>`))
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	if _, err := newVK(fake, time.Hour).Fetch(ctx, CompanyEntry{Company: "VK"}); err == nil {
+		t.Fatal("want a context error when cancelled during pacing, got nil")
+	}
+}
+
 func TestVKEmptyListYieldsNoJobsNoError(t *testing.T) {
 	fake := (&routedHTTP{}).route("offset=0", vkListPage(""))
 
-	jobs, err := NewVK(fake).Fetch(context.Background(), CompanyEntry{Company: "VK"})
+	jobs, err := newVK(fake, 0).Fetch(context.Background(), CompanyEntry{Company: "VK"})
 	if err != nil {
 		t.Fatalf("Fetch: %v", err)
 	}
