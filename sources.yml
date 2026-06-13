@@ -383,6 +383,10 @@ sources:
     provider: greenhouse
     board: "codeandtheory"
 
+  - company: "Coherent Solutions"
+    provider: greenhouse
+    board: "coherentsolutions"
+
   - company: "Coinbase"
     provider: greenhouse
     board: "coinbase"
@@ -647,6 +651,10 @@ sources:
     provider: greenhouse
     board: "flexport"
 
+  - company: "Flo Health"
+    provider: greenhouse
+    board: "flohealth"
+
   - company: "Fluxon"
     provider: greenhouse
     board: "fluxon"
@@ -682,6 +690,10 @@ sources:
   - company: "GHX"
     provider: greenhouse
     board: "globalhealthcareexchangeinc"
+
+  - company: "Gismart"
+    provider: greenhouse
+    board: "gismart"
 
   - company: "GitLab"
     provider: greenhouse
@@ -1015,6 +1027,10 @@ sources:
     provider: greenhouse
     board: "mangopay"
 
+  - company: "ManyChat"
+    provider: greenhouse
+    board: "manychat"
+
   - company: "Mark43"
     provider: greenhouse
     board: "mark43"
@@ -1106,6 +1122,10 @@ sources:
   - company: "N26"
     provider: greenhouse
     board: "N26"
+
+  - company: "Nebius"
+    provider: greenhouse
+    board: "nebius"
 
   - company: "NetBrain"
     provider: greenhouse
@@ -1222,6 +1242,10 @@ sources:
   - company: "PagerDuty"
     provider: greenhouse
     board: "pagerduty"
+
+  - company: "PandaDoc"
+    provider: greenhouse
+    board: "pandadoc"
 
   - company: "Panic Button"
     provider: greenhouse
@@ -1671,6 +1695,10 @@ sources:
     provider: greenhouse
     board: "toast"
 
+  - company: "Toloka"
+    provider: greenhouse
+    board: "toloka"
+
   - company: "TOPPAN Edge Inc."
     provider: greenhouse
     board: "bottomlinetechnologies"
@@ -1774,6 +1802,10 @@ sources:
   - company: "VDC"
     provider: greenhouse
     board: "vdc"
+
+  - company: "Veeam"
+    provider: greenhouse
+    board: "veeamsoftware"
 
   - company: "Vercel"
     provider: greenhouse
@@ -1905,6 +1937,10 @@ sources:
     provider: lever
     board: "animocabrands"
 
+  - company: "AppFollow"
+    provider: lever
+    board: "appfollow"
+
   - company: "appzen"
     provider: lever
     board: "appzen"
@@ -1976,6 +2012,10 @@ sources:
   - company: "Brillio"
     provider: lever
     board: "brillio-2"
+
+  - company: "Bumble"
+    provider: lever
+    board: "bumbleinc"
 
   - company: "Cambium Networks"
     provider: lever
@@ -2437,6 +2477,10 @@ sources:
     provider: lever
     board: "super-com"
 
+  - company: "SuperAnnotate"
+    provider: lever
+    board: "superannotate"
+
   - company: "Sword Health"
     provider: lever
     board: "swordhealth"
@@ -2662,6 +2706,10 @@ sources:
   - company: "Cohere"
     provider: ashby
     board: "cohere"
+
+  - company: "Constructor"
+    provider: ashby
+    board: "constructor"
 
   - company: "Crusoe"
     provider: ashby
@@ -3047,6 +3095,10 @@ sources:
     provider: ashby
     board: "resend"
 
+  - company: "Restream"
+    provider: ashby
+    board: "restream"
+
   - company: "Rocket Science"
     provider: ashby
     board: "rocketsciencegg"
@@ -3110,6 +3162,10 @@ sources:
   - company: "Spellbrush"
     provider: ashby
     board: "spellbrush"
+
+  - company: "SplitMetrics"
+    provider: ashby
+    board: "splitmetrics"
 
   - company: "Stand"
     provider: ashby
@@ -3695,6 +3751,10 @@ sources:
     provider: recruitee
     board: "pixelpool"
 
+  - company: "Playrix"
+    provider: recruitee
+    board: "playrix"
+
   - company: "Propel"
     provider: recruitee
     board: "propel"
@@ -3750,6 +3810,10 @@ sources:
   - company: "Village talkies"
     provider: recruitee
     board: "villagetalkies"
+
+  - company: "Wallarm"
+    provider: recruitee
+    board: "wallarm"
 
   - company: "Wonderkind"
     provider: recruitee
@@ -4161,6 +4225,10 @@ sources:
     provider: smartrecruiters
     board: "GamesForLove"
 
+  - company: "Gcore"
+    provider: smartrecruiters
+    board: "Gcore"
+
   - company: "Gear Inc"
     provider: smartrecruiters
     board: "gearinc"
@@ -4228,6 +4296,10 @@ sources:
   - company: "HoYoverse"
     provider: smartrecruiters
     board: "HoYoverse"
+
+  - company: "Improvado"
+    provider: smartrecruiters
+    board: "improvado"
 
   - company: "Informa Group"
     provider: smartrecruiters
@@ -4505,6 +4577,10 @@ sources:
     provider: smartrecruiters
     board: "pharmaace"
 
+  - company: "Picsart"
+    provider: smartrecruiters
+    board: "Picsart"
+
   - company: "Play Perfect"
     provider: smartrecruiters
     board: "play-perfect"
@@ -4772,6 +4848,10 @@ sources:
   - company: "WayUp"
     provider: smartrecruiters
     board: "wayup"
+
+  - company: "Welltory"
+    provider: smartrecruiters
+    board: "welltory"
 
   - company: "Western Digital"
     provider: smartrecruiters
