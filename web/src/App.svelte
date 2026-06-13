@@ -1,6 +1,7 @@
 <script lang="ts">
   import { router } from '$lib/router.svelte';
   import TopBar from '$lib/components/TopBar.svelte';
+  import HomeView from '$lib/components/HomeView.svelte';
   import JobsView from '$lib/components/JobsView.svelte';
   import JobView from '$lib/components/JobView.svelte';
   import CompaniesView from '$lib/components/CompaniesView.svelte';
@@ -42,7 +43,9 @@
   <!-- The outer container is the same width on every page so the header never
        jumps between routes; narrow reading views center themselves inside it. -->
   <main class="mx-auto w-full max-w-6xl flex-1 px-4 py-6">
-    {#if route.name === 'jobs'}
+    {#if route.name === 'home'}
+      <HomeView />
+    {:else if route.name === 'jobs'}
       <JobsView />
     {:else}
       <div class="mx-auto max-w-3xl">
@@ -63,9 +66,9 @@
 
   <footer class="border-t border-border">
     <div
-      class="mx-auto flex w-full max-w-6xl flex-col gap-2 px-4 py-6 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between"
+      class="mx-auto flex w-full max-w-6xl items-center justify-between gap-3 px-4 py-3 text-xs text-muted-foreground"
     >
-      <p>An open-source aggregator for IT jobs, normalized and deduplicated from company boards.</p>
+      <p>Free, open-source IT job aggregator.</p>
       <a
         href="https://github.com/strelov1/freehire"
         target="_blank"

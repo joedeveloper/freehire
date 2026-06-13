@@ -3,6 +3,7 @@
 // new path; same-origin anchor clicks and back/forward are wired in App.svelte.
 
 export type Route =
+  | { name: 'home' }
   | { name: 'jobs' }
   | { name: 'job'; slug: string }
   | { name: 'companies' }
@@ -11,7 +12,8 @@ export type Route =
   | { name: 'notfound' };
 
 function parse(path: string): Route {
-  if (path === '/' || path === '') return { name: 'jobs' };
+  if (path === '/' || path === '') return { name: 'home' };
+  if (path === '/jobs') return { name: 'jobs' };
   if (path === '/companies') return { name: 'companies' };
   if (path === '/my/jobs') return { name: 'myjobs' };
 

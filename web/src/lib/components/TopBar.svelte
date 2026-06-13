@@ -10,7 +10,7 @@
   const name = $derived(router.route.name);
 
   const links = [
-    { href: '/', label: 'Jobs', match: ['jobs', 'job'] },
+    { href: '/jobs', label: 'Jobs', match: ['jobs', 'job'] },
     { href: '/companies', label: 'Companies', match: ['companies', 'company'] },
   ];
 
