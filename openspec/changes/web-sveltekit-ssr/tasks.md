@@ -58,14 +58,14 @@ pure `filtersFromParams`/`filtersToParams` helpers are reused unchanged in
 
 ## 5. SEO artifacts
 
-- [ ] 5.1 Per-route `<head>`: job-specific `<title>`/description/canonical/OG on
+- [x] 5.1 Per-route `<head>`: job-specific `<title>`/description/canonical/OG on
   `/jobs/:slug`; page-appropriate metadata on the list pages.
-- [ ] 5.2 `JobPosting` JSON-LD builder (unit-testable, from the job-view shape) +
+- [x] 5.2 `JobPosting` JSON-LD builder (unit-testable, from the job-view shape) +
   `Organization` JSON-LD on company pages; emitted server-side; closed jobs
   reflect their status.
-- [ ] 5.3 `src/routes/robots.txt/+server.ts`: real `text/plain` robots file
+- [x] 5.3 `src/routes/robots.txt/+server.ts`: real `text/plain` robots file
   referencing the sitemap.
-- [ ] 5.4 `src/routes/sitemap.xml/+server.ts`: generated XML of job and company
+- [x] 5.4 `src/routes/sitemap.xml/+server.ts`: generated XML of job and company
   URLs (decide source: existing listing vs. a minimal slug+timestamp query; if
   capped, `log` what is omitted).
 
@@ -73,7 +73,10 @@ pure `filtersFromParams`/`filtersToParams` helpers are reused unchanged in
 
 - [ ] 6.1 New `web/Dockerfile` running the `adapter-node` server; update
   `web/nginx.conf` so nginx fronts `/api`+`/health`→Go and everything else→Node;
-  verify the full stack in Docker (`make up`) serves SSR pages.
+  verify the full stack in Docker (`make up`) serves SSR pages. **Set `ORIGIN`**
+  (public site URL) and **`API_INTERNAL_URL`** (Go service origin) on the web
+  service, and forward Host/X-Forwarded-* in nginx — otherwise canonical/og:url/
+  JSON-LD/sitemap URLs carry the internal Node origin (see group-5 review).
 
 ## 7. Verification
 

@@ -1,14 +1,19 @@
 <script lang="ts">
+  import { page } from '$app/state';
   import JobsView from '$lib/components/JobsView.svelte';
+  import Seo from '$lib/components/Seo.svelte';
   import type { PageData } from './$types';
 
   let { data }: { data: PageData } = $props();
+
+  const canonical = $derived(`${page.url.origin}/jobs`);
 </script>
 
-<svelte:head>
-  <!-- Full metadata/canonical/OG land in the SEO tasks (5.1). -->
-  <title>Jobs — freehire</title>
-</svelte:head>
+<Seo
+  title="Jobs · freehire"
+  description="Browse tech jobs aggregated from company career boards — filter by stack, seniority, location and remote policy."
+  {canonical}
+/>
 
 <div class="mx-auto w-full max-w-6xl px-4 py-6">
   <JobsView initial={data.initial} />
