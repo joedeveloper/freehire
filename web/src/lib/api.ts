@@ -3,7 +3,16 @@
 // return a `Slice` so callers (and the Paginator) stay ignorant of how each one
 // signals more pages.
 
-import type { Job, Company, CompanyListItem, ListMeta, User, UserJob } from './types';
+import type {
+  Job,
+  Company,
+  CompanyListItem,
+  ListMeta,
+  MyJob,
+  MyJobCounts,
+  User,
+  UserJob,
+} from './types';
 
 // Relative base: the SPA and API share one origin (a dev Vite proxy forwards
 // /api to the backend), so the browser sends the httpOnly auth cookie with
@@ -157,19 +166,48 @@ export async function me(): Promise<User> {
 // Both require a session (the auth cookie). Callers gate on auth state before
 // invoking — the SPA never sends these for a signed-out visitor.
 
-/** POST to a job-interaction endpoint and return the resulting record. */
-async function postJobInteraction(slug: string, action: 'view' | 'apply'): Promise<UserJob> {
-  const res = await request<{ data: UserJob }>(`/api/v1/jobs/${slug}/${action}`, { method: 'POST' });
+/** Call a job-interaction endpoint and return the resulting record. */
+async function jobInteraction(
+  slug: string,
+  action: 'view' | 'apply' | 'save',
+  method: 'POST' | 'DELETE' = 'POST',
+): Promise<UserJob> {
+  const res = await request<{ data: UserJob }>(`/api/v1/jobs/${slug}/${action}`, { method });
   return res.data;
 }
 
 /** Record that the current user viewed a job; returns their interaction
  *  (including whether they have already applied). */
 export function recordJobView(slug: string): Promise<UserJob> {
-  return postJobInteraction(slug, 'view');
+  return jobInteraction(slug, 'view');
 }
 
 /** Mark a job as applied for the current user. */
 export function markJobApplied(slug: string): Promise<UserJob> {
-  return postJobInteraction(slug, 'apply');
+  return jobInteraction(slug, 'apply');
+}
+
+/** Save (bookmark) a job for the current user. */
+export function saveJob(slug: string): Promise<UserJob> {
+  return jobInteraction(slug, 'save');
+}
+
+/** Clear a job's saved mark. Idempotent: "already not saved" is success. */
+export function unsaveJob(slug: string): Promise<UserJob> {
+  return jobInteraction(slug, 'save', 'DELETE');
+}
+
+export type MyJobsFilter = 'all' | 'viewed' | 'saved' | 'applied';
+
+/** The current user's job interactions, newest activity first. Alongside the
+ *  page, the response carries the per-tab counts for the my-jobs tab badges. */
+export async function listMyJobs(
+  filter: MyJobsFilter,
+  limit: number,
+  offset: number,
+): Promise<Slice<MyJob> & { counts: MyJobCounts }> {
+  const res = await request<{ data: MyJob[]; meta: ListMeta & { counts: MyJobCounts } }>(
+    `/api/v1/me/jobs${query(limit, offset)}&filter=${filter}`,
+  );
+  return { ...toSlice(res, offset), counts: res.meta.counts };
 }

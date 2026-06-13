@@ -43,6 +43,15 @@
     >
       <p class="truncate px-3 py-2 text-sm text-muted-foreground" title={email}>{email}</p>
       <div class="my-1 h-px bg-border"></div>
+      <a
+        href="/my/jobs"
+        role="menuitem"
+        onclick={() => (open = false)}
+        class="block px-3 py-2 text-sm transition-colors hover:bg-accent hover:text-accent-foreground"
+      >
+        My jobs
+      </a>
+      <div class="my-1 h-px bg-border"></div>
       <button
         type="button"
         role="menuitem"

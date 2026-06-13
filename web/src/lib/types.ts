@@ -96,11 +96,30 @@ export interface User {
   created_at: string | null;
 }
 
-/** A signed-in user's interaction with one job: when they viewed it and, once
- *  they confirm an application, when they applied. `applied_at` is null until
- *  then. Returned by the view/apply endpoints. */
+/** A signed-in user's interaction with one job: when they viewed it, saved it
+ *  for later, and (once they confirm an application) applied. `saved_at` and
+ *  `applied_at` are null until then. Returned by the view/apply/save endpoints. */
 export interface UserJob {
   job_id: number;
   viewed_at: string;
+  saved_at: string | null;
   applied_at: string | null;
+}
+
+/** One item of the my-jobs listing: the job in the shared wire shape with the
+ *  caller's interaction timestamps riding alongside. */
+export interface MyJob {
+  job: Job;
+  viewed_at: string;
+  saved_at: string | null;
+  applied_at: string | null;
+}
+
+/** Per-tab row counts for the my-jobs page, from the listing's meta. `viewed`
+ *  is the view-only subset: rows neither saved nor applied. */
+export interface MyJobCounts {
+  all: number;
+  viewed: number;
+  saved: number;
+  applied: number;
 }

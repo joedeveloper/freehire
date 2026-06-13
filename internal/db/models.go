@@ -82,4 +82,5 @@ type UserJob struct {
 	JobID     int64              `json:"job_id"`
 	ViewedAt  pgtype.Timestamptz `json:"viewed_at"`
 	AppliedAt pgtype.Timestamptz `json:"applied_at"`
+	SavedAt   pgtype.Timestamptz `json:"saved_at"`
 }

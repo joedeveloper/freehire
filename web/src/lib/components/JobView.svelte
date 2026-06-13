@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { ArrowRight, Check } from '@lucide/svelte';
-  import { getJob, markJobApplied, recordJobView } from '$lib/api';
+  import { ArrowRight, Bookmark, Check } from '@lucide/svelte';
+  import { getJob, markJobApplied, recordJobView, saveJob, unsaveJob } from '$lib/api';
   import { authStore } from '$lib/auth.svelte';
   import { formatSalary, summaryFacets } from '$lib/enrichment';
   import type { Job, UserJob } from '$lib/types';
@@ -19,6 +19,7 @@
   let interaction = $state.raw<UserJob | null>(null);
   let showApplyPrompt = $state(false);
   const applied = $derived(interaction?.applied_at != null);
+  const saved = $derived(interaction?.saved_at != null);
 
   // Reload whenever the route slug changes.
   $effect(() => {
@@ -69,6 +70,17 @@
   function dismissApplyPrompt() {
     showApplyPrompt = false;
   }
+
+  // The toggle flips on the server's answer, not optimistically: both endpoints
+  // return the full interaction, so the button can never drift from the truth.
+  async function toggleSave() {
+    if (!job) return;
+    try {
+      interaction = saved ? await unsaveJob(job.public_slug) : await saveJob(job.public_slug);
+    } catch {
+      // Leave the current state; the user can retry.
+    }
+  }
 </script>
 
 {#if status === 'loading'}
@@ -113,6 +125,12 @@
               onclick={onApplyClick}
             >
               Show <ArrowRight class="size-4" />
+            </Button>
+          {/if}
+          {#if authStore.isAuthenticated}
+            <Button variant="outline" size="sm" onclick={toggleSave} aria-pressed={saved}>
+              <Bookmark class={saved ? 'size-4 fill-current' : 'size-4'} />
+              {saved ? 'Saved' : 'Save'}
             </Button>
           {/if}
           {#if applied}

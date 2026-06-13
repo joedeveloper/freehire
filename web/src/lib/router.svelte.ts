@@ -7,11 +7,13 @@ export type Route =
   | { name: 'job'; slug: string }
   | { name: 'companies' }
   | { name: 'company'; slug: string }
+  | { name: 'myjobs' }
   | { name: 'notfound' };
 
 function parse(path: string): Route {
   if (path === '/' || path === '') return { name: 'jobs' };
   if (path === '/companies') return { name: 'companies' };
+  if (path === '/my/jobs') return { name: 'myjobs' };
 
   const jobSlug = path.match(/^\/jobs\/(.+)$/)?.[1];
   if (jobSlug) return { name: 'job', slug: decodeURIComponent(jobSlug) };

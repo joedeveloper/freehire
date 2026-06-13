@@ -5,6 +5,7 @@
   import JobView from '$lib/components/JobView.svelte';
   import CompaniesView from '$lib/components/CompaniesView.svelte';
   import CompanyView from '$lib/components/CompanyView.svelte';
+  import MyJobsView from '$lib/components/MyJobsView.svelte';
 
   const route = $derived(router.route);
 
@@ -51,6 +52,8 @@
           <CompaniesView />
         {:else if route.name === 'company'}
           <CompanyView slug={route.slug} />
+        {:else if route.name === 'myjobs'}
+          <MyJobsView />
         {:else}
           <p class="py-12 text-center text-sm text-muted-foreground">Page not found.</p>
         {/if}

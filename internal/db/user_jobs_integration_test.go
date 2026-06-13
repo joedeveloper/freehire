@@ -8,8 +8,10 @@ package db
 
 import (
 	"context"
+	"errors"
 	"testing"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -118,6 +120,169 @@ func TestUserJobs(t *testing.T) {
 		}
 		if !applied.ViewedAt.Time.Equal(viewed.ViewedAt.Time) {
 			t.Errorf("apply changed viewed_at: %v -> %v", viewed.ViewedAt.Time, applied.ViewedAt.Time)
+		}
+	})
+}
+
+func TestUserJobsSaveAndList(t *testing.T) {
+	pool := startPostgres(t)
+	q := New(pool)
+	ctx := context.Background()
+
+	reset := func(t *testing.T) {
+		t.Helper()
+		if _, err := pool.Exec(ctx, "TRUNCATE user_jobs, users, jobs RESTART IDENTITY CASCADE"); err != nil {
+			t.Fatalf("truncate: %v", err)
+		}
+	}
+	countRows := func(t *testing.T) int {
+		t.Helper()
+		var n int
+		if err := pool.QueryRow(ctx, "SELECT count(*) FROM user_jobs").Scan(&n); err != nil {
+			t.Fatalf("count: %v", err)
+		}
+		return n
+	}
+
+	t.Run("SaveJob creates the row without a prior view and is idempotent", func(t *testing.T) {
+		reset(t)
+		uid := insertUser(t, pool, "saver@example.test")
+		jid := insertJob(t, pool, "save-job")
+
+		first, err := q.SaveJob(ctx, SaveJobParams{UserID: uid, JobID: jid})
+		if err != nil {
+			t.Fatalf("first save: %v", err)
+		}
+		if !first.SavedAt.Valid || !first.ViewedAt.Valid || first.AppliedAt.Valid {
+			t.Errorf("first save: saved=%v viewed=%v applied=%v, want saved+viewed, not applied",
+				first.SavedAt.Valid, first.ViewedAt.Valid, first.AppliedAt.Valid)
+		}
+
+		second, err := q.SaveJob(ctx, SaveJobParams{UserID: uid, JobID: jid})
+		if err != nil {
+			t.Fatalf("second save: %v", err)
+		}
+		if n := countRows(t); n != 1 {
+			t.Errorf("rows = %d, want 1 (idempotent)", n)
+		}
+		if second.SavedAt.Time.Before(first.SavedAt.Time) {
+			t.Errorf("second saved_at %v is before first %v", second.SavedAt.Time, first.SavedAt.Time)
+		}
+	})
+
+	t.Run("UnsaveJob clears saved_at but keeps view and apply history", func(t *testing.T) {
+		reset(t)
+		uid := insertUser(t, pool, "unsaver@example.test")
+		jid := insertJob(t, pool, "unsave-job")
+
+		if _, err := q.RecordJobView(ctx, RecordJobViewParams{UserID: uid, JobID: jid}); err != nil {
+			t.Fatalf("view: %v", err)
+		}
+		if _, err := q.MarkJobApplied(ctx, MarkJobAppliedParams{UserID: uid, JobID: jid}); err != nil {
+			t.Fatalf("apply: %v", err)
+		}
+		if _, err := q.SaveJob(ctx, SaveJobParams{UserID: uid, JobID: jid}); err != nil {
+			t.Fatalf("save: %v", err)
+		}
+
+		row, err := q.UnsaveJob(ctx, UnsaveJobParams{UserID: uid, JobID: jid})
+		if err != nil {
+			t.Fatalf("unsave: %v", err)
+		}
+		if row.SavedAt.Valid {
+			t.Error("unsave left saved_at set")
+		}
+		if !row.ViewedAt.Valid || !row.AppliedAt.Valid {
+			t.Errorf("unsave lost history: viewed=%v applied=%v, want both kept", row.ViewedAt.Valid, row.AppliedAt.Valid)
+		}
+		if n := countRows(t); n != 1 {
+			t.Errorf("rows = %d, want 1 (unsave must not delete the row)", n)
+		}
+	})
+
+	t.Run("UnsaveJob without an interaction row reports no rows", func(t *testing.T) {
+		reset(t)
+		uid := insertUser(t, pool, "ghost@example.test")
+		jid := insertJob(t, pool, "ghost-job")
+
+		_, err := q.UnsaveJob(ctx, UnsaveJobParams{UserID: uid, JobID: jid})
+		if !errors.Is(err, pgx.ErrNoRows) {
+			t.Fatalf("unsave without row: err = %v, want pgx.ErrNoRows", err)
+		}
+		if n := countRows(t); n != 0 {
+			t.Errorf("rows = %d, want 0 (unsave must not create a row)", n)
+		}
+	})
+
+	t.Run("ListUserJobs filters, orders by latest activity, and scopes to the user", func(t *testing.T) {
+		reset(t)
+		uid := insertUser(t, pool, "lister@example.test")
+		other := insertUser(t, pool, "other@example.test")
+		viewedJob := insertJob(t, pool, "only-viewed")
+		savedJob := insertJob(t, pool, "viewed-then-saved")
+		appliedJob := insertJob(t, pool, "applied")
+
+		// Interactions in chronological order: view A, view+save B, apply C.
+		// Latest-activity ordering must therefore be C, B, A.
+		if _, err := q.RecordJobView(ctx, RecordJobViewParams{UserID: uid, JobID: viewedJob}); err != nil {
+			t.Fatalf("view A: %v", err)
+		}
+		if _, err := q.SaveJob(ctx, SaveJobParams{UserID: uid, JobID: savedJob}); err != nil {
+			t.Fatalf("save B: %v", err)
+		}
+		if _, err := q.MarkJobApplied(ctx, MarkJobAppliedParams{UserID: uid, JobID: appliedJob}); err != nil {
+			t.Fatalf("apply C: %v", err)
+		}
+		// Another user's row must never leak into the listing.
+		if _, err := q.SaveJob(ctx, SaveJobParams{UserID: other, JobID: viewedJob}); err != nil {
+			t.Fatalf("other save: %v", err)
+		}
+
+		all, err := q.ListUserJobs(ctx, ListUserJobsParams{UserID: uid, Filter: "all", Limit: 10, Offset: 0})
+		if err != nil {
+			t.Fatalf("list all: %v", err)
+		}
+		if len(all) != 3 {
+			t.Fatalf("list all: %d rows, want 3", len(all))
+		}
+		gotOrder := []int64{all[0].Job.ID, all[1].Job.ID, all[2].Job.ID}
+		wantOrder := []int64{appliedJob, savedJob, viewedJob}
+		for i := range wantOrder {
+			if gotOrder[i] != wantOrder[i] {
+				t.Fatalf("list all order = %v, want %v (latest activity first)", gotOrder, wantOrder)
+			}
+		}
+
+		viewed, err := q.ListUserJobs(ctx, ListUserJobsParams{UserID: uid, Filter: "viewed", Limit: 10, Offset: 0})
+		if err != nil {
+			t.Fatalf("list viewed: %v", err)
+		}
+		if len(viewed) != 1 || viewed[0].Job.ID != viewedJob {
+			t.Fatalf("list viewed: got %d rows, want exactly the view-only job (not saved, not applied)", len(viewed))
+		}
+
+		saved, err := q.ListUserJobs(ctx, ListUserJobsParams{UserID: uid, Filter: "saved", Limit: 10, Offset: 0})
+		if err != nil {
+			t.Fatalf("list saved: %v", err)
+		}
+		if len(saved) != 1 || saved[0].Job.ID != savedJob {
+			t.Fatalf("list saved: got %d rows, want exactly the saved job", len(saved))
+		}
+
+		applied, err := q.ListUserJobs(ctx, ListUserJobsParams{UserID: uid, Filter: "applied", Limit: 10, Offset: 0})
+		if err != nil {
+			t.Fatalf("list applied: %v", err)
+		}
+		if len(applied) != 1 || applied[0].Job.ID != appliedJob {
+			t.Fatalf("list applied: got %d rows, want exactly the applied job", len(applied))
+		}
+
+		counts, err := q.CountUserJobs(ctx, uid)
+		if err != nil {
+			t.Fatalf("counts: %v", err)
+		}
+		if counts.All != 3 || counts.Viewed != 1 || counts.Saved != 1 || counts.Applied != 1 {
+			t.Errorf("counts = %+v, want all=3 viewed=1 saved=1 applied=1", counts)
 		}
 	})
 }
