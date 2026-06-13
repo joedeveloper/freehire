@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"golang.org/x/net/html"
 )
 
 // gqlHTTP is a body-aware test HTTPClient for the GraphQL adapters: Gem sends both its
@@ -28,6 +30,10 @@ func (f *gqlHTTP) GetJSON(context.Context, string, any) error {
 
 func (f *gqlHTTP) GetXML(context.Context, string, any) error {
 	return errors.New("gqlHTTP: unexpected GetXML")
+}
+
+func (f *gqlHTTP) GetHTML(context.Context, string) (*html.Node, error) {
+	return nil, errors.New("gqlHTTP: unexpected GetHTML")
 }
 
 func (f *gqlHTTP) PostJSON(_ context.Context, url string, body, v any) error {
