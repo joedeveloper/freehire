@@ -30,16 +30,16 @@ SvelteKit primitives, so each list ships together with its state migration. The
 pure `filtersFromParams`/`filtersToParams` helpers are reused unchanged in
 `load`; only the `FilterStore`/`router` coupling is reworked.
 
-- [ ] 3.1 Port the filter/search URL-sync off `router` onto SvelteKit
+- [x] 3.1 Port the filter/search URL-sync off `router` onto SvelteKit
   (`page.url.searchParams` + `goto`/`replaceState`), preserving the synchronous
   write-state→URL-in-handler pattern (no controlled-input revert).
-- [ ] 3.2 `src/routes/jobs/+page.svelte` + `+page.server.ts`: jobs list (`/jobs`),
+- [x] 3.2 `src/routes/jobs/+page.svelte` + `+page.server.ts`: jobs list (`/jobs`),
   first page server-rendered from the search API (`filtersFromParams(url)` →
   seed the `Paginator`); rows in initial HTML; "load more", filters, sort, and
   reach indicators preserved.
-- [ ] 3.3 `src/routes/companies/+page.svelte` + `load`: companies list
+- [x] 3.3 `src/routes/companies/+page.svelte` + `load`: companies list
   server-rendered, with the debounced name search URL-synced (`?q=`) preserved.
-- [ ] 3.4 `src/routes/+page.svelte` (home `/`): server-render the marketing
+- [x] 3.4 `src/routes/+page.svelte` (home `/`): server-render the marketing
   landing.
 
 ## 4. Layout, auth, theme, my/* surfaces

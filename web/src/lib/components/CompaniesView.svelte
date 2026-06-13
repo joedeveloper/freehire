@@ -1,29 +1,36 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
-  import { listCompanies } from '$lib/api';
+  import { onMount, untrack } from 'svelte';
+  import { page } from '$app/state';
+  import { replaceState } from '$app/navigation';
+  import { api, type Slice } from '$lib/api';
   import { Paginator } from '$lib/paginated.svelte';
-  import { router } from '$lib/router.svelte';
+  import type { CompanyListItem } from '$lib/types';
   import { Badge, Input } from '$lib/ui';
   import States from './States.svelte';
   import LoadMore from './LoadMore.svelte';
   import CompanyLogo from './CompanyLogo.svelte';
 
+  // The first page is server-rendered (route `load`) for the current ?q, so the
+  // rows are in the initial HTML.
+  let { initial }: { initial: Slice<CompanyListItem> } = $props();
+
   // Search lives in the URL (?q=) so it survives reload, sharing, and
   // back/forward — the jobs-list pattern scaled down to a single field (no
-  // FilterStore, which models job-only facets).
-  let q = $state(router.query.get('q') ?? '');
+  // FilterStore, which models job-only facets). Seeded from the current URL.
+  let q = $state(page.url.searchParams.get('q') ?? '');
 
-  const makePaginator = () => new Paginator((limit, offset) => listCompanies(q, limit, offset));
+  const makePaginator = () =>
+    new Paginator<CompanyListItem>((limit, offset) => api.listCompanies(q, limit, offset));
 
-  let companies = $state(makePaginator());
+  const seeded = makePaginator();
+  seeded.seed(untrack(() => initial));
+  let companies = $state.raw(seeded);
+
   let timer: ReturnType<typeof setTimeout>;
 
-  onMount(() => {
-    companies.start();
-    // A debounce timer left running after unmount would start a fetch for a
-    // component that no longer exists.
-    return () => clearTimeout(timer);
-  });
+  // A debounce timer left running after unmount would start a fetch for a
+  // component that no longer exists.
+  onMount(() => () => clearTimeout(timer));
 
   function reload() {
     companies = makePaginator();
@@ -38,7 +45,8 @@
     q = value;
     const params = new URLSearchParams();
     if (q) params.set('q', q);
-    router.setQuery(params);
+    const qs = params.toString();
+    replaceState(page.url.pathname + (qs ? `?${qs}` : ''), {});
     clearTimeout(timer);
     timer = setTimeout(reload, 300);
   }
@@ -47,7 +55,7 @@
   // re-query. No-ops on initial mount (q is seeded from the same URL) and while
   // typing (search() already synced the URL), so it fires only on real navigation.
   $effect(() => {
-    const urlQ = router.query.get('q') ?? '';
+    const urlQ = page.url.searchParams.get('q') ?? '';
     if (urlQ !== q) {
       q = urlQ;
       clearTimeout(timer);
