@@ -40,6 +40,18 @@ func TestEnrichTimesOutOnStalledModel(t *testing.T) {
 	}
 }
 
+// The user prompt must include the job URL: some ATS encode the location (and
+// sometimes the role) in the URL path (e.g. SuccessFactors
+// /job/Limburg-Maschinenfuhrer/<id>/), which the model can read even when the
+// structured location field is empty.
+func TestUserPromptIncludesURL(t *testing.T) {
+	url := "https://jobs.tetrapak.com/job/Limburg-Maschinenfuhrer/883999301/"
+	got := userPrompt(JobInput{Title: "Engineer", Company: "Acme", URL: url, Description: "x"})
+	if !strings.Contains(got, url) {
+		t.Errorf("userPrompt must include the URL (a location signal for slug-based ATS), got:\n%s", got)
+	}
+}
+
 // The system prompt must pin the region (reach) vocabulary it asks the model to
 // use, drawn from the same list Validate enforces, so prompt and validator
 // cannot drift.

@@ -59,6 +59,7 @@ func (s *dbStore) Job(ctx context.Context, id int64) (enrich.JobInput, error) {
 		Location:    j.Location,
 		Remote:      j.Remote,
 		Description: j.Description,
+		URL:         j.URL,
 	}, nil
 }
 

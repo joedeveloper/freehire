@@ -17,6 +17,10 @@ type JobInput struct {
 	Location    string
 	Remote      bool
 	Description string
+	// URL is the public posting URL. Some ATS encode the location (and sometimes
+	// the role) in the URL path — e.g. SuccessFactors /job/Limburg-Maschinenfuhrer/
+	// — so it is a location signal even when the structured Location is empty.
+	URL string
 }
 
 // Provider derives a structured Enrichment for a job by calling an LLM.

@@ -121,6 +121,8 @@ func buildSystemPrompt() string {
 	b.WriteString("use 'global' ONLY when the posting explicitly says the role is open worldwide / ")
 	b.WriteString("anywhere / from any country; otherwise list the region(s) or country code(s) ")
 	b.WriteString("the role covers, from the allowed values. Omit when unstated (unknown is not global).\n")
+	b.WriteString("\nIf the Location field is empty, the URL path may still encode the location ")
+	b.WriteString("(e.g. a city as the first slug segment); read it as a location signal.\n")
 	return b.String()
 }
 
@@ -129,6 +131,9 @@ func userPrompt(job JobInput) string {
 	fmt.Fprintf(&b, "Title: %s\n", job.Title)
 	fmt.Fprintf(&b, "Company: %s\n", job.Company)
 	fmt.Fprintf(&b, "Location: %s\n", job.Location)
+	// The URL path can encode the location/role on some ATS even when the Location
+	// field is empty (e.g. SuccessFactors /job/<City>-<Title>/<id>/).
+	fmt.Fprintf(&b, "URL: %s\n", job.URL)
 	// Source-provided remote hint (from the ATS API or the location text) — a
 	// prior for the model, not a guarantee of scope.
 	fmt.Fprintf(&b, "Remote flag: %t\n", job.Remote)
