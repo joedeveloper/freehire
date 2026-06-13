@@ -1,0 +1,7 @@
+# successfactors boards. Provider is the filename; each entry is company + board.
+# board = the SAP SuccessFactors career-site host (see internal/sources/successfactors.go);
+# the adapter reads https://<board>/job_sitemap.xml.
+# Each board validated live (>0 jobs in its sitemap) before adding.
+
+- company: Tetra Pak
+  board: jobs.tetrapak.com

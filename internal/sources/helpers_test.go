@@ -4,6 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"encoding/xml"
+	"strings"
+
+	"golang.org/x/net/html"
 )
 
 // fakeHTTP is a test HTTPClient: it records the requested URL and decodes a canned
@@ -37,4 +40,12 @@ func (f *fakeHTTP) PostJSON(_ context.Context, url string, _, v any) error {
 		return f.err
 	}
 	return json.Unmarshal([]byte(f.body), v)
+}
+
+func (f *fakeHTTP) GetHTML(_ context.Context, url string) (*html.Node, error) {
+	f.gotURL = url
+	if f.err != nil {
+		return nil, f.err
+	}
+	return html.Parse(strings.NewReader(f.body))
 }

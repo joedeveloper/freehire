@@ -57,6 +57,7 @@ func All(c HTTPClient) map[string]Source {
 		NewWorkday(c),
 		NewHuntflow(c),
 		NewGem(c),
+		NewSuccessFactors(c),
 	)
 }
 

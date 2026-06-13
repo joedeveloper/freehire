@@ -8,6 +8,8 @@ import (
 	"strings"
 	"sync"
 	"testing"
+
+	"golang.org/x/net/html"
 )
 
 // routedHTTP is a test HTTPClient that returns a different canned body per URL,
@@ -34,6 +36,18 @@ func (r *routedHTTP) GetXML(_ context.Context, url string, v any) error {
 
 func (r *routedHTTP) PostJSON(_ context.Context, url string, _, v any) error {
 	return r.decode(url, json.Unmarshal, v)
+}
+
+func (r *routedHTTP) GetHTML(_ context.Context, url string) (*html.Node, error) {
+	r.mu.Lock()
+	r.calls++
+	r.mu.Unlock()
+	for _, rt := range r.routes {
+		if strings.Contains(url, rt.match) {
+			return html.Parse(strings.NewReader(rt.body))
+		}
+	}
+	return nil, fmt.Errorf("routedHTTP: no route for %s", url)
 }
 
 func (r *routedHTTP) decode(url string, unmarshal func([]byte, any) error, v any) error {

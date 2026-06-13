@@ -11,6 +11,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"golang.org/x/net/html"
 )
 
 // HTTPClient is the narrow transport an adapter needs: fetch a URL and decode its
@@ -21,6 +23,9 @@ type HTTPClient interface {
 	GetJSON(ctx context.Context, url string, v any) error
 	GetXML(ctx context.Context, url string, v any) error
 	PostJSON(ctx context.Context, url string, body, v any) error
+	// GetHTML fetches url and returns its parsed HTML tree, for adapters whose detail is
+	// server-rendered HTML rather than a structured body (e.g. SuccessFactors).
+	GetHTML(ctx context.Context, url string) (*html.Node, error)
 }
 
 // Client is the real HTTPClient: a timeout-bounded GET with a project User-Agent and
@@ -56,6 +61,20 @@ func (c *Client) GetXML(ctx context.Context, url string, v any) error {
 	return c.do(ctx, http.MethodGet, url, nil, "application/xml", func(r io.Reader) error {
 		return xml.NewDecoder(r).Decode(v)
 	})
+}
+
+// GetHTML fetches url and returns its parsed HTML tree.
+func (c *Client) GetHTML(ctx context.Context, url string) (*html.Node, error) {
+	var node *html.Node
+	err := c.do(ctx, http.MethodGet, url, nil, "text/html", func(r io.Reader) error {
+		n, err := html.Parse(r)
+		if err != nil {
+			return err
+		}
+		node = n
+		return nil
+	})
+	return node, err
 }
 
 // PostJSON marshals body to JSON, POSTs it to url, and decodes the JSON response into
