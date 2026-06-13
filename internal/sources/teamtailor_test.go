@@ -234,6 +234,23 @@ func TestTeamtailorRemoteFromLocationType(t *testing.T) {
 	}
 }
 
+func TestTeamtailorRemoteIgnoresTitle(t *testing.T) {
+	jobURL := "https://b/jobs/9-remote-sensing-engineer"
+	// jobLocationType empty + "Remote" only in the title must NOT flag remote: jobLocationType
+	// is the authoritative signal, isRemote(location) the fallback — never the title.
+	d := ttDetailHTML("Remote Sensing Engineer", "&lt;p&gt;x&lt;/p&gt;", "2026-06-08T00:00:00+02:00", "Berlin", "DE", "")
+	fake := (&routedHTTP{}).
+		route("page=1", ttListingHTML(jobURL)).route("page=2", ttListingHTML()).
+		route("/jobs/9", d)
+	jobs, err := NewTeamtailor(fake).Fetch(context.Background(), CompanyEntry{Board: "b"})
+	if err != nil {
+		t.Fatalf("Fetch: %v", err)
+	}
+	if len(jobs) != 1 || jobs[0].Remote {
+		t.Fatalf("title-only 'Remote' must not flag remote, got %+v", jobs)
+	}
+}
+
 func TestTeamtailorFailedDetailDropsOnlyThatPosting(t *testing.T) {
 	d := ttDetailHTML("Kept", "&lt;p&gt;x&lt;/p&gt;", "2026-06-08T00:00:00+02:00", "Paris", "FR", "")
 	// No route for /jobs/222 → GetHTML errors → that posting drops.

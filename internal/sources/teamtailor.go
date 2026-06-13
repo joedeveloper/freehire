@@ -103,8 +103,10 @@ func (t teamtailor) detail(ctx context.Context, e CompanyEntry, jobURL string) (
 		Company:     e.Company,
 		Location:    location,
 		Description: sanitizeHTML(html.UnescapeString(p.Description)),
-		Remote:      p.JobLocationType == "TELECOMMUTE" || isRemote(joinNonEmpty(location, p.Title)),
-		PostedAt:    parseRFC3339(p.DatePosted),
+		// jobLocationType is the authoritative remote signal; isRemote(location) is only a
+		// fallback (never the title, which false-positives on "Remote …" role names).
+		Remote:   p.JobLocationType == "TELECOMMUTE" || isRemote(location),
+		PostedAt: parseRFC3339(p.DatePosted),
 	}, true
 }
 
