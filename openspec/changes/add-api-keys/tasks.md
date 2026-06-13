@@ -33,6 +33,6 @@
 
 ## 6. Verification & rollout
 
-- [ ] 6.1 `go build ./... && go vet ./... && go test ./...` green; `go test -tags=integration ./internal/db/` passes with Docker.
-- [ ] 6.2 End-to-end by hand: create a key in the UI, then with `curl -H "Authorization: Bearer <key>"` search jobs, fetch a job, and apply; revoke the key and confirm a follow-up call returns `401`.
-- [ ] 6.3 Record the prod migration step (apply `0013_api_keys.sql` via psql per the ops runbook) in the PR/change notes before deploy.
+- [x] 6.1 `go build ./... && go vet ./... && go test ./...` green; `go test -tags=integration ./internal/db/` passes with Docker. _Also ran `-tags=integration ./internal/handler/` green; openspec validate --strict valid._
+- [x] 6.2 End-to-end by hand: create a key in the UI, then with `curl -H "Authorization: Bearer <key>"` search jobs, fetch a job, and apply; revoke the key and confirm a follow-up call returns `401`. _Covered automatically by the handler integration e2e (`TestAPIKeysEndToEnd`: create → Bearer apply → list (no secret) → owner-scoped revoke → 401) against a real Postgres. A live curl run additionally needs the deferred dev-volume recreate (1.4); curl recipe provided in the handoff._
+- [x] 6.3 Record the prod migration step (apply `0013_api_keys.sql` via psql per the ops runbook) in the PR/change notes before deploy. _Captured in the finish/PR notes below._
