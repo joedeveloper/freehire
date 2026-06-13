@@ -199,6 +199,20 @@ export function unsaveJob(slug: string): Promise<UserJob> {
   return jobInteraction(slug, 'save', 'DELETE');
 }
 
+/** Set a job's application stage and/or notes (partial update — omit a field to
+ *  leave it unchanged). Returns the updated interaction. */
+export async function trackJob(
+  slug: string,
+  patch: { stage?: string; notes?: string },
+): Promise<UserJob> {
+  const res = await request<{ data: UserJob }>(`/api/v1/jobs/${slug}/track`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(patch),
+  });
+  return res.data;
+}
+
 export type MyJobsFilter = 'all' | 'viewed' | 'saved' | 'applied';
 
 /** The current user's job interactions, newest activity first. Alongside the
