@@ -3,9 +3,9 @@
 - [x] 1.1 Add SvelteKit + `adapter-node` to `web/` (deps, `svelte.config.js`,
   `vite.config.ts`, `app.html`, `src/app.d.ts`); keep `app.css`, `lib/`
   components, `types.ts`. `svelte-check` passes on the empty skeleton.
-- [ ] 1.2 Refactor `lib/api.ts` to accept an injected `fetch` so the same client
+- [x] 1.2 Refactor `lib/api.ts` to accept an injected `fetch` so the same client
   works in server `load` and in the browser; keep the existing function shapes.
-- [ ] 1.3 Wire the dev server to proxy `/api` (and `/health`) to the Go backend
+- [x] 1.3 Wire the dev server to proxy `/api` (and `/health`) to the Go backend
   so dev stays same-origin (replaces the Vite proxy); a dev request to `/api/v1/jobs`
   reaches the backend.
 

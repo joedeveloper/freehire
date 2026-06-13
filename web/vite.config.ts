@@ -12,9 +12,14 @@ export default defineConfig({
     // Proxy the API so the browser (and server-side `load` via event.fetch) only
     // ever talks to this origin. That makes dev match the same-origin production
     // deployment, so the SameSite=Lax auth cookie is sent and no CORS is needed.
-    // Target overridable via VITE_API_URL.
+    // Target overridable via VITE_API_URL. /health is proxied too, mirroring the
+    // prod nginx config (design D2) so dev and prod route identically.
     proxy: {
       '/api': {
+        target: process.env.VITE_API_URL ?? 'http://localhost:8080',
+        changeOrigin: true,
+      },
+      '/health': {
         target: process.env.VITE_API_URL ?? 'http://localhost:8080',
         changeOrigin: true,
       },
