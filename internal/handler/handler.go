@@ -115,13 +115,15 @@ func Register(app *fiber.App, pool *pgxpool.Pool, frontendOrigin, jwtSecret stri
 	api.Get("/me/api-keys", auth.RequireAuth(h.issuer), h.ListAPIKeys)
 	api.Delete("/me/api-keys/:id", auth.RequireAuth(h.issuer), h.RevokeAPIKey)
 
-	// Auth: register/login/logout are public (logout just clears the cookie);
-	// me is guarded by the auth-cookie check.
+	// Auth: register/login/logout are public (logout just clears the cookie).
+	// me is guarded and accepts a session cookie OR an API key, so a non-browser
+	// client (e.g. the CLI) can resolve its own identity with its key. It stays a
+	// read of the caller's own user — not key management, which is cookie-only.
 	authGroup := api.Group("/auth")
 	authGroup.Post("/register", h.Register)
 	authGroup.Post("/login", h.Login)
 	authGroup.Post("/logout", h.Logout)
-	authGroup.Get("/me", auth.RequireAuth(h.issuer), h.Me)
+	authGroup.Get("/me", auth.RequireAuthOrKey(h.issuer, h.queries), h.Me)
 
 	// OAuth sign-in: provider listing plus the authorization-code start and
 	// callback redirects. All public; the callback sets the session cookie.

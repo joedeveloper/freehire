@@ -106,16 +106,23 @@ cookie. It is public and idempotent.
 ### Requirement: Current user endpoint
 
 The system SHALL expose `GET /api/v1/auth/me` that returns the authenticated
-user's profile and is only reachable with a valid session cookie.
+user's profile. It is reachable with a valid session cookie OR an API key, so a
+non-browser client (e.g. the CLI) can resolve its own identity; it is a read of
+the caller's own user, not key management (which stays cookie-only).
 
-#### Scenario: Authenticated request
+#### Scenario: Authenticated by session cookie
 
-- **WHEN** an authenticated client calls `GET /api/v1/auth/me`
+- **WHEN** an authenticated client calls `GET /api/v1/auth/me` with a valid session cookie
 - **THEN** the system responds `200` with the user (id, email, created_at) and never includes the password hash
+
+#### Scenario: Authenticated by API key
+
+- **WHEN** a client calls `GET /api/v1/auth/me` with a valid `Authorization: Bearer <key>` and no cookie
+- **THEN** the system responds `200` with the key owner's user (id, email, created_at)
 
 #### Scenario: Unauthenticated request
 
-- **WHEN** a client calls `GET /api/v1/auth/me` without a valid session cookie
+- **WHEN** a client calls `GET /api/v1/auth/me` with neither a valid session cookie nor a valid API key
 - **THEN** the system responds `401`
 
 ### Requirement: Web client authentication
