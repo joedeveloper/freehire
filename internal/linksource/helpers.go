@@ -73,16 +73,30 @@ func parseDate(s string) *time.Time {
 	return &t
 }
 
-// parseRFC3339 parses an RFC3339 timestamp (as RemoteYeah's datePosted emits), in UTC,
-// returning nil for an empty or unparseable value.
+// parseRFC3339 parses an RFC3339 timestamp in UTC, returning nil for an empty or
+// unparseable value. RFC3339Nano accepts both fractional (Ashby's publishedAt) and plain
+// (RemoteYeah's datePosted) second forms.
 func parseRFC3339(s string) *time.Time {
 	if s == "" {
 		return nil
 	}
-	t, err := time.Parse(time.RFC3339, s)
+	t, err := time.Parse(time.RFC3339Nano, s)
 	if err != nil {
 		return nil
 	}
 	t = t.UTC()
 	return &t
+}
+
+// humanizeBoard turns an ATS board slug into a display company name ("ruby-labs" → "Ruby
+// Labs"), used when the platform's API carries no company name. Its slug matches a curated
+// sources.yml company name's slug for the common case, so the companies table aligns.
+func humanizeBoard(slug string) string {
+	words := strings.FieldsFunc(slug, func(r rune) bool { return r == '-' || r == '_' })
+	for i, w := range words {
+		if w != "" {
+			words[i] = strings.ToUpper(w[:1]) + w[1:]
+		}
+	}
+	return strings.Join(words, " ")
 }

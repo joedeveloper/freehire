@@ -18,6 +18,8 @@ func TestFindMatchesAdapterByLinkHost(t *testing.T) {
 		{"https://geekjob.ru/vacancy/6a1ebb8520ad023342091661", "geekjob"},
 		{"https://job-boards.greenhouse.io/alpaca/jobs/5745893004", "greenhouse"},
 		{"https://boards.eu.greenhouse.io/acme/jobs/123", "greenhouse"},
+		{"https://jobs.ashbyhq.com/ruby-labs/62661b07-ac6b-4283-ae38-6c3255c47bd4", "ashby"},
+		{"https://jobs.ashbyhq.com/ruby-labs", ""},      // board page, not a /<board>/<id> link
 		{"https://job-boards.greenhouse.io/alpaca", ""}, // board page, not a /jobs/<id> link
 		{"https://geekjob.ru/", ""},                     // homepage, not a /vacancy/<id> link
 		{"https://remoteyeah.com/", ""},                 // homepage, not a /jobs/<slug> link

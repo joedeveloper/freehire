@@ -45,6 +45,7 @@ func All(c Client) []LinkSource {
 		NewRemoteYeah(c),
 		NewGeekjob(c),
 		NewGreenhouse(c),
+		NewAshby(c),
 	}
 }
 
