@@ -1,8 +1,15 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import { Sun, Moon } from '@lucide/svelte';
   import { themeStore } from '$lib/theme.svelte';
 
-  const isDark = $derived(themeStore.isDark);
+  // The server can't know the persisted theme (it lives in localStorage), so
+  // render the light icon until mounted to match SSR exactly, then reflect the
+  // real state. The page colours themselves are already correct pre-paint via
+  // the no-FOUC inline script in app.html.
+  let mounted = $state(false);
+  onMount(() => (mounted = true));
+  const isDark = $derived(mounted && themeStore.isDark);
 </script>
 
 <button

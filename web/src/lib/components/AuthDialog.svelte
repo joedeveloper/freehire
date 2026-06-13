@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { authStore } from '$lib/auth.svelte';
+  import { login, register } from '$lib/auth.svelte';
   import { ApiError, oauthProviders } from '$lib/api';
   import { Button } from '$lib/ui';
   import ProviderIcon from './ProviderIcon.svelte';
@@ -52,7 +52,7 @@
     error = null;
     submitting = true;
     try {
-      await authStore[mode](email, password);
+      await (mode === 'login' ? login : register)(email, password);
       onClose();
     } catch (err) {
       error = messageFor(err);

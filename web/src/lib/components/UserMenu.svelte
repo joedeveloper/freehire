@@ -1,12 +1,12 @@
 <script lang="ts">
-  import { authStore } from '$lib/auth.svelte';
+  import { currentUser, logout as doLogout } from '$lib/auth.svelte';
 
   // The dropdown closes on outside click (window listener checks containment),
   // on Escape, and after the menu action itself.
   let open = $state(false);
   let root = $state<HTMLElement | null>(null);
 
-  const email = $derived(authStore.user?.email ?? '');
+  const email = $derived(currentUser()?.email ?? '');
   const initial = $derived(email.charAt(0).toUpperCase());
 
   function onWindowClick(e: MouseEvent) {
@@ -15,7 +15,7 @@
 
   function logout() {
     open = false;
-    void authStore.logout();
+    void doLogout();
   }
 </script>
 

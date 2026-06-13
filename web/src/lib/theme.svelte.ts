@@ -1,21 +1,28 @@
 // Theme controller. Three modes — explicit `light` / `dark`, or `system` which
 // tracks the OS preference. Persisted in localStorage under `hire.theme`.
-// `main.ts` calls `initTheme()` once at boot; components read `themeStore` and
-// call `setMode(...)`.
+// The root layout calls `initTheme()` on mount; components read `themeStore` and
+// call `setMode(...)`. SSR-safe: every browser API is guarded by `browser`, so
+// importing this module on the server (via TopBar → ThemeToggle) never touches
+// window/localStorage. A no-FOUC inline script in app.html applies the class
+// before paint (see task 4.2).
+
+import { browser } from '$app/environment';
 
 const STORAGE_KEY = 'hire.theme';
 
 export type ThemeMode = 'light' | 'dark' | 'system';
 
-const mq = window.matchMedia('(prefers-color-scheme: dark)');
+const mq = browser ? window.matchMedia('(prefers-color-scheme: dark)') : null;
 
 function readStored(): ThemeMode {
+  if (!browser) return 'system';
   const raw = localStorage.getItem(STORAGE_KEY);
   if (raw === 'light' || raw === 'dark' || raw === 'system') return raw;
   return 'system';
 }
 
 function apply(mode: ThemeMode) {
+  if (!browser || !mq) return;
   const dark = mode === 'dark' || (mode === 'system' && mq.matches);
   document.documentElement.classList.toggle('dark', dark);
 }
@@ -23,17 +30,19 @@ function apply(mode: ThemeMode) {
 class ThemeStore {
   mode = $state<ThemeMode>(readStored());
   /** Live OS `prefers-color-scheme: dark` state, kept current by `initTheme`. */
-  systemDark = $state(mq.matches);
+  systemDark = $state(mq ? mq.matches : false);
 
   /** Effective dark state — explicit `dark`, or `system` resolving to the OS. */
   isDark = $derived(this.mode === 'dark' || (this.mode === 'system' && this.systemDark));
 
   setMode(next: ThemeMode) {
     this.mode = next;
-    try {
-      localStorage.setItem(STORAGE_KEY, next);
-    } catch {
-      // best-effort: private mode / quota
+    if (browser) {
+      try {
+        localStorage.setItem(STORAGE_KEY, next);
+      } catch {
+        // best-effort: private mode / quota
+      }
     }
     apply(next);
   }
@@ -47,8 +56,14 @@ class ThemeStore {
 
 export const themeStore = new ThemeStore();
 
-/** Apply the stored theme and keep `system` mode tracking the OS preference. */
+/** Apply the stored theme and keep `system` mode tracking the OS preference.
+ *  Browser-only (called from the layout's onMount). */
 export function initTheme() {
+  if (!browser || !mq) return;
+  // Re-sync from storage in case the singleton was first constructed on the
+  // server (mode defaulted to 'system' there).
+  themeStore.mode = readStored();
+  themeStore.systemDark = mq.matches;
   apply(themeStore.mode);
   const onChange = () => {
     themeStore.systemDark = mq.matches;

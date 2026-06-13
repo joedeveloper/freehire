@@ -1,47 +1,54 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
-  import { searchJobs } from '$lib/api';
+  import { onMount, untrack } from 'svelte';
+  import { page } from '$app/state';
+  import { api, type Slice } from '$lib/api';
   import { Paginator } from '$lib/paginated.svelte';
   import { FilterStore, filtersToParams, type SortField } from '$lib/filters.svelte';
-  import { router } from '$lib/router.svelte';
+  import type { Job } from '$lib/types';
   import { Input } from '$lib/ui';
   import FiltersPanel from './FiltersPanel.svelte';
   import States from './States.svelte';
   import JobRow from './JobRow.svelte';
   import LoadMore from './LoadMore.svelte';
 
-  // Filters live in the URL; the whole page is now driven by the search endpoint
-  // (an empty query with no facets just browses everything). Results share the
-  // Job wire shape, so JobRow renders them unchanged.
-  const filters = new FilterStore();
+  // The first page is server-rendered (route `load`) and arrives as `initial`,
+  // so the rows are in the initial HTML. Filters live in the URL; the list is
+  // driven by the search endpoint (an empty query browses everything).
+  let { initial }: { initial: Slice<Job> } = $props();
+
+  // Seed filters from the current URL so the server and the hydrated client
+  // render the same filtered view.
+  const filters = new FilterStore(page.url.searchParams);
 
   const makePaginator = () =>
-    new Paginator((limit, offset) => searchJobs(filtersToParams(filters.value), limit, offset));
+    new Paginator<Job>((limit, offset) => api.searchJobs(filtersToParams(filters.value), limit, offset));
 
-  let jobs = $state(makePaginator());
+  // Seeded with the server-rendered first page (an intentional one-time snapshot
+  // of the initial prop); "load more" and filter changes fetch client-side.
+  const seeded = makePaginator();
+  seeded.seed(untrack(() => initial));
+  let jobs = $state.raw(seeded);
+
   let drawerOpen = $state(false);
   let started = false;
   let timer: ReturnType<typeof setTimeout>;
 
-  onMount(() => {
-    jobs.start();
-    // Cleanup: a debounce timer left running after unmount would start a fetch
-    // for a component that no longer exists.
-    return () => clearTimeout(timer);
-  });
-
-  // Browser back/forward changes the URL query — pull it back into the filters.
-  $effect(() => {
-    router.search; // track
-    filters.syncFromUrl();
-  });
+  // Cleanup: a debounce timer left running after unmount would start a fetch for
+  // a component that no longer exists.
+  onMount(() => () => clearTimeout(timer));
 
   // House select styling, mirrored from ApiKeysView.
   const sortClass =
     'h-9 shrink-0 rounded-lg border border-input bg-transparent px-3 text-sm transition-colors focus-visible:border-ring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 dark:bg-input/30';
 
-  // Re-run the search when any filter changes, debounced. The first effect run is
-  // the initial mount, already loaded by onMount, so skip it.
+  // Browser back/forward changes the URL query — pull it back into the filters.
+  $effect(() => {
+    page.url.search; // track
+    filters.syncFromUrl();
+  });
+
+  // Re-run the search when any filter changes, debounced. The first effect run
+  // is the initial mount, already server-rendered/seeded, so skip it.
   $effect(() => {
     filtersToParams(filters.value).toString(); // track every filter field
     if (!started) {

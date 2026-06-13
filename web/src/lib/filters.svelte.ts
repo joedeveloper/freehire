@@ -4,7 +4,8 @@
 // (GET /api/v1/jobs/search) expects, including the `<param>_exclude` and
 // `<param>_mode=and` conventions.
 
-import { router } from './router.svelte';
+import { page } from '$app/state';
+import { replaceState } from '$app/navigation';
 import { FACETS } from './facets';
 
 /** One facet's selection: the chosen values, whether it filters by inclusion or
@@ -103,8 +104,10 @@ export function activeFilterCount(f: JobFilters): number {
 export class FilterStore {
   value = $state<JobFilters>(emptyFilters());
 
-  constructor() {
-    this.value = filtersFromParams(router.query);
+  /** Seed from the current URL params (passed by the view from `page.url`), so
+   *  the same filters render on the server and hydrate on the client. */
+  constructor(initial?: URLSearchParams) {
+    this.value = filtersFromParams(initial ?? new URLSearchParams());
   }
 
   get active(): number {
@@ -175,11 +178,13 @@ export class FilterStore {
     this.#commit();
   }
 
-  /** Re-read filters from the URL (browser back/forward). No-op when already in
-   *  sync, which also breaks the write-back loop after our own setQuery. */
+  /** Re-read filters from the current URL (browser back/forward). No-op when
+   *  already in sync, which also breaks the write-back loop after our own
+   *  setQuery. */
   syncFromUrl() {
-    if (router.query.toString() === filtersToParams(this.value).toString()) return;
-    this.value = filtersFromParams(router.query);
+    const current = page.url.searchParams;
+    if (current.toString() === filtersToParams(this.value).toString()) return;
+    this.value = filtersFromParams(current);
   }
 
   #setFacet(param: string, st: FacetState) {
@@ -187,7 +192,13 @@ export class FilterStore {
     this.#commit();
   }
 
+  /** Mirror the current filters into the URL in place — `replaceState` updates
+   *  the address bar and history without re-running `load`, so toggling a facet
+   *  doesn't round-trip to the server; the view re-searches reactively. Called
+   *  synchronously from each mutation (never a separate effect) so a controlled
+   *  input never reverts mid-keystroke. Browser-only (mutations are user events). */
   #commit() {
-    router.setQuery(filtersToParams(this.value));
+    const qs = filtersToParams(this.value).toString();
+    replaceState(page.url.pathname + (qs ? `?${qs}` : ''), {});
   }
 }

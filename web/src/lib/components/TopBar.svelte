@@ -1,18 +1,24 @@
 <script lang="ts">
-  import { router } from '$lib/router.svelte';
-  import { authStore } from '$lib/auth.svelte';
+  import { onMount } from 'svelte';
+  import { page } from '$app/state';
+  import { replaceState } from '$app/navigation';
+  import { isAuthenticated } from '$lib/auth.svelte';
   import { cn } from '$lib/utils';
   import { Button } from '$lib/ui';
   import ThemeToggle from './ThemeToggle.svelte';
   import AuthDialog from './AuthDialog.svelte';
   import UserMenu from './UserMenu.svelte';
 
-  const name = $derived(router.route.name);
+  const path = $derived(page.url.pathname);
 
   const links = [
-    { href: '/jobs', label: 'Jobs', match: ['jobs', 'job'] },
-    { href: '/companies', label: 'Companies', match: ['companies', 'company'] },
+    { href: '/jobs', label: 'Jobs' },
+    { href: '/companies', label: 'Companies' },
   ];
+
+  // A link is active for its own path and any sub-route (e.g. /jobs and
+  // /jobs/:slug). Order-independent: /companies never matches /jobs.
+  const isActive = (href: string) => path === href || path.startsWith(`${href}/`);
 
   // The auth dialog lives at the layout level and always opens in sign-in
   // mode (its own footer toggle switches to register). Open state is separate
@@ -29,12 +35,16 @@
     dialogOpen = true;
   }
 
-  if (new URLSearchParams(window.location.search).has('auth_error')) {
-    dialogError = 'Sign-in failed. Please try again.';
-    dialogMode = 'login';
-    dialogOpen = true;
-    window.history.replaceState(window.history.state, '', window.location.pathname);
-  }
+  // Surface a failed OAuth callback (?auth_error) once on the client, then clean
+  // the URL. In onMount so it never runs during SSR.
+  onMount(() => {
+    if (page.url.searchParams.has('auth_error')) {
+      dialogError = 'Sign-in failed. Please try again.';
+      dialogMode = 'login';
+      dialogOpen = true;
+      replaceState(page.url.pathname, {});
+    }
+  });
 </script>
 
 <header class="border-b border-border">
@@ -47,7 +57,7 @@
           href={link.href}
           class={cn(
             'transition-colors hover:text-foreground',
-            link.match.includes(name) ? 'text-foreground' : 'text-muted-foreground',
+            isActive(link.href) ? 'text-foreground' : 'text-muted-foreground',
           )}
         >
           {link.label}
@@ -56,7 +66,7 @@
     </nav>
 
     <div class="ml-auto flex items-center gap-3">
-      {#if authStore.isAuthenticated}
+      {#if isAuthenticated()}
         <UserMenu />
       {:else}
         <Button variant="primary" size="sm" onclick={openDialog}>Sign in</Button>

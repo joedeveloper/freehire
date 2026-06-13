@@ -1,6 +1,7 @@
 <script lang="ts">
+  import { page } from '$app/state';
   import { createApiKey, listApiKeys, revokeApiKey } from '$lib/api';
-  import { authStore } from '$lib/auth.svelte';
+  import { isAuthenticated } from '$lib/auth.svelte';
   import type { ApiKey, CreatedApiKey } from '$lib/types';
   import { Button, Input } from '$lib/ui';
   import { timeAgo } from '$lib/utils';
@@ -28,7 +29,7 @@
 
   const curlExample = $derived(
     revealed
-      ? `curl -H "Authorization: Bearer ${revealed.token}" \\\n  ${window.location.origin}/api/v1/jobs/search?q=golang`
+      ? `curl -H "Authorization: Bearer ${revealed.token}" \\\n  ${page.url.origin}/api/v1/jobs/search?q=golang`
       : '',
   );
 
@@ -45,7 +46,7 @@
   // Load once the session is confirmed (the boot-time /me resolution may still be
   // in flight when the page is opened directly), mirroring MyJobsView.
   $effect(() => {
-    if (authStore.isAuthenticated) void load();
+    if (isAuthenticated()) void load();
   });
 
   async function submit(e: SubmitEvent) {
@@ -97,7 +98,7 @@
     'h-9 rounded-lg border border-input bg-transparent px-3 text-sm transition-colors focus-visible:border-ring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 dark:bg-input/30';
 </script>
 
-{#if !authStore.isAuthenticated}
+{#if !isAuthenticated()}
   <p class="py-12 text-center text-sm text-muted-foreground">
     Sign in to create and manage API keys.
   </p>

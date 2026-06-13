@@ -1,44 +1,42 @@
 // Auth controller. The session lives in an httpOnly cookie the browser manages,
-// so this store holds no token — only the current user. `main.ts` calls
-// `initAuth()` once at boot to resolve the cookie via /me; components read
-// `authStore` and call login/register/logout.
+// so there is no token here. The current user is resolved server-side in the
+// root layout load and exposed via `page.data.user` (SSR-safe, per-request — a
+// module-level `$state` singleton would leak one request's user into another's
+// SSR). Reads go through `currentUser()`/`isAuthenticated()`; the mutations call
+// the API and then `invalidateAll()` so the layout re-resolves the user and the
+// UI updates.
 
+import { invalidateAll } from '$app/navigation';
+import { page } from '$app/state';
 import * as api from '$lib/api';
 import type { User } from '$lib/types';
 
-class AuthStore {
-  user = $state<User | null>(null);
-
-  /** True once the session cookie has been confirmed by loading its user. */
-  isAuthenticated = $derived(this.user !== null);
-
-  async login(email: string, password: string) {
-    this.user = await api.login(email, password);
-  }
-
-  async register(email: string, password: string) {
-    this.user = await api.register(email, password);
-  }
-
-  async logout() {
-    // Best-effort: drop local session state even if the network call fails.
-    try {
-      await api.logout();
-    } catch {
-      // ignore
-    }
-    this.user = null;
-  }
+/** The current signed-in user, or null. Reactive: reads `page.data.user`. */
+export function currentUser(): User | null {
+  return page.data.user ?? null;
 }
 
-export const authStore = new AuthStore();
+/** True once a session is resolved. Reactive (reads `page.data.user`). */
+export function isAuthenticated(): boolean {
+  return currentUser() !== null;
+}
 
-/** Resolve the session cookie on boot via /me. No cookie (or a rejected one)
- *  just leaves the user signed out. Safe to call without awaiting. */
-export async function initAuth() {
+export async function login(email: string, password: string) {
+  await api.login(email, password);
+  await invalidateAll();
+}
+
+export async function register(email: string, password: string) {
+  await api.register(email, password);
+  await invalidateAll();
+}
+
+export async function logout() {
+  // Best-effort: still re-resolve (to signed-out) even if the network call fails.
   try {
-    authStore.user = await api.me();
+    await api.logout();
   } catch {
-    authStore.user = null;
+    // ignore
   }
+  await invalidateAll();
 }
