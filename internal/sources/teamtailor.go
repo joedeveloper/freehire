@@ -2,11 +2,9 @@ package sources
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/url"
 	"regexp"
-	"strings"
 
 	"golang.org/x/net/html"
 )
@@ -124,7 +122,6 @@ func ttJobID(u string) string {
 // ttPosting is the schema.org JobPosting decoded from a Teamtailor job page's
 // application/ld+json block.
 type ttPosting struct {
-	Type            string    `json:"@type"`
 	Title           string    `json:"title"`
 	Description     string    `json:"description"`
 	DatePosted      string    `json:"datePosted"`
@@ -170,24 +167,8 @@ func ttJobLinks(base *url.URL, root *html.Node) []string {
 }
 
 // ttJobPosting decodes the first application/ld+json JobPosting on the page, returning
-// ok=false when no such block is present (or none decodes to a JobPosting).
+// ok=false when no such block is present.
 func ttJobPosting(root *html.Node) (ttPosting, bool) {
-	var found ttPosting
-	var ok bool
-	walk(root, func(n *html.Node) bool {
-		if ok {
-			return false
-		}
-		if n.Type == html.ElementNode && n.Data == "script" &&
-			attr(n, "type") == "application/ld+json" {
-			var p ttPosting
-			if err := json.Unmarshal([]byte(textContent(n)), &p); err == nil &&
-				strings.EqualFold(p.Type, "JobPosting") {
-				found, ok = p, true
-				return false
-			}
-		}
-		return true
-	})
-	return found, ok
+	var p ttPosting
+	return p, ldJobPosting(root, &p)
 }

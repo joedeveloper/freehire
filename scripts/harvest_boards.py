@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Harvest greenhouse/lever/ashby board slugs from public job aggregators.
+"""Harvest ATS board slugs from public job aggregators (every provider in VALIDATORS).
 
 Pipeline: collect candidate (provider, slug, company) tuples from a set of
 aggregator JSON files on GitHub (and, optionally, GitHub code search), drop the
@@ -53,6 +53,13 @@ SLUG_PATTERNS = [
     (re.compile(r"(?:jobs|careers)\.smartrecruiters\.com/([A-Za-z0-9_-]+)|api\.smartrecruiters\.com/v1/companies/([A-Za-z0-9_-]+)"), "smartrecruiters"),
     (re.compile(r"apply\.workable\.com/([A-Za-z0-9_-]+)"), "workable"),
     (re.compile(r"([A-Za-z0-9_-]+)\.recruitee\.com"), "recruitee"),
+    (re.compile(r"([A-Za-z0-9_-]+)\.bamboohr\.com"), "bamboohr"),
+    (re.compile(r"([A-Za-z0-9_-]+)\.breezy\.hr"), "breezy"),
+    (re.compile(r"([A-Za-z0-9_-]+)\.jobs\.personio\.(?:com|de)"), "personio"),
+    # Teamtailor's "slug" is the whole board host — the adapter takes board = hostname.
+    # Only *.teamtailor.com hosts are detectable here; boards on a custom domain
+    # (e.g. jobs.tibber.com) carry no teamtailor marker in the URL and are missed.
+    (re.compile(r"([A-Za-z0-9_-]+\.teamtailor\.com)"), "teamtailor"),
 ]
 
 # Slugs that are path segments of the ATS host itself, not real boards.
@@ -68,7 +75,9 @@ WORKDAY_RE = re.compile(
     r"https?://([a-z0-9-]+\.wd\d+\.myworkdayjobs\.com)/(?:[a-zA-Z]{2}-[a-zA-Z]{2}/)?([^/?\"]+)/(?:job|details)/"
 )
 
-# Validation endpoints — identical to internal/sources/{greenhouse,lever,ashby}.go.
+# Validation endpoints — each identical to the one its internal/sources/<provider>.go
+# adapter calls, so a board the harvester accepts is one ingest can actually crawl.
+# bamboohr returns JSON, personio XML, teamtailor HTML (see validate()).
 VALIDATORS = {
     "greenhouse": lambda s: f"https://boards-api.greenhouse.io/v1/boards/{s}/jobs?content=true",
     "lever": lambda s: f"https://api.lever.co/v0/postings/{s}?mode=json",
@@ -76,6 +85,10 @@ VALIDATORS = {
     "smartrecruiters": lambda s: f"https://api.smartrecruiters.com/v1/companies/{s}/postings?limit=10",
     "workable": lambda s: f"https://apply.workable.com/api/v1/widget/accounts/{s}?details=true",
     "recruitee": lambda s: f"https://{s}.recruitee.com/api/offers/",
+    "bamboohr": lambda s: f"https://{s}.bamboohr.com/careers/list",
+    "breezy": lambda s: f"https://{s}.breezy.hr/json",  # top-level JSON array of positions
+    "personio": lambda s: f"https://{s}.jobs.personio.com/xml",
+    "teamtailor": lambda s: f"https://{s}/jobs",  # s is the board host, not a slug
 }
 
 
@@ -200,17 +213,25 @@ def validate(provider: str, slug: str) -> int | None:
     body = fetch(VALIDATORS[provider](slug), timeout=20)
     if not body:
         return None
+    # personio (XML) and teamtailor (HTML) are not JSON — count off the raw bytes the
+    # same way their adapters do: <position> elements and /jobs/<id> links.
+    if provider == "personio":
+        return body.count(b"<position>") or None
+    if provider == "teamtailor":
+        return len(set(re.findall(rb"/jobs/(\d+)", body))) or None
     try:
         data = json.loads(body)
     except Exception:
         return None
     d = data if isinstance(data, dict) else {}
-    if provider == "lever":
+    if provider in ("lever", "breezy"):  # both return a top-level JSON array
         count = len(data) if isinstance(data, list) else 0
     elif provider == "smartrecruiters":
         count = d.get("totalFound") or len(d.get("content", []))
     elif provider == "recruitee":
         count = len(d.get("offers", []))
+    elif provider == "bamboohr":
+        count = len(d.get("result", []))
     else:  # greenhouse / ashby / workable all expose a "jobs" array
         count = len(d.get("jobs", []))
     # is_worth_adding: a board earns a slot only if it currently lists jobs.

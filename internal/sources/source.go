@@ -71,6 +71,7 @@ func All(c HTTPClient) map[string]Source {
 		NewGem(c),
 		NewSuccessFactors(c),
 		NewTeamtailor(c),
+		NewBreezy(c),
 		NewJoin(c),
 		// RU-domestic single-company adapters (boardless, except Yandex which selects
 		// host+language by board).

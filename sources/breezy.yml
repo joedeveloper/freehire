@@ -1,0 +1,55 @@
+# breezy boards. Provider is the filename; each entry is company + board.
+# board = the company's Breezy subdomain (see internal/sources/breezy.go).
+
+- company: AGBO
+  board: agbo
+- company: Alconost
+  board: alconost-inc
+- company: AT&T
+  board: at-t
+- company: BetterMe
+  board: betterme
+- company: Fugo Games
+  board: fugo-games
+- company: Gamurs Group
+  board: gamurs
+- company: GGWP
+  board: ggwp
+- company: Lulalend
+  board: lulalend
+- company: Mixer
+  board: mixer
+- company: Moon Colony
+  board: mooncolony
+- company: NextHire
+  board: nexthire
+- company: Numrah
+  board: numrah
+- company: OpenSea
+  board: opensea
+- company: Playdead
+  board: playdead
+- company: Puzzle Cats
+  board: puzzle-cats
+- company: Raid Base
+  board: raid-base-inc
+- company: Social Discovery Group
+  board: social-discovery-ventures
+- company: Sunblink
+  board: sunblink
+- company: Tier 9 Game Studios
+  board: tier-9-game-studios-ltd
+- company: Trailmix
+  board: trailmix
+- company: Tribe Gaming
+  board: tribegaming
+- company: Turbulent
+  board: turbulent
+- company: VVater
+  board: vvater-llc
+- company: Warhorse Studios
+  board: warhorsestudios
+- company: Wonder works
+  board: wonder-works-studio-inc
+- company: YallaPlay
+  board: yallaplay
