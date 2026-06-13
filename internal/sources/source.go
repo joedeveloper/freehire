@@ -59,6 +59,7 @@ func All(c HTTPClient) map[string]Source {
 		NewGem(c),
 		NewSuccessFactors(c),
 		NewTeamtailor(c),
+		NewJoin(c),
 	)
 }
 

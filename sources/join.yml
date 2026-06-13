@@ -1,0 +1,15 @@
+# join boards. Provider is the filename; each entry is company + board.
+# board = the numeric Join company id (see internal/sources/join.go); the adapter reads
+# https://join.com/api/public/companies/<board>/jobs (the slug path returns empty, so the
+# numeric id is required). The slug in each comment is for humans; find a company's id in the
+# __NEXT_DATA__ (company.id) on its https://join.com/companies/<slug> page.
+# Each board validated live (>0 jobs from the list API, full normalized sample) before adding.
+
+- company: Just Hiring # justhiringde
+  board: "167291"
+
+- company: JOIN # join
+  board: "54"
+
+- company: Enably # enablycocom
+  board: "181808"
