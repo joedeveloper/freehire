@@ -50,10 +50,16 @@ SLUG_PATTERNS = [
     (re.compile(r"(?:boards|job-boards)(?:\.eu)?\.greenhouse\.io/(?:embed/job_app\?for=)?([A-Za-z0-9_-]+)"), "greenhouse"),
     (re.compile(r"jobs\.(?:eu\.)?lever\.co/([A-Za-z0-9_.-]+)"), "lever"),
     (re.compile(r"jobs\.ashbyhq\.com/([A-Za-z0-9_.-]+)"), "ashby"),
+    (re.compile(r"(?:jobs|careers)\.smartrecruiters\.com/([A-Za-z0-9_-]+)|api\.smartrecruiters\.com/v1/companies/([A-Za-z0-9_-]+)"), "smartrecruiters"),
+    (re.compile(r"apply\.workable\.com/([A-Za-z0-9_-]+)"), "workable"),
+    (re.compile(r"([A-Za-z0-9_-]+)\.recruitee\.com"), "recruitee"),
 ]
 
 # Slugs that are path segments of the ATS host itself, not real boards.
-SLUG_BLOCKLIST = {"embed", "jobs", "job", "j", "o", "share", "en-us", "en-gb"}
+SLUG_BLOCKLIST = {
+    "embed", "jobs", "job", "j", "o", "share", "en-us", "en-gb",
+    "api", "widget", "backend", "www", "app", "auth", "referrals", "v1",
+}
 
 # Workday is a separate beast: a board is host + career-site path (e.g.
 # "logitech.wd5.myworkdayjobs.com/Logitech"), and the site segment sits before
@@ -67,6 +73,9 @@ VALIDATORS = {
     "greenhouse": lambda s: f"https://boards-api.greenhouse.io/v1/boards/{s}/jobs?content=true",
     "lever": lambda s: f"https://api.lever.co/v0/postings/{s}?mode=json",
     "ashby": lambda s: f"https://api.ashbyhq.com/posting-api/job-board/{s}",
+    "smartrecruiters": lambda s: f"https://api.smartrecruiters.com/v1/companies/{s}/postings?limit=10",
+    "workable": lambda s: f"https://apply.workable.com/api/v1/widget/accounts/{s}?details=true",
+    "recruitee": lambda s: f"https://{s}.recruitee.com/api/offers/",
 }
 
 
@@ -88,11 +97,16 @@ def yaml_name(name: str) -> str:
 
 
 def extract_slugs(text: str) -> set[tuple[str, str]]:
-    """Sweep raw text for ATS board URLs -> {(provider, slug)}."""
+    """Sweep raw text for ATS board URLs -> {(provider, slug)}.
+
+    Patterns may carry multiple alternation groups (e.g. SmartRecruiters' two host
+    forms), so take the first non-empty group of each match as the slug.
+    """
     out: set[tuple[str, str]] = set()
     for pat, provider in SLUG_PATTERNS:
-        for slug in pat.findall(text):
-            if slug.lower() in SLUG_BLOCKLIST:
+        for m in pat.finditer(text):
+            slug = next((g for g in m.groups() if g), None)
+            if not slug or slug.lower() in SLUG_BLOCKLIST:
                 continue
             out.add((provider, slug))
     return out
@@ -182,13 +196,18 @@ def validate(provider: str, slug: str) -> int | None:
         data = json.loads(body)
     except Exception:
         return None
+    d = data if isinstance(data, dict) else {}
     if provider == "lever":
-        jobs = data if isinstance(data, list) else []
-    else:  # greenhouse / ashby
-        jobs = data.get("jobs", []) if isinstance(data, dict) else []
+        count = len(data) if isinstance(data, list) else 0
+    elif provider == "smartrecruiters":
+        count = d.get("totalFound") or len(d.get("content", []))
+    elif provider == "recruitee":
+        count = len(d.get("offers", []))
+    else:  # greenhouse / ashby / workable all expose a "jobs" array
+        count = len(d.get("jobs", []))
     # is_worth_adding: a board earns a slot only if it currently lists jobs.
     # Tune here if you want a higher bar (e.g. >= 5 jobs, or tech-only titles).
-    return len(jobs) if jobs else None
+    return count or None
 
 
 def harvest_workday() -> dict[tuple[str, str], str]:

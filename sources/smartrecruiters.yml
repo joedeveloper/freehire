@@ -87,8 +87,6 @@
   board: bootloaderstudio
 - company: Bosch Group
   board: boschgroup
-- company: Bosch Group India
-  board: BoschGroup
 - company: Brain Hunter
   board: BRAINHUNTER
 - company: Buckeye Broadband
@@ -273,8 +271,6 @@
   board: k-group1
 - company: Kante Group
   board: kantegroup
-- company: KBG Blockchain Game Studios
-  board: K-group1
 - company: Kenvue
   board: kenvue
 - company: Keylent Inc
@@ -317,8 +313,6 @@
   board: MattelInc
 - company: Mcdonalds
   board: McDonaldsCorporation
-- company: Mcdonalds
-  board: mcdonaldscorporation
 - company: META4
   board: META4
 - company: MGM Resorts International
@@ -477,8 +471,6 @@
   board: Ten4
 - company: The Mill
   board: TheMill2
-- company: TheMill2
-  board: themill2
 - company: Tonic DNA
   board: TonicDNA1
 - company: Uber
@@ -501,8 +493,6 @@
   board: Version1
 - company: Visa
   board: Visa
-- company: Visa
-  board: visa
 - company: Viz Experts
   board: vizexperts
 - company: VMD Corp
@@ -531,3 +521,165 @@
   board: Xplor
 - company: Yggdrasil Gaming Ltd
   board: YggdrasilSandbox
+- company: AECOM
+  board: AECOM2
+- company: Société Générale de Surveillance (SGS)
+  board: SGS
+- company: Veolia
+  board: VeoliaEnvironnementSA
+- company: Jobs for Humanity
+  board: JobsForHumanity
+- company: Integrated Resources
+  board: IntegratedResourcesINC
+- company: Eurofins
+  board: Eurofins
+- company: Collabera
+  board: Collabera2
+- company: AbbVie
+  board: AbbVie
+- company: USM Business Systems
+  board: USM2
+- company: Egis Group
+  board: EgisGroup
+- company: Red Bull
+  board: RedBull
+- company: STEM Expert
+  board: StemXpert1
+- company: Atria Group
+  board: AtriaGroupLLC
+- company: Infojini
+  board: InfojiniInc1
+- company: Wabtec
+  board: Wabtec
+- company: System Canada Technologies
+  board: systemCanadaTechnologies
+- company: Global Channel Management
+  board: GlobalChannelManagementInc
+- company: RR Donnelley
+  board: RRDonnelley
+- company: Intuitive Surgical
+  board: Intuitive
+- company: Cornerstone Building Brands
+  board: CornerstoneBuildingBrandsCareers
+- company: Smiths Detection Group
+  board: SmithsGroup2
+- company: Ask IT Consulting
+  board: AskITConsulting
+- company: Dexterra Group
+  board: Dexterra
+- company: Louis Dreyfus Company
+  board: LouisDreyfusCompany
+- company: Expeditors
+  board: Expeditors
+- company: Deegit
+  board: DeegitInc3
+- company: MSX International
+  board: MSXInternational
+- company: BCforward
+  board: BCforward3
+- company: Avery Dennison
+  board: AveryDennison
+- company: SA Technologies
+  board: SATechnologiesInc4
+- company: Sandisk
+  board: Sandisk
+- company: Westgate Resorts
+  board: WestgateResorts
+- company: Eataly
+  board: Eataly
+- company: IFS
+  board: IFS1
+- company: Accor
+  board: AccorCorpo
+- company: Comtech
+  board: ComtechLLC2
+- company: The Wonderful Company
+  board: TheWonderfulCompany
+- company: Harvard University
+  board: HarvardUniversity
+- company: University Health Network
+  board: UniversityHealthNetwork
+- company: EVERSANA
+  board: EVERSANA1
+- company: PA Consulting
+  board: PAConsulting
+- company: Nielsen
+  board: TheNielsenCompany
+- company: NEC Software Solutions
+  board: NECSWS
+- company: Allegis Global Solutions
+  board: AllegisGlobalSolutions
+- company: Legal & General
+  board: LegalAndGeneral
+- company: RESPEC
+  board: RESPECInc
+- company: Radius Limited
+  board: RadiusLimited
+- company: General Dynamics UK
+  board: GDMSI
+- company: Huxley
+  board: ComputerFutures3
+- company: Nexthink
+  board: Nexthink
+- company: SOMFY Group
+  board: somfygroup
+- company: Northwestern Mutual
+  board: NorthwesternMutual
+- company: Flywire
+  board: Flywire1
+- company: Solidigm
+  board: Solidigm
+- company: 3S Business Corporation
+  board: 3SBusinessCorporationInc1
+- company: Wellmark
+  board: WellmarkInc
+- company: Swissquote
+  board: Swissquote
+- company: Assent
+  board: Assent
+- company: MAT Holdings
+  board: MATHoldings
+- company: Crown Innovations
+  board: CrownInnovationsInc
+- company: AJ Bell
+  board: AJBell1
+- company: Analysys Mason
+  board: AnalysysMason1
+- company: MAXISIQ
+  board: IOMAXISLLC
+- company: Horizon Technologies
+  board: HorizonTechnologiesInc
+- company: Apex Clean Energy
+  board: ApexCleanEnergy
+- company: California ISO
+  board: CaliforniaISO
+- company: Kioxia
+  board: Kioxia
+- company: Proximate Technologies
+  board: ProximateTechnologiesInc1
+- company: Oxfam International
+  board: OxfamAmerica2
+- company: LAXIR
+  board: Laxir1
+- company: Treehouse Strategy and Communications
+  board: TreehouseStrategyAndCommunicatio
+- company: Kanshe Infotech
+  board: Learnkwikcom
+- company: Accel Learning
+  board: AccelLearning
+- company: STCU
+  board: STCU1
+- company: Barkback
+  board: barkbackLlc
+- company: Sajix
+  board: SajixSoftwareSolutionPrivateLimited
+- company: Spring Venture Group
+  board: SpringVentureGroup1
+- company: InfiniteQuant
+  board: InfiniteQuant
+- company: Codeage
+  board: Codeage
+- company: ATPCO
+  board: ATPCO1
+- company: BlinqLABS
+  board: Blinqlabs

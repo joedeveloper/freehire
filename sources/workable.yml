@@ -157,3 +157,53 @@
   board: zeptolab
 - company: zipdev
   board: zipdev
+- company: Altom Transport
+  board: altom-transport
+- company: Valsoft
+  board: valsoft-corp
+- company: Belmond
+  board: belmond-uk-ltd
+- company: Advantmed
+  board: advantmed
+- company: Infleqtion
+  board: coldquanta
+- company: Ascendis Pharma
+  board: ascendis-pharma
+- company: Thorlabs
+  board: thorlabs
+- company: Terabase
+  board: terabase-energy
+- company: Al Warren Oil Company
+  board: al-warren-oil-company-inc
+- company: TMEIC
+  board: tmeic-corporation-americas
+- company: Quadric
+  board: quadric-dot-i-o-inc
+- company: Evolve Technology
+  board: evolv-technology
+- company: OnLogic
+  board: onlogic-inc
+- company: Falcomm
+  board: falcomm
+- company: io-global
+  board: io-global
+- company: TWG Global
+  board: twgai
+- company: freedx
+  board: freedx
+- company: ConnectPrep
+  board: connectprep
+- company: Tokamak Energy
+  board: tokamak-energy
+- company: pony.ai
+  board: pony-dot-ai
+- company: enjins
+  board: enjins
+- company: crypto-finance
+  board: crypto-finance
+- company: ENFOS
+  board: enfos-inc
+- company: walletconnect
+  board: walletconnect
+- company: Eluvio
+  board: eluvio
