@@ -3,7 +3,7 @@
 // Unknown codes fall back to a humanized form so a future vocabulary addition
 // never renders blank — the SPA never re-validates, it only formats.
 
-import type { Enrichment } from './types';
+import type { Enrichment, Job } from './types';
 
 /** A single label/value pair in the summary meta-row. */
 export interface Facet {
@@ -34,7 +34,7 @@ const WORK_MODE: Record<string, string> = {
   onsite: 'On-site',
 };
 
-// Reach codes (enrichment.regions) → readable labels. Unmapped codes humanize.
+// Region codes (the top-level `regions` facet) → readable labels. Unmapped codes humanize.
 const REGION: Record<string, string> = {
   global: 'Global',
   eu: 'Europe',
@@ -151,38 +151,38 @@ export function formatSalary(e: Enrichment): string | null {
 }
 
 /**
- * The work-arrangement label for compact contexts (list cards): the enriched
- * `work_mode`, or null when unenriched. "Remote" is purely an enrichment concept
- * now — there is no raw flag to fall back to.
+ * The work-arrangement label for compact contexts (list cards): the resolved
+ * top-level `work_mode` (LLM value, else the one parsed from the location), or
+ * null when neither stated it.
  */
-export function workArrangement(job: { enrichment?: Enrichment }): string | null {
-  const mode = job.enrichment?.work_mode;
-  return mode ? label(WORK_MODE, mode) : null;
+export function workArrangement(job: Pick<Job, 'work_mode'>): string | null {
+  return job.work_mode ? label(WORK_MODE, job.work_mode) : null;
 }
 
 /**
- * A remote role's geographic reach as a concise label from `regions` — e.g.
- * `Global`, `Europe`, `USA`. Null when the job is not a known remote role or its
- * reach is unknown (empty `regions` is unknown, not global).
+ * The job's geographic area as a concise label from the top-level `regions` —
+ * e.g. `Global`, `Europe`, `USA`. Meaningful for any work mode (a remote role's
+ * reach or an onsite role's area). Null when regions is unknown (empty is
+ * unknown, not global).
  */
-export function remoteReach(e: Enrichment | undefined): string | null {
-  if (!e || e.work_mode !== 'remote' || !e.regions?.length) return null;
-  return e.regions.map((r) => label(REGION, r)).join(', ');
+export function regionLabel(job: Pick<Job, 'regions'>): string | null {
+  if (!job.regions?.length) return null;
+  return job.regions.map((r) => label(REGION, r)).join(', ');
 }
 
 /**
- * The short tag row shown on a list card's header: work arrangement, primary
- * country, employment type, and grade — only those that are stated, in that
- * order. Compact by design (the full facet set lives on the detail page).
+ * The short tag row shown on a list card's header: work arrangement, region,
+ * employment type, and grade — only those that are stated, in that order.
+ * Compact by design (the full facet set lives on the detail page).
  */
-export function cardTags(job: { enrichment?: Enrichment }): string[] {
+export function cardTags(job: Job): string[] {
   const e = job.enrichment;
   const tags: string[] = [];
 
   const arrangement = workArrangement(job);
   if (arrangement) tags.push(arrangement);
-  const reach = remoteReach(e);
-  if (reach) tags.push(reach);
+  const region = regionLabel(job);
+  if (region) tags.push(region);
   if (e?.employment_type) tags.push(label(EMPLOYMENT, e.employment_type));
   if (e?.seniority) tags.push(label(SENIORITY, e.seniority));
 
@@ -195,14 +195,15 @@ export function cardTags(job: { enrichment?: Enrichment }): string[] {
  * entirely. Order moves from work arrangement → role → eligibility → company,
  * mirroring the reference layout.
  */
-export function summaryFacets(e: Enrichment): Facet[] {
+export function summaryFacets(job: Job): Facet[] {
+  const e = job.enrichment ?? {};
   const facets: Facet[] = [];
   const push = (name: string, value: string | null | undefined) => {
     if (value) facets.push({ label: name, value });
   };
 
-  push('Work format', e.work_mode && label(WORK_MODE, e.work_mode));
-  push('Reach', remoteReach(e));
+  push('Work format', job.work_mode && label(WORK_MODE, job.work_mode));
+  push('Region', regionLabel(job));
   push('Work type', e.employment_type && label(EMPLOYMENT, e.employment_type));
   push('Grade', e.seniority && label(SENIORITY, e.seniority));
   push(
@@ -214,7 +215,7 @@ export function summaryFacets(e: Enrichment): Facet[] {
     e.english_level && e.english_level !== 'none' ? label(ENGLISH_LEVEL, e.english_level) : null,
   );
   push('Category', e.category && label(CATEGORY, e.category));
-  push('Country', e.countries?.length ? e.countries.map((c) => c.toUpperCase()).join(', ') : null);
+  push('Country', job.countries?.length ? job.countries.map((c) => c.toUpperCase()).join(', ') : null);
   push('Relocation', e.relocation && label(RELOCATION, e.relocation));
   push('Visa', e.visa_sponsorship === true ? 'Sponsored' : null);
   push('Company', e.company_type && label(COMPANY_TYPE, e.company_type));

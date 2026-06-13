@@ -57,6 +57,9 @@ LIMIT $2 OFFSET $3;
 -- enrichment, so a new row takes the table defaults ('{}' / NULL / 0) and a
 -- re-ingest leaves any existing enrichment untouched. SetJobEnrichment (the
 -- enrichment worker) is the sole writer of those columns.
+-- countries/regions ARE written here: they are source facts parsed from the
+-- location, not enrichment. COALESCE maps a nil arg to '{}', so a location that
+-- yields no geography stores empty arrays (the columns are NOT NULL).
 WITH company_upsert AS (
     INSERT INTO companies (slug, name)
     SELECT sqlc.arg(company_slug), sqlc.arg(company)
@@ -67,12 +70,14 @@ WITH company_upsert AS (
 )
 INSERT INTO jobs (
     source, external_id, url, title, company, company_slug, location, remote, description, posted_at,
-    public_slug
+    public_slug, countries, regions, work_mode
 ) VALUES (
     sqlc.arg(source), sqlc.arg(external_id), sqlc.arg(url), sqlc.arg(title),
     sqlc.arg(company), sqlc.arg(company_slug), sqlc.arg(location), sqlc.arg(remote),
     sqlc.arg(description), sqlc.arg(posted_at),
-    sqlc.arg(public_slug)
+    sqlc.arg(public_slug),
+    COALESCE(sqlc.arg(countries)::text[], '{}'), COALESCE(sqlc.arg(regions)::text[], '{}'),
+    sqlc.arg(work_mode)
 )
 -- public_slug is deliberately NOT in the DO UPDATE SET: the slug is minted once
 -- at insert and is the row's stable public identity. Re-ingest of the same
@@ -87,6 +92,9 @@ ON CONFLICT (source, external_id) DO UPDATE SET
     remote       = EXCLUDED.remote,
     description  = EXCLUDED.description,
     posted_at    = EXCLUDED.posted_at,
+    countries    = EXCLUDED.countries,
+    regions      = EXCLUDED.regions,
+    work_mode    = EXCLUDED.work_mode,
     -- The crawl saw the posting: refresh liveness and reopen if it was closed.
     last_seen_at = now(),
     closed_at    = NULL,
@@ -113,6 +121,21 @@ WHERE closed_at IS NULL
 UPDATE jobs
 SET public_slug  = sqlc.arg(public_slug),
     company_slug = sqlc.arg(company_slug)
+WHERE id = sqlc.arg(id);
+
+-- name: SetJobLocation :exec
+-- One-off backfill (cmd/backfill-geo): rewrite the location-derived columns from
+-- the row's stored location text. They are deterministic from `location`, so this
+-- is idempotent. updated_at is deliberately left untouched (like UpdateJobSlugs)
+-- so a backfill does not churn every row's timestamp. COALESCE maps a nil arg to
+-- '{}' to satisfy the NOT NULL array columns. work_mode here is parser-derived
+-- only (the original structured ATS signal is not available at backfill time);
+-- a later re-crawl overwrites it with the structured value where the adapter has
+-- one.
+UPDATE jobs
+SET countries = COALESCE(sqlc.arg(countries)::text[], '{}'),
+    regions   = COALESCE(sqlc.arg(regions)::text[], '{}'),
+    work_mode = sqlc.arg(work_mode)
 WHERE id = sqlc.arg(id);
 
 -- name: EnqueueJobEnrichment :execrows

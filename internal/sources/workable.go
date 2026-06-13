@@ -49,6 +49,7 @@ func (w workable) Fetch(ctx context.Context, e CompanyEntry) ([]Job, error) {
 			Location:    joinNonEmpty(j.City, j.State, j.Country),
 			Description: sanitizeHTML(j.Description),
 			Remote:      j.Telecommuting,
+			WorkMode:    workModeFromRemote(j.Telecommuting),
 			PostedAt:    parseDate(j.PublishedOn),
 		})
 	}

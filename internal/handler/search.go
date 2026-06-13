@@ -24,17 +24,19 @@ const defaultSemanticRatio = 0.5
 
 // searchStringFacets maps an equality-facet query param to its index attribute.
 // Enrichment facets live under the nested "enrichment" object, so they filter on
-// a dot path. Repeated params (?seniority=a&seniority=b) are ORed.
+// a dot path. Geography (regions/countries) and work_mode are resolved facets
+// served top-level (the union of parsed-location and enrichment values), so they
+// filter on a bare attribute. Repeated params (?seniority=a&seniority=b) are ORed.
 var searchStringFacets = map[string]string{
 	"source":           "source",
 	"company_slug":     "company_slug",
-	"regions":          "enrichment.regions",
-	"work_mode":        "enrichment.work_mode",
+	"regions":          "regions",
+	"work_mode":        "work_mode",
 	"employment_type":  "enrichment.employment_type",
 	"seniority":        "enrichment.seniority",
 	"category":         "enrichment.category",
 	"domains":          "enrichment.domains",
-	"countries":        "enrichment.countries",
+	"countries":        "countries",
 	"company_type":     "enrichment.company_type",
 	"company_size":     "enrichment.company_size",
 	"salary_currency":  "enrichment.salary_currency",

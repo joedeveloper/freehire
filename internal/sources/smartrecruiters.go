@@ -115,6 +115,7 @@ func (s smartRecruiters) detail(ctx context.Context, e CompanyEntry, p smartRecr
 		Location:    joinNonEmpty(p.Location.City, p.Location.Region, p.Location.Country),
 		Description: sanitizeHTML(body),
 		Remote:      p.Location.Remote,
+		WorkMode:    workModeFromRemote(p.Location.Remote),
 		PostedAt:    parseRFC3339(p.ReleasedDate),
 	}, true
 }

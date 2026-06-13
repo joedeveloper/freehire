@@ -7,6 +7,8 @@ package jobview
 import (
 	"encoding/json"
 	"fmt"
+	"sort"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
@@ -23,18 +25,26 @@ import (
 // it as `{}`. Timestamps are RFC3339 UTC strings (or null) — the lexicographic
 // order is chronological, which the search index relies on for sorting.
 type Job struct {
-	PublicSlug  string  `json:"public_slug"`
-	Source      string  `json:"source"`
-	ExternalID  string  `json:"external_id"`
-	URL         string  `json:"url"`
-	Title       string  `json:"title"`
-	Company     string  `json:"company"`
-	CompanySlug string  `json:"company_slug"`
-	Location    string  `json:"location"`
-	Description string  `json:"description"`
-	PostedAt    *string `json:"posted_at"`
-	CreatedAt   *string `json:"created_at"`
-	UpdatedAt   *string `json:"updated_at"`
+	PublicSlug  string `json:"public_slug"`
+	Source      string `json:"source"`
+	ExternalID  string `json:"external_id"`
+	URL         string `json:"url"`
+	Title       string `json:"title"`
+	Company     string `json:"company"`
+	CompanySlug string `json:"company_slug"`
+	Location    string `json:"location"`
+	Description string `json:"description"`
+	// Countries/Regions/WorkMode are the resolved geography facet: the union of
+	// the ingest-parsed location columns and the enrichment-derived values
+	// (work_mode is the LLM value when present, else the parsed one). They are
+	// served here, top-level and once; the same fields are folded out of the
+	// nested Enrichment to avoid duplication.
+	Countries []string `json:"countries"`
+	Regions   []string `json:"regions"`
+	WorkMode  string   `json:"work_mode,omitempty"`
+	PostedAt  *string  `json:"posted_at"`
+	CreatedAt *string  `json:"created_at"`
+	UpdatedAt *string  `json:"updated_at"`
 	// ClosedAt is non-null when the posting is no longer open. Lists and the
 	// search index never contain closed jobs; only the detail endpoint serves
 	// them, and the SPA renders the closed state from this field.
@@ -55,6 +65,18 @@ func FromRow(j db.Job) (Job, error) {
 		}
 	}
 
+	// Merge the two geography sources into the top-level facet. Countries/regions
+	// union both; work_mode is the richer LLM value when present, else the parsed
+	// one. The folded fields are then cleared on the enrichment copy so the served
+	// object reports them exactly once (the stored JSONB is untouched).
+	countries := mergeSets(j.Countries, e.Countries)
+	regions := mergeSets(j.Regions, e.Regions)
+	workMode := e.WorkMode
+	if workMode == "" {
+		workMode = j.WorkMode
+	}
+	e.Countries, e.Regions, e.WorkMode = nil, nil, ""
+
 	return Job{
 		PublicSlug:        j.PublicSlug,
 		Source:            j.Source,
@@ -65,6 +87,9 @@ func FromRow(j db.Job) (Job, error) {
 		CompanySlug:       j.CompanySlug,
 		Location:          j.Location,
 		Description:       j.Description,
+		Countries:         countries,
+		Regions:           regions,
+		WorkMode:          workMode,
 		PostedAt:          rfc3339(j.PostedAt),
 		CreatedAt:         rfc3339(j.CreatedAt),
 		UpdatedAt:         rfc3339(j.UpdatedAt),
@@ -73,6 +98,28 @@ func FromRow(j db.Job) (Job, error) {
 		EnrichedAt:        rfc3339(j.EnrichedAt),
 		EnrichmentVersion: j.EnrichmentVersion,
 	}, nil
+}
+
+// mergeSets returns the sorted, deduplicated, lowercased union of two string
+// slices. Case-folding is load-bearing: the parser emits country/region codes
+// lowercase, but the LLM emits ISO country codes uppercase ("DE"), so without it
+// the same country splits into two facet buckets ("DE" and "de"). The result is
+// always non-nil so the geography facet serializes as a JSON array (matching the
+// text[] columns' empty-array default) rather than null.
+func mergeSets(a, b []string) []string {
+	set := make(map[string]struct{}, len(a)+len(b))
+	for _, v := range a {
+		set[strings.ToLower(v)] = struct{}{}
+	}
+	for _, v := range b {
+		set[strings.ToLower(v)] = struct{}{}
+	}
+	out := make([]string, 0, len(set))
+	for v := range set {
+		out = append(out, v)
+	}
+	sort.Strings(out)
+	return out
 }
 
 // FromRows maps a batch of database rows to the public wire shape.

@@ -3,6 +3,7 @@ package pipeline
 import (
 	"context"
 	"errors"
+	"reflect"
 	"sync"
 	"testing"
 
@@ -86,6 +87,38 @@ func TestRunNormalizesAndNamespaces(t *testing.T) {
 	wantSlug := normalize.JobSlug(j.Title, j.Company, j.Source, j.ExternalID)
 	if j.PublicSlug == "" || j.PublicSlug != wantSlug {
 		t.Errorf("PublicSlug = %q, want %q", j.PublicSlug, wantSlug)
+	}
+}
+
+func TestNormalizeJobParsesGeographyFromLocation(t *testing.T) {
+	e := sources.CompanyEntry{Company: "Acme", Provider: "greenhouse", Board: "acme"}
+
+	geo := normalizeJob(e, sources.Job{ExternalID: "1", Title: "Dev", Company: "Acme", Location: "Remote - Germany"})
+	if !reflect.DeepEqual(geo.Countries, []string{"de"}) || !reflect.DeepEqual(geo.Regions, []string{"eu"}) {
+		t.Errorf("geography = %v/%v, want [de]/[eu]", geo.Countries, geo.Regions)
+	}
+
+	// A location with no resolvable place leaves geography empty (never guessed).
+	bare := normalizeJob(e, sources.Job{ExternalID: "2", Title: "Dev", Company: "Acme", Location: "Remote"})
+	if len(bare.Countries) != 0 || len(bare.Regions) != 0 {
+		t.Errorf("bare remote geography = %v/%v, want empty", bare.Countries, bare.Regions)
+	}
+}
+
+func TestNormalizeJobPrefersAdapterWorkModeOverParser(t *testing.T) {
+	e := sources.CompanyEntry{Company: "Acme", Provider: "greenhouse", Board: "acme"}
+
+	// The adapter states hybrid structurally; the location text would parse as
+	// remote. The structured signal wins.
+	structured := normalizeJob(e, sources.Job{ExternalID: "1", Title: "Dev", Company: "Acme", Location: "Remote", WorkMode: "hybrid"})
+	if structured.WorkMode != "hybrid" {
+		t.Errorf("WorkMode = %q, want hybrid (adapter structured wins over parser)", structured.WorkMode)
+	}
+
+	// No structured signal: the parser fills from the location text.
+	parsed := normalizeJob(e, sources.Job{ExternalID: "2", Title: "Dev", Company: "Acme", Location: "Remote"})
+	if parsed.WorkMode != "remote" {
+		t.Errorf("WorkMode = %q, want remote (parser fallback)", parsed.WorkMode)
 	}
 }
 

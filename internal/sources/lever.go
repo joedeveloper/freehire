@@ -25,13 +25,14 @@ func (l lever) Fetch(ctx context.Context, e CompanyEntry) ([]Job, error) {
 	url := fmt.Sprintf("%s/%s?mode=json", leverBaseURL, e.Board)
 
 	var postings []struct {
-		ID          string `json:"id"`
-		Text        string `json:"text"`
-		HostedURL   string `json:"hostedUrl"`
-		CreatedAt   int64  `json:"createdAt"`
-		Description string `json:"description"`
-		Additional  string `json:"additional"`
-		Lists       []struct {
+		ID            string `json:"id"`
+		Text          string `json:"text"`
+		HostedURL     string `json:"hostedUrl"`
+		CreatedAt     int64  `json:"createdAt"`
+		Description   string `json:"description"`
+		Additional    string `json:"additional"`
+		WorkplaceType string `json:"workplaceType"`
+		Lists         []struct {
 			Text    string `json:"text"`
 			Content string `json:"content"`
 		} `json:"lists"`
@@ -68,6 +69,7 @@ func (l lever) Fetch(ctx context.Context, e CompanyEntry) ([]Job, error) {
 			Location:    p.Categories.Location,
 			Description: sanitizeHTML(body.String()),
 			Remote:      isRemote(p.Categories.Location),
+			WorkMode:    workplaceTypeMode(p.WorkplaceType),
 			PostedAt:    parseEpochMillis(p.CreatedAt),
 		})
 	}

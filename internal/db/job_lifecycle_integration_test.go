@@ -87,7 +87,7 @@ func TestCloseUnseenJobsClosesOnlyStaleJobs(t *testing.T) {
 	ageJob(t, pool, stale.ID, 49*time.Hour)
 	ageJob(t, pool, fresh.ID, 6*time.Hour)
 
-	closed, err := q.CloseUnseenJobs(ctx, pgTimestamptz(time.Now().Add(-48*time.Hour)))
+	closed, err := q.CloseUnseenJobs(ctx, CloseUnseenJobsParams{Source: "greenhouse", Cutoff: pgTimestamptz(time.Now().Add(-48 * time.Hour))})
 	if err != nil {
 		t.Fatalf("sweep: %v", err)
 	}
@@ -111,7 +111,7 @@ func TestCloseUnseenJobsClosesOnlyStaleJobs(t *testing.T) {
 	}
 
 	// Idempotent: a second sweep with the same cutoff closes nothing.
-	again, err := q.CloseUnseenJobs(ctx, pgTimestamptz(time.Now().Add(-48*time.Hour)))
+	again, err := q.CloseUnseenJobs(ctx, CloseUnseenJobsParams{Source: "greenhouse", Cutoff: pgTimestamptz(time.Now().Add(-48 * time.Hour))})
 	if err != nil {
 		t.Fatalf("second sweep: %v", err)
 	}

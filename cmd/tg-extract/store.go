@@ -10,6 +10,7 @@ import (
 
 	"github.com/strelov1/freehire/internal/db"
 	"github.com/strelov1/freehire/internal/enrich"
+	"github.com/strelov1/freehire/internal/location"
 	"github.com/strelov1/freehire/internal/normalize"
 	"github.com/strelov1/freehire/internal/telegram"
 )
@@ -63,6 +64,7 @@ func (s *extractStore) Complete(ctx context.Context, post telegram.PendingPost, 
 	base := post.Channel + "/" + strconv.FormatInt(post.MsgID, 10)
 	for i, j := range jobs {
 		externalID := base + "/" + strconv.Itoa(i)
+		geo := location.Parse(j.Location)
 		saved, err := qtx.UpsertJob(ctx, db.UpsertJobParams{
 			Source:      "telegram",
 			ExternalID:  externalID,
@@ -75,6 +77,9 @@ func (s *extractStore) Complete(ctx context.Context, post telegram.PendingPost, 
 			Remote:      j.Remote,
 			Description: telegram.TextToHTML(j.Description),
 			PostedAt:    pgtype.Timestamptz{Time: post.PostedAt, Valid: true},
+			Countries:   geo.Countries,
+			Regions:     geo.Regions,
+			WorkMode:    geo.WorkMode,
 		})
 		if err != nil {
 			return fmt.Errorf("upsert job %s: %w", externalID, err)

@@ -156,6 +156,80 @@ func TestEnqueueJobEnrichmentGating(t *testing.T) {
 	})
 }
 
+func TestUpsertJobWritesAndRefreshesGeography(t *testing.T) {
+	pool := startPostgres(t)
+	q := New(pool)
+	ctx := context.Background()
+	truncate(t, pool)
+
+	p := ingestParams("acme:geo", "Geo Job")
+	p.Countries = []string{"us"}
+	p.Regions = []string{"us"}
+	first, err := q.UpsertJob(ctx, p)
+	if err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+	if !reflect.DeepEqual(first.Countries, []string{"us"}) || !reflect.DeepEqual(first.Regions, []string{"us"}) {
+		t.Fatalf("countries=%v regions=%v, want [us]/[us]", first.Countries, first.Regions)
+	}
+
+	// Re-ingest with different geography: EXCLUDED.* refreshes the columns.
+	p2 := ingestParams("acme:geo", "Geo Job")
+	p2.Countries = []string{"gb"}
+	p2.Regions = []string{"uk"}
+	second, err := q.UpsertJob(ctx, p2)
+	if err != nil {
+		t.Fatalf("re-upsert: %v", err)
+	}
+	if second.ID != first.ID {
+		t.Fatalf("re-ingest created a new row — dedup broken")
+	}
+	if !reflect.DeepEqual(second.Countries, []string{"gb"}) || !reflect.DeepEqual(second.Regions, []string{"uk"}) {
+		t.Errorf("after re-ingest countries=%v regions=%v, want [gb]/[uk]", second.Countries, second.Regions)
+	}
+
+	// A posting with no parsed geography (nil args) stores empty arrays via
+	// COALESCE, not NULL — and reads back as empty (emit_empty_slices), not nil.
+	nilJob, err := q.UpsertJob(ctx, ingestParams("acme:nilgeo", "No Geo"))
+	if err != nil {
+		t.Fatalf("upsert nil geo: %v", err)
+	}
+	if len(nilJob.Countries) != 0 || len(nilJob.Regions) != 0 {
+		t.Errorf("countries=%v regions=%v, want empty arrays for unresolved location", nilJob.Countries, nilJob.Regions)
+	}
+}
+
+func TestSetJobLocationBackfillsGeography(t *testing.T) {
+	pool := startPostgres(t)
+	q := New(pool)
+	ctx := context.Background()
+	truncate(t, pool)
+
+	job, err := q.UpsertJob(ctx, ingestParams("acme:backfill", "Backfill Job"))
+	if err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+	if len(job.Countries) != 0 {
+		t.Fatalf("precondition: want empty geography, got %v", job.Countries)
+	}
+
+	if err := q.SetJobLocation(ctx, SetJobLocationParams{
+		Countries: []string{"de"},
+		Regions:   []string{"eu"},
+		ID:        job.ID,
+	}); err != nil {
+		t.Fatalf("set location: %v", err)
+	}
+
+	got, err := q.GetJob(ctx, job.ID)
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if !reflect.DeepEqual(got.Countries, []string{"de"}) || !reflect.DeepEqual(got.Regions, []string{"eu"}) {
+		t.Errorf("after backfill countries=%v regions=%v, want [de]/[eu]", got.Countries, got.Regions)
+	}
+}
+
 func TestListJobsOrdersByNewestAdded(t *testing.T) {
 	pool := startPostgres(t)
 	q := New(pool)

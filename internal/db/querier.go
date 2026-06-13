@@ -121,6 +121,15 @@ type Querier interface {
 	// and the provenance stamp, touching no raw source field. Kept separate from
 	// UpsertJob (the ingest full-upsert path) so ingest and enrichment stay decoupled.
 	SetJobEnrichment(ctx context.Context, arg SetJobEnrichmentParams) error
+	// One-off backfill (cmd/backfill-geo): rewrite the location-derived columns from
+	// the row's stored location text. They are deterministic from `location`, so this
+	// is idempotent. updated_at is deliberately left untouched (like UpdateJobSlugs)
+	// so a backfill does not churn every row's timestamp. COALESCE maps a nil arg to
+	// '{}' to satisfy the NOT NULL array columns. work_mode here is parser-derived
+	// only (the original structured ATS signal is not available at backfill time);
+	// a later re-crawl overwrites it with the structured value where the adapter has
+	// one.
+	SetJobLocation(ctx context.Context, arg SetJobLocationParams) error
 	// Rebuild the companies catalogue from jobs. The companies table is derivable
 	// from jobs (slug = company_slug, name = company), so after a slug-builder change
 	// re-keys jobs, this re-keys companies to match. DISTINCT ON collapses a slug's
@@ -141,6 +150,9 @@ type Querier interface {
 	// enrichment, so a new row takes the table defaults ('{}' / NULL / 0) and a
 	// re-ingest leaves any existing enrichment untouched. SetJobEnrichment (the
 	// enrichment worker) is the sole writer of those columns.
+	// countries/regions ARE written here: they are source facts parsed from the
+	// location, not enrichment. COALESCE maps a nil arg to '{}', so a location that
+	// yields no geography stores empty arrays (the columns are NOT NULL).
 	// public_slug is deliberately NOT in the DO UPDATE SET: the slug is minted once
 	// at insert and is the row's stable public identity. Re-ingest of the same
 	// (source, external_id) must not rewrite it, so external links stay valid even

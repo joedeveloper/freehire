@@ -165,11 +165,15 @@ func (c *Client) awaitTask(ctx context.Context, taskUID int64) error {
 func indexSettings() *meilisearch.Settings {
 	return &meilisearch.Settings{
 		SearchableAttributes: []string{"title", "company", "description", "location"},
-		// Enrichment facets are nested, so they are filtered via dot paths.
+		// Enrichment facets are nested, so they are filtered via dot paths. The
+		// resolved geography facet (regions/countries) and work_mode are served
+		// top-level — the union of parsed-location and enrichment values — so they
+		// are filtered on a bare attribute, not the enrichment dot path.
 		FilterableAttributes: []string{
 			"source", "company_slug",
-			"enrichment.work_mode", "enrichment.employment_type", "enrichment.seniority",
-			"enrichment.category", "enrichment.domains", "enrichment.regions", "enrichment.countries",
+			"work_mode", "regions", "countries",
+			"enrichment.employment_type", "enrichment.seniority",
+			"enrichment.category", "enrichment.domains",
 			"enrichment.company_type", "enrichment.company_size", "enrichment.visa_sponsorship",
 			"enrichment.salary_currency", "enrichment.salary_period", "enrichment.skills",
 			"enrichment.salary_min", "enrichment.salary_max", "enrichment.experience_years_min",

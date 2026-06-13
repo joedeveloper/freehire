@@ -66,6 +66,81 @@ func TestFromRow_MapsCoreAndNestedEnrichment(t *testing.T) {
 	}
 }
 
+// Geography is the union of the parsed-location columns and the enrichment-derived
+// values; work_mode is the LLM value when present, else the parsed one. All three
+// are served top-level and folded out of the enrichment object.
+func TestFromRow_MergesGeographyAndWorkMode(t *testing.T) {
+	raw, err := json.Marshal(enrich.Enrichment{
+		Regions:   []string{"emea"},
+		Countries: []string{"us"},
+		WorkMode:  "remote",
+	})
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	view, err := FromRow(db.Job{
+		ID:         1,
+		Title:      "Dev",
+		PublicSlug: "dev-1",
+		Countries:  []string{"us"}, // parsed from location
+		Regions:    []string{"us"}, // parsed from location
+		WorkMode:   "onsite",       // parsed from location (loses to the LLM)
+		Enrichment: raw,
+	})
+	if err != nil {
+		t.Fatalf("FromRow: %v", err)
+	}
+
+	if got := view.Countries; len(got) != 1 || got[0] != "us" {
+		t.Errorf("Countries = %v, want [us] (deduped union)", got)
+	}
+	if got := view.Regions; len(got) != 2 || got[0] != "emea" || got[1] != "us" {
+		t.Errorf("Regions = %v, want [emea us] (sorted union)", got)
+	}
+	if view.WorkMode != "remote" {
+		t.Errorf("WorkMode = %q, want remote (LLM wins over parsed onsite)", view.WorkMode)
+	}
+	// Folded out of enrichment so geography/work_mode are reported once.
+	if len(view.Enrichment.Regions) != 0 || len(view.Enrichment.Countries) != 0 || view.Enrichment.WorkMode != "" {
+		t.Errorf("enrichment still carries folded fields: %+v", view.Enrichment)
+	}
+}
+
+// The LLM emits ISO country codes uppercase ("DE"); the parser emits them
+// lowercase ("de"). The merge must case-fold to one canonical form so the facet
+// is not split into duplicate buckets and a lowercase filter matches both.
+func TestFromRow_CountryCaseIsFolded(t *testing.T) {
+	raw, err := json.Marshal(enrich.Enrichment{Countries: []string{"DE", "FR"}})
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	view, err := FromRow(db.Job{
+		ID:         1,
+		Title:      "x",
+		PublicSlug: "x-1",
+		Countries:  []string{"de"}, // parser, lowercase
+		Enrichment: raw,
+	})
+	if err != nil {
+		t.Fatalf("FromRow: %v", err)
+	}
+	want := []string{"de", "fr"}
+	if len(view.Countries) != 2 || view.Countries[0] != want[0] || view.Countries[1] != want[1] {
+		t.Errorf("Countries = %v, want %v (case-folded, deduped)", view.Countries, want)
+	}
+}
+
+func TestFromRow_WorkModeFallsBackToParsed(t *testing.T) {
+	// No enrichment: the parsed-location work_mode surfaces.
+	view, err := FromRow(db.Job{ID: 1, Title: "x", PublicSlug: "x-1", WorkMode: "hybrid"})
+	if err != nil {
+		t.Fatalf("FromRow: %v", err)
+	}
+	if view.WorkMode != "hybrid" {
+		t.Errorf("WorkMode = %q, want hybrid (parser fallback when no LLM value)", view.WorkMode)
+	}
+}
+
 func TestFromRow_EmptyEnrichmentIsZero(t *testing.T) {
 	// An unenriched job's column arrives as "{}" (the table default) or, in
 	// edge cases, a nil byte slice. Both must decode to the zero Enrichment,
@@ -148,8 +223,15 @@ func TestJobJSON_Enriched(t *testing.T) {
 	if err := json.Unmarshal(fields["enrichment"], &enrichment); err != nil {
 		t.Fatalf("enrichment is not a JSON object: %v", err)
 	}
-	if enrichment["seniority"] != "senior" || enrichment["work_mode"] != "remote" {
+	if enrichment["seniority"] != "senior" {
 		t.Errorf("enrichment payload not preserved: %v", enrichment)
+	}
+	// work_mode is folded into the top-level facet, not duplicated under enrichment.
+	if got := string(fields["work_mode"]); got != `"remote"` {
+		t.Errorf("work_mode: want top-level \"remote\", got %s", got)
+	}
+	if _, dup := enrichment["work_mode"]; dup {
+		t.Error("work_mode must not also appear under enrichment")
 	}
 	if got := string(fields["enriched_at"]); got != `"2026-06-09T12:00:00Z"` {
 		t.Errorf("enriched_at: want the timestamp, got %s", got)

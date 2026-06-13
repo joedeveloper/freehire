@@ -52,6 +52,7 @@ func (r recruitee) Fetch(ctx context.Context, e CompanyEntry) ([]Job, error) {
 			Location:    o.Location,
 			Description: sanitizeHTML(o.Description + o.Requirements),
 			Remote:      o.Remote,
+			WorkMode:    workModeFromRemote(o.Remote),
 			PostedAt:    parseSpaceTime(o.CreatedAt),
 		})
 	}

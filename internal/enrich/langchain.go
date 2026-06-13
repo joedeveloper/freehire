@@ -116,10 +116,11 @@ func buildSystemPrompt() string {
 	b.WriteString("skills (array of lowercase tokens, e.g. go, postgresql), ")
 	b.WriteString("posting_language (ISO 639-1, e.g. en, uk, ru).\n")
 
-	b.WriteString("\nregions is the remote role's reach (only when work_mode is remote; omit otherwise): ")
+	b.WriteString("\nregions is the job's geographic area, for ANY work mode — a remote role's ")
+	b.WriteString("reach or an onsite/hybrid role's location: ")
 	b.WriteString("use 'global' ONLY when the posting explicitly says the role is open worldwide / ")
 	b.WriteString("anywhere / from any country; otherwise list the region(s) or country code(s) ")
-	b.WriteString("the role is open to, from the allowed values. Omit when unstated (unknown is not global).\n")
+	b.WriteString("the role covers, from the allowed values. Omit when unstated (unknown is not global).\n")
 	return b.String()
 }
 

@@ -30,6 +30,13 @@ type Job struct {
 	Description string
 	Remote      bool
 	PostedAt    *time.Time
+	// WorkMode is the work arrangement when the platform states it in a STRUCTURED
+	// field (a workplace-type enum or an explicit remote flag) — "remote",
+	// "hybrid", or "onsite", else "". It is left empty for adapters that only
+	// expose free-text location; the pipeline then falls back to parsing the
+	// location string. Provenance stays clean: this carries structured signal only,
+	// never the location heuristic.
+	WorkMode string
 }
 
 // Source adapts one job-source platform. Provider is the platform key that selects
@@ -120,6 +127,32 @@ func fetchDetails[P any](postings []P, workers int, fetch func(P) (Job, bool)) [
 func isRemote(location string) bool {
 	l := strings.ToLower(location)
 	return strings.Contains(l, "remote") || strings.Contains(l, "удал")
+}
+
+// workModeFromRemote maps an adapter's STRUCTURED remote flag to a work mode:
+// "remote" when set, else "" (a false flag does not imply onsite vs hybrid, so it
+// is left unknown for the parser/LLM to resolve). Adapters whose API exposes an
+// explicit remote boolean (Ashby, Recruitee, SmartRecruiters, Workable) use this.
+func workModeFromRemote(remote bool) string {
+	if remote {
+		return "remote"
+	}
+	return ""
+}
+
+// workplaceTypeMode maps an ATS workplace-type enum (as Lever exposes) to our work
+// mode vocabulary; an unspecified/unknown value yields "".
+func workplaceTypeMode(t string) string {
+	switch strings.ToLower(strings.TrimSpace(t)) {
+	case "remote":
+		return "remote"
+	case "hybrid":
+		return "hybrid"
+	case "on-site", "onsite", "on site":
+		return "onsite"
+	default:
+		return ""
+	}
 }
 
 // parseLayout parses a platform timestamp with the given layout into a posted_at,

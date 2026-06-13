@@ -91,7 +91,7 @@
   {@const posted = formatDate(job.posted_at)}
   {@const e = job.enrichment ?? {}}
   {@const salary = formatSalary(e)}
-  {@const facets = summaryFacets(e)}
+  {@const facets = summaryFacets(job)}
   <article class="flex flex-col gap-6">
     <header class="flex flex-col gap-4">
       <div class="flex items-start justify-between gap-4">

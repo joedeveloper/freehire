@@ -20,6 +20,7 @@ func TestLeverFetch(t *testing.T) {
 			"hostedUrl": "https://jobs.lever.co/lever/abc-123",
 			"createdAt": 1705312800000,
 			"categories": {"location": "Remote"},
+			"workplaceType": "hybrid",
 			"description": "<p>Write Go.</p>"
 		}
 	]`}
@@ -39,6 +40,9 @@ func TestLeverFetch(t *testing.T) {
 	}
 
 	j := jobs[0]
+	if j.WorkMode != "hybrid" {
+		t.Errorf("WorkMode = %q, want hybrid from Lever's workplaceType", j.WorkMode)
+	}
 	if j.ExternalID != "abc-123" {
 		t.Errorf("ExternalID = %q, want %q", j.ExternalID, "abc-123")
 	}

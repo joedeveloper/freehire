@@ -45,6 +45,9 @@ func (s *dbStore) Save(ctx context.Context, job pipeline.Job) error {
 		Remote:      job.Remote,
 		Description: job.Description,
 		PostedAt:    toTimestamptz(job.PostedAt),
+		Countries:   job.Countries,
+		Regions:     job.Regions,
+		WorkMode:    job.WorkMode,
 	})
 	if err != nil {
 		return fmt.Errorf("upsert job: %w", err)

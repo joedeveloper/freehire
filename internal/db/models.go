@@ -48,6 +48,9 @@ type Job struct {
 	PublicSlug        string             `json:"public_slug"`
 	LastSeenAt        pgtype.Timestamptz `json:"last_seen_at"`
 	ClosedAt          pgtype.Timestamptz `json:"closed_at"`
+	Countries         []string           `json:"countries"`
+	Regions           []string           `json:"regions"`
+	WorkMode          string             `json:"work_mode"`
 }
 
 type TelegramPost struct {

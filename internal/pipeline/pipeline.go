@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/strelov1/freehire/internal/location"
 	"github.com/strelov1/freehire/internal/normalize"
 	"github.com/strelov1/freehire/internal/sources"
 )
@@ -32,6 +33,12 @@ type Job struct {
 	Remote      bool
 	Description string
 	PostedAt    *time.Time
+	// Countries/Regions/WorkMode are parsed from Location: ISO alpha-2 codes,
+	// region codes, and a work-mode hint. Each is empty when the location states
+	// nothing the parser can resolve.
+	Countries []string
+	Regions   []string
+	WorkMode  string
 }
 
 // Store persists one normalized job and enqueues it for enrichment when needed,
@@ -131,6 +138,14 @@ func (r Runner) ingestBoard(ctx context.Context, e sources.CompanyEntry) (ingest
 func normalizeJob(e sources.CompanyEntry, j sources.Job) Job {
 	source := e.Provider
 	externalID := fmt.Sprintf("%s:%s", e.Board, j.ExternalID)
+	geo := location.Parse(j.Location)
+	// Work mode precedence: the adapter's structured signal (a workplace-type enum
+	// or explicit remote flag) beats the parser's free-text heuristic. The LLM,
+	// richer still, wins over both later at read time.
+	workMode := j.WorkMode
+	if workMode == "" {
+		workMode = geo.WorkMode
+	}
 	return Job{
 		Source:      source,
 		ExternalID:  externalID,
@@ -143,5 +158,8 @@ func normalizeJob(e sources.CompanyEntry, j sources.Job) Job {
 		Remote:      j.Remote,
 		Description: j.Description,
 		PostedAt:    j.PostedAt,
+		Countries:   geo.Countries,
+		Regions:     geo.Regions,
+		WorkMode:    workMode,
 	}
 }

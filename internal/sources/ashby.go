@@ -47,6 +47,7 @@ func (a ashby) Fetch(ctx context.Context, e CompanyEntry) ([]Job, error) {
 			Location:    j.Location,
 			Description: sanitizeHTML(j.DescriptionHTML),
 			Remote:      j.IsRemote,
+			WorkMode:    workModeFromRemote(j.IsRemote),
 			PostedAt:    parseRFC3339(j.PublishedAt),
 		})
 	}

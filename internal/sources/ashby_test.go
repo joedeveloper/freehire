@@ -68,6 +68,10 @@ func TestAshbyFetch(t *testing.T) {
 	if !j.Remote {
 		t.Error("Remote = false, want true from the explicit isRemote field")
 	}
+	// The explicit isRemote flag also yields a structured work mode.
+	if j.WorkMode != "remote" {
+		t.Errorf("WorkMode = %q, want remote from the explicit isRemote field", j.WorkMode)
+	}
 	if j.PostedAt == nil {
 		t.Error("PostedAt = nil, want parsed publishedAt with milliseconds")
 	}

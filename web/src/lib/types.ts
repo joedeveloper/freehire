@@ -19,6 +19,13 @@ export interface Job {
   // Non-null when the posting is no longer open. Lists never serve closed
   // jobs; the detail page renders the closed state from this field.
   closed_at: string | null;
+  // Resolved geography facet, served top-level: the union of the parsed-location
+  // columns and the enrichment-derived values. work_mode is the LLM value when
+  // present, else the one parsed from the location. regions is the job's
+  // geographic area (any work mode); empty = unknown, 'global' is explicit.
+  regions?: string[];
+  countries?: string[];
+  work_mode?: string;
   enrichment?: Enrichment;
   enriched_at?: string | null;
   enrichment_version?: number;
@@ -31,17 +38,13 @@ export interface Job {
  * validated server-side before storage, so the SPA only formats them.
  */
 export interface Enrichment {
-  // Work arrangement.
-  work_mode?: string;
+  // Work arrangement. work_mode, regions, and countries are NOT here: they are
+  // folded into the top-level Job geography facet (see Job above) and served once.
   employment_type?: string;
   relocation?: string;
   visa_sponsorship?: boolean;
 
-  // Location / eligibility. regions is a remote role's reach (meaningful only
-  // when work_mode is remote): 'global' + macro-regions + select countries.
-  // Empty = unknown; 'global' is explicit, distinct from unknown.
-  regions?: string[];
-  countries?: string[];
+  // Location / eligibility.
   cities?: string[];
   timezone_note?: string;
 
