@@ -16,12 +16,22 @@ export interface FacetState {
   matchAll: boolean;
 }
 
+/** The fields the browse list can be ordered by (both newest-first). `posted_at`
+ *  is the source's posting date; `created_at` is when we ingested the job. */
+export type SortField = 'posted_at' | 'created_at';
+
+/** Default browse order: freshest by posting date. Kept out of the URL (see
+ *  filtersToParams) so the default reads as a clean, sort-less URL and the
+ *  backend's own empty-query default stays the single source of truth. */
+export const DEFAULT_SORT: SortField = 'posted_at';
+
 export interface JobFilters {
   q: string;
   /** Facet state keyed by the facet's query param (see FACETS). */
   facets: Record<string, FacetState>;
   visa: boolean;
   salaryMin: number | null;
+  sort: SortField;
 }
 
 function emptyFacet(): FacetState {
@@ -35,7 +45,7 @@ function emptyFacets(): Record<string, FacetState> {
 }
 
 export function emptyFilters(): JobFilters {
-  return { q: '', facets: emptyFacets(), visa: false, salaryMin: null };
+  return { q: '', facets: emptyFacets(), visa: false, salaryMin: null, sort: DEFAULT_SORT };
 }
 
 /** Serialize filters to URL query params (the shape the search API reads). */
@@ -54,6 +64,8 @@ export function filtersToParams(f: JobFilters): URLSearchParams {
   }
   if (f.visa) p.set('visa_sponsorship', 'true');
   if (f.salaryMin != null) p.set('salary_min', String(f.salaryMin));
+  // Omit the default sort: a clean URL leans on the backend's empty-query default.
+  if (f.sort !== DEFAULT_SORT) p.set('sort', f.sort);
   return p;
 }
 
@@ -72,6 +84,8 @@ export function filtersFromParams(p: URLSearchParams): JobFilters {
   f.visa = p.get('visa_sponsorship') === 'true';
   const salary = Number(p.get('salary_min'));
   f.salaryMin = p.get('salary_min') && !Number.isNaN(salary) ? salary : null;
+  // Only `created_at` is a non-default sort; anything else falls back to default.
+  f.sort = p.get('sort') === 'created_at' ? 'created_at' : DEFAULT_SORT;
   return f;
 }
 
@@ -113,6 +127,11 @@ export class FilterStore {
 
   setSalaryMin(n: number | null) {
     this.value = { ...this.value, salaryMin: n };
+    this.#commit();
+  }
+
+  setSort(sort: SortField) {
+    this.value = { ...this.value, sort };
     this.#commit();
   }
 

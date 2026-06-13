@@ -158,16 +158,16 @@ func filterHas(groups [][]string, expr string) bool {
 	return false
 }
 
-func TestSearchJobs_DefaultSortIsCreatedAtForEmptyQuery(t *testing.T) {
+func TestSearchJobs_DefaultSortIsPostedAtForEmptyQuery(t *testing.T) {
 	fake := &fakeSearcher{}
 	app := searchApp(fake)
 
-	// No query text, no sort → newest-added first.
+	// No query text, no sort → freshest by posting date first.
 	if status, _ := doGet(t, app, "/jobs/search"); status != fiber.StatusOK {
 		t.Fatalf("status = %d, want 200", status)
 	}
-	if len(fake.got.Sort) != 1 || fake.got.Sort[0] != "created_at:desc" {
-		t.Errorf("Sort = %v, want [created_at:desc] for empty q", fake.got.Sort)
+	if len(fake.got.Sort) != 1 || fake.got.Sort[0] != "posted_at:desc" {
+		t.Errorf("Sort = %v, want [posted_at:desc] for empty q", fake.got.Sort)
 	}
 
 	// Text query, no sort → relevance (nil sort).
@@ -178,7 +178,7 @@ func TestSearchJobs_DefaultSortIsCreatedAtForEmptyQuery(t *testing.T) {
 		t.Errorf("Sort = %v, want nil (relevance) for a text query", fake.got.Sort)
 	}
 
-	// Explicit sort always wins, q or not.
+	// Explicit sort always wins, q or not — and created_at is still accepted.
 	if status, _ := doGet(t, app, "/jobs/search?q=golang&sort=created_at&order=asc"); status != fiber.StatusOK {
 		t.Fatalf("status = %d, want 200", status)
 	}

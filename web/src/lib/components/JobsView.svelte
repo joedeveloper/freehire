@@ -2,7 +2,7 @@
   import { onMount } from 'svelte';
   import { searchJobs } from '$lib/api';
   import { Paginator } from '$lib/paginated.svelte';
-  import { FilterStore, filtersToParams } from '$lib/filters.svelte';
+  import { FilterStore, filtersToParams, type SortField } from '$lib/filters.svelte';
   import { router } from '$lib/router.svelte';
   import { Input } from '$lib/ui';
   import FiltersPanel from './FiltersPanel.svelte';
@@ -35,6 +35,10 @@
     router.search; // track
     filters.syncFromUrl();
   });
+
+  // House select styling, mirrored from ApiKeysView.
+  const sortClass =
+    'h-9 shrink-0 rounded-lg border border-input bg-transparent px-3 text-sm transition-colors focus-visible:border-ring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 dark:bg-input/30';
 
   // Re-run the search when any filter changes, debounced. The first effect run is
   // the initial mount, already loaded by onMount, so skip it.
@@ -69,6 +73,15 @@
         aria-label="Search jobs"
         class="min-w-0 flex-1"
       />
+      <select
+        value={filters.value.sort}
+        onchange={(e) => filters.setSort(e.currentTarget.value as SortField)}
+        aria-label="Sort jobs by"
+        class={sortClass}
+      >
+        <option value="posted_at">Date posted</option>
+        <option value="created_at">Recently added</option>
+      </select>
       <button
         type="button"
         class="h-9 shrink-0 rounded-lg border border-border bg-secondary px-3 text-sm font-medium text-secondary-foreground transition-colors hover:bg-accent md:hidden"

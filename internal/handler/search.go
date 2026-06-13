@@ -91,14 +91,14 @@ func (h *Handler) SearchJobs(c *fiber.Ctx) error {
 }
 
 // searchSort builds the Meilisearch sort directive from ?sort=<field>&order=<dir>.
-// Without a valid sort param, a no-text browse defaults to newest-added first
-// (created_at desc) — relevance is meaningless for an empty query — while a text
-// query keeps relevance order (nil).
+// Without a valid sort param, a no-text browse defaults to the freshest postings
+// first (posted_at desc) — relevance is meaningless for an empty query — while a
+// text query keeps relevance order (nil).
 func searchSort(c *fiber.Ctx) []string {
 	attr, ok := searchSortable[c.Query("sort")]
 	if !ok {
 		if c.Query("q") == "" {
-			return []string{"created_at:desc"}
+			return []string{"posted_at:desc"}
 		}
 		return nil
 	}
