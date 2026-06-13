@@ -1,0 +1,22 @@
+# teamtailor boards. Provider is the filename; each entry is company + board.
+# board = the Teamtailor career-site host (see internal/sources/teamtailor.go); the adapter
+# reads https://<board>/jobs and follows pagination, then each job page's JobPosting ld+json.
+# Each board validated live (>0 jobs in its listing, full normalized sample) before adding.
+
+- company: Tibber
+  board: jobs.tibber.com
+
+- company: Polestar
+  board: polestar.teamtailor.com
+
+- company: Anyfin
+  board: career.anyfin.com
+
+- company: Lunar
+  board: jobs.lunar.app
+
+- company: Templafy
+  board: templafy.teamtailor.com
+
+- company: Normative
+  board: careers.normative.io
