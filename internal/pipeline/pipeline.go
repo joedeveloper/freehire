@@ -49,10 +49,13 @@ type Store interface {
 }
 
 // Stats reports what a run did: Ingested counts saved jobs, Failed counts boards that
-// errored (unknown provider or a fetch failure).
+// errored (unknown provider or a fetch failure), and Skipped counts jobs that fetched
+// fine but failed to persist. Skipped is surfaced so a run whose every save fails (e.g.
+// a DB schema drift) is not mistaken for a clean ingested=0/failed=0 success.
 type Stats struct {
 	Ingested int
 	Failed   int
+	Skipped  int
 }
 
 // Runner drives ingest: for each configured board it looks up the adapter, fetches,
@@ -90,11 +93,12 @@ func (r Runner) Run(ctx context.Context, entries []sources.CompanyEntry) (Stats,
 				return
 			}
 
-			ingested, failed := r.ingestBoard(ctx, e)
+			ingested, failed, skipped := r.ingestBoard(ctx, e)
 
 			mu.Lock()
 			stats.Ingested += ingested
 			stats.Failed += failed
+			stats.Skipped += skipped
 			mu.Unlock()
 		}(e)
 	}
@@ -103,14 +107,15 @@ func (r Runner) Run(ctx context.Context, entries []sources.CompanyEntry) (Stats,
 	return stats, ctx.Err()
 }
 
-// ingestBoard fetches and saves one board, returning how many jobs it ingested and
-// whether the board itself failed (1) or not (0). A missing adapter or a fetch error
-// fails the board; a per-job save error is skipped without failing the board.
-func (r Runner) ingestBoard(ctx context.Context, e sources.CompanyEntry) (ingested, failed int) {
+// ingestBoard fetches and saves one board, returning how many jobs it ingested, whether
+// the board itself failed (1) or not (0), and how many jobs were skipped on a save error.
+// A missing adapter or a fetch error fails the board; a per-job save error skips that job
+// without failing the board, but is counted and logged so it is never silently swallowed.
+func (r Runner) ingestBoard(ctx context.Context, e sources.CompanyEntry) (ingested, failed, skipped int) {
 	src, ok := r.Registry[e.Provider]
 	if !ok {
 		log.Printf("ingest: %s/%s: unknown provider %q", e.Company, e.Board, e.Provider)
-		return 0, 1
+		return 0, 1, 0
 	}
 
 	raw, err := src.Fetch(ctx, e)
@@ -118,16 +123,27 @@ func (r Runner) ingestBoard(ctx context.Context, e sources.CompanyEntry) (ingest
 		// Log the cause so a failed board is diagnosable (the source error carries
 		// the HTTP status / timeout); the run still isolates and continues.
 		log.Printf("ingest: %s board %q (%s) failed: %v", e.Provider, e.Board, e.Company, err)
-		return 0, 1
+		return 0, 1, 0
 	}
 
+	var firstErr error
 	for _, j := range raw {
 		if err := r.Store.Save(ctx, normalizeJob(e, j)); err != nil {
+			skipped++
+			if firstErr == nil {
+				firstErr = err
+			}
 			continue
 		}
 		ingested++
 	}
-	return ingested, 0
+	// One line per board with skips (not one per job), so a systemic save failure —
+	// e.g. the DB behind a migration — is visible without flooding the log.
+	if skipped > 0 {
+		log.Printf("ingest: %s board %q (%s): skipped %d/%d jobs on save error (e.g. %v)",
+			e.Provider, e.Board, e.Company, skipped, len(raw), firstErr)
+	}
+	return ingested, 0, skipped
 }
 
 // normalizeJob turns a raw posting into a persistable Job: the platform becomes the

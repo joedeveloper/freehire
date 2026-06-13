@@ -64,7 +64,7 @@ func main() {
 		log.Fatalf("ingest: %v", err)
 	}
 
-	log.Printf("ingest done: provider=%s ingested=%d failed=%d", sourceCfg.Provider, stats.Ingested, stats.Failed)
+	log.Printf("ingest done: provider=%s ingested=%d failed=%d skipped=%d", sourceCfg.Provider, stats.Ingested, stats.Failed, stats.Skipped)
 
 	// Post-run sweep (job-lifecycle spec): close THIS provider's open jobs unseen for
 	// the whole grace window. Scoped to the provider so one provider's run never

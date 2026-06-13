@@ -186,6 +186,11 @@ func TestRunIsolatesPerJobSaveError(t *testing.T) {
 	if stats.Failed != 0 {
 		t.Errorf("stats.Failed = %d, want 0 (a save error is not a board failure)", stats.Failed)
 	}
+	// The skip is counted so a run whose every save fails (e.g. schema drift) is not
+	// reported as a clean ingested=0/failed=0 success.
+	if stats.Skipped != 1 {
+		t.Errorf("stats.Skipped = %d, want 1 (the save error is counted, not silently swallowed)", stats.Skipped)
+	}
 }
 
 func TestRunCountsUnknownProviderAsFailed(t *testing.T) {
