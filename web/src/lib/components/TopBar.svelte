@@ -3,6 +3,7 @@
   import { page } from '$app/state';
   import { replaceState } from '$app/navigation';
   import { isAuthenticated } from '$lib/auth.svelte';
+  import { authDialog, openAuthDialog, closeAuthDialog } from '$lib/auth-dialog.svelte';
   import { cn } from '$lib/utils';
   import { Button } from '$lib/ui';
   import ThemeToggle from './ThemeToggle.svelte';
@@ -20,28 +21,15 @@
   // /jobs/:slug). Order-independent: /companies never matches /jobs.
   const isActive = (href: string) => path === href || path.startsWith(`${href}/`);
 
-  // The auth dialog lives at the layout level and always opens in sign-in
-  // mode (its own footer toggle switches to register). Open state is separate
-  // from mode so `mode` stays a non-null value the dialog can two-way bind.
-  let dialogOpen = $state(false);
-  let dialogMode = $state<'login' | 'register'>('login');
-  // A failed OAuth callback redirects back with ?auth_error; surface it by
-  // reopening the dialog with an inline message and cleaning the URL.
-  let dialogError = $state<string | null>(null);
-
-  function openDialog() {
-    dialogMode = 'login';
-    dialogError = null;
-    dialogOpen = true;
-  }
+  // The auth dialog lives at the layout level but its open state is a shared
+  // singleton (see auth-dialog.svelte), so deep components — like a job's Save
+  // button — can prompt sign-in through the same dialog this header renders.
 
   // Surface a failed OAuth callback (?auth_error) once on the client, then clean
   // the URL. In onMount so it never runs during SSR.
   onMount(() => {
     if (page.url.searchParams.has('auth_error')) {
-      dialogError = 'Sign-in failed. Please try again.';
-      dialogMode = 'login';
-      dialogOpen = true;
+      openAuthDialog('login', 'Sign-in failed. Please try again.');
       replaceState(page.url.pathname, {});
     }
   });
@@ -69,13 +57,13 @@
       {#if isAuthenticated()}
         <UserMenu />
       {:else}
-        <Button variant="primary" size="sm" onclick={openDialog}>Sign in</Button>
+        <Button variant="primary" size="sm" onclick={() => openAuthDialog('login')}>Sign in</Button>
       {/if}
       <ThemeToggle />
     </div>
   </div>
 </header>
 
-{#if dialogOpen}
-  <AuthDialog bind:mode={dialogMode} initialError={dialogError} onClose={() => (dialogOpen = false)} />
+{#if authDialog.open}
+  <AuthDialog bind:mode={authDialog.mode} initialError={authDialog.error} onClose={closeAuthDialog} />
 {/if}

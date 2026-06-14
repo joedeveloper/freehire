@@ -3,6 +3,7 @@
   import { ArrowRight, Bookmark, Check } from '@lucide/svelte';
   import { markJobApplied, recordJobView, saveJob, unsaveJob } from '$lib/api';
   import { isAuthenticated } from '$lib/auth.svelte';
+  import { openAuthDialog } from '$lib/auth-dialog.svelte';
   import { filterHref, formatSalary, summaryFacets } from '$lib/enrichment';
   import type { Job, UserJob } from '$lib/types';
   import { Badge, Button } from '$lib/ui';
@@ -62,6 +63,16 @@
   // "No": purely local — the job must not enter the tracker.
   function dismissApplyPrompt() {
     showApplyPrompt = false;
+  }
+
+  // Saving requires an account: a signed-out click opens the sign-in dialog
+  // instead (no auto-save afterwards — once signed in they can click again).
+  function onSaveClick() {
+    if (!isAuthenticated()) {
+      openAuthDialog('login');
+      return;
+    }
+    toggleSave();
   }
 
   // The toggle flips on the server's answer, not optimistically: both endpoints
@@ -141,14 +152,12 @@
         </p>
       {/if}
 
-      {#if isAuthenticated()}
-        <div class="border-t border-border pt-4 first:border-t-0 first:pt-0">
-          <Button variant="outline" onclick={toggleSave} aria-pressed={saved} class="w-full">
-            <Bookmark class={saved ? 'size-4 fill-current' : 'size-4'} />
-            {saved ? 'Saved' : 'Save'}
-          </Button>
-        </div>
-      {/if}
+      <div class="border-t border-border pt-4 first:border-t-0 first:pt-0">
+        <Button variant="outline" onclick={onSaveClick} aria-pressed={saved} class="w-full">
+          <Bookmark class={saved ? 'size-4 fill-current' : 'size-4'} />
+          {saved ? 'Saved' : 'Save'}
+        </Button>
+      </div>
 
       {#if facets.length}
         <dl class="flex flex-col gap-2 border-t border-border pt-4 text-sm first:border-t-0 first:pt-0">

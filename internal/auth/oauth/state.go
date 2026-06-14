@@ -3,6 +3,8 @@ package oauth
 import (
 	"crypto/rand"
 	"encoding/base64"
+	"net/url"
+	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -12,6 +14,11 @@ import (
 // provider callback. Lax is enough: the callback is a top-level GET
 // navigation, on which Lax cookies are sent.
 const StateCookieName = "hire_oauth_state"
+
+// ReturnCookieName remembers where to send the browser after a successful
+// sign-in, so signing in from a deep page returns there instead of the home
+// page. It rides the same Lax, short-lived round-trip as the state cookie.
+const ReturnCookieName = "hire_oauth_return"
 
 // stateTTL bounds how long a started sign-in stays completable. Ten minutes
 // covers a slow consent screen without leaving stale states around.
@@ -28,19 +35,30 @@ func NewState() (string, error) {
 
 // SetStateCookie stores the state for the upcoming callback to verify.
 func SetStateCookie(c *fiber.Ctx, state string, secure bool) {
-	writeStateCookie(c, state, time.Now().Add(stateTTL), secure)
+	writeCookie(c, StateCookieName, state, time.Now().Add(stateTTL), secure)
 }
 
 // ClearStateCookie removes the state cookie (the state is single-use).
 func ClearStateCookie(c *fiber.Ctx, secure bool) {
-	writeStateCookie(c, "", time.Now().Add(-time.Hour), secure)
+	writeCookie(c, StateCookieName, "", time.Now().Add(-time.Hour), secure)
 }
 
-// writeStateCookie is the single place the cookie's attributes are set, so
-// set and clear can't drift apart (same pattern as the session cookie).
-func writeStateCookie(c *fiber.Ctx, value string, expires time.Time, secure bool) {
+// SetReturnCookie remembers a (pre-validated) return path for the callback.
+func SetReturnCookie(c *fiber.Ctx, path string, secure bool) {
+	writeCookie(c, ReturnCookieName, path, time.Now().Add(stateTTL), secure)
+}
+
+// ClearReturnCookie removes the return cookie (single-use, like the state).
+func ClearReturnCookie(c *fiber.Ctx, secure bool) {
+	writeCookie(c, ReturnCookieName, "", time.Now().Add(-time.Hour), secure)
+}
+
+// writeCookie is the single place these short-lived sign-in cookies get their
+// attributes, so set and clear can't drift apart (same pattern as the session
+// cookie).
+func writeCookie(c *fiber.Ctx, name, value string, expires time.Time, secure bool) {
 	c.Cookie(&fiber.Cookie{
-		Name:     StateCookieName,
+		Name:     name,
 		Value:    value,
 		Path:     "/",
 		Expires:  expires,
@@ -48,4 +66,28 @@ func writeStateCookie(c *fiber.Ctx, value string, expires time.Time, secure bool
 		Secure:   secure,
 		SameSite: fiber.CookieSameSiteLaxMode,
 	})
+}
+
+// SafeReturnPath validates a post-login return target the SPA supplies. It
+// accepts only same-origin relative paths so the open redirect can't bounce a
+// user to an attacker's site; anything else (absolute URL, scheme-relative
+// "//host", non-rooted, or unparseable) collapses to "/". The query is kept;
+// scheme and host are never echoed back.
+func SafeReturnPath(raw string) string {
+	const fallback = "/"
+	if raw == "" {
+		return fallback
+	}
+	u, err := url.Parse(raw)
+	if err != nil || u.IsAbs() || u.Host != "" {
+		return fallback
+	}
+	if !strings.HasPrefix(u.Path, "/") || strings.HasPrefix(u.Path, "//") {
+		return fallback
+	}
+	out := u.EscapedPath()
+	if u.RawQuery != "" {
+		out += "?" + u.RawQuery
+	}
+	return out
 }
