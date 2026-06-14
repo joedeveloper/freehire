@@ -63,6 +63,7 @@ type Job struct {
 	Regions           []string           `json:"regions"`
 	WorkMode          string             `json:"work_mode"`
 	LivenessStrikes   int32              `json:"liveness_strikes"`
+	Skills            []string           `json:"skills"`
 }
 
 type TelegramPost struct {

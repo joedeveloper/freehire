@@ -208,6 +208,20 @@ func TestRunCountsUnknownProviderAsFailed(t *testing.T) {
 	}
 }
 
+func TestNormalizeJobDerivesSkills(t *testing.T) {
+	got := normalizeJob(
+		sources.CompanyEntry{Provider: "greenhouse", Board: "acme"},
+		sources.Job{
+			Title: "Backend Engineer", Company: "Acme", ExternalID: "1",
+			Description: "<p>Build services in Golang with PostgreSQL and Kubernetes.</p>",
+		},
+	)
+	want := []string{"go", "kubernetes", "postgresql"}
+	if !reflect.DeepEqual(got.Skills, want) {
+		t.Fatalf("Skills = %#v, want %#v", got.Skills, want)
+	}
+}
+
 // A run over several providers tallies stats per provider (one map key each), so the
 // caller can sweep each provider independently. Ingest counts are kept apart.
 func TestRunReturnsPerProviderStats(t *testing.T) {

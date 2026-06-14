@@ -12,6 +12,7 @@ import (
 
 	"github.com/strelov1/freehire/internal/location"
 	"github.com/strelov1/freehire/internal/normalize"
+	"github.com/strelov1/freehire/internal/skilltag"
 	"github.com/strelov1/freehire/internal/sources"
 )
 
@@ -39,6 +40,9 @@ type Job struct {
 	Countries []string
 	Regions   []string
 	WorkMode  string
+	// Skills are the deterministic technology tags parsed from Description by
+	// internal/skilltag. Empty when the description resolves no known skill.
+	Skills []string
 }
 
 // Store persists one normalized job and enqueues it for enrichment when needed,
@@ -182,6 +186,7 @@ func normalizeJob(e sources.CompanyEntry, j sources.Job) Job {
 	if workMode == "" {
 		workMode = geo.WorkMode
 	}
+	skills := skilltag.Parse(j.Description)
 	return Job{
 		Source:      source,
 		ExternalID:  externalID,
@@ -197,5 +202,6 @@ func normalizeJob(e sources.CompanyEntry, j sources.Job) Job {
 		Countries:   geo.Countries,
 		Regions:     geo.Regions,
 		WorkMode:    workMode,
+		Skills:      skills,
 	}
 }

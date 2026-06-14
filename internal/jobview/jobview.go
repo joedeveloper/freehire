@@ -42,6 +42,7 @@ type Job struct {
 	Countries []string `json:"countries"`
 	Regions   []string `json:"regions"`
 	WorkMode  string   `json:"work_mode,omitempty"`
+	Skills    []string `json:"skills"`
 	PostedAt  *string  `json:"posted_at"`
 	CreatedAt *string  `json:"created_at"`
 	UpdatedAt *string  `json:"updated_at"`
@@ -75,7 +76,9 @@ func FromRow(j db.Job) (Job, error) {
 	if workMode == "" {
 		workMode = j.WorkMode
 	}
+	skills := mergeSets(j.Skills, e.Skills)
 	e.Countries, e.Regions, e.WorkMode = nil, nil, ""
+	e.Skills = nil
 
 	return Job{
 		PublicSlug:        j.PublicSlug,
@@ -90,6 +93,7 @@ func FromRow(j db.Job) (Job, error) {
 		Countries:         countries,
 		Regions:           regions,
 		WorkMode:          workMode,
+		Skills:            skills,
 		PostedAt:          rfc3339(j.PostedAt),
 		CreatedAt:         rfc3339(j.CreatedAt),
 		UpdatedAt:         rfc3339(j.UpdatedAt),

@@ -2,6 +2,7 @@ package jobview
 
 import (
 	"encoding/json"
+	"reflect"
 	"testing"
 	"time"
 
@@ -61,8 +62,15 @@ func TestFromRow_MapsCoreAndNestedEnrichment(t *testing.T) {
 	if view.Enrichment.SalaryMin == nil || *view.Enrichment.SalaryMin != 100000 {
 		t.Errorf("nested salary_min = %v", view.Enrichment.SalaryMin)
 	}
-	if len(view.Enrichment.Skills) != 2 || view.Enrichment.VisaSponsorship == nil || !*view.Enrichment.VisaSponsorship {
-		t.Errorf("nested skills/visa not mapped: %+v", view.Enrichment)
+	// Skills are folded into the top-level facet; VisaSponsorship stays nested.
+	if len(view.Skills) != 2 || view.Skills[0] != "go" || view.Skills[1] != "postgres" {
+		t.Errorf("top-level skills = %v, want [go postgres]", view.Skills)
+	}
+	if view.Enrichment.Skills != nil {
+		t.Errorf("enrichment.skills should be folded out, got %#v", view.Enrichment.Skills)
+	}
+	if view.Enrichment.VisaSponsorship == nil || !*view.Enrichment.VisaSponsorship {
+		t.Errorf("nested visa not mapped: %+v", view.Enrichment)
 	}
 }
 
@@ -258,6 +266,24 @@ func marshalToFields(t *testing.T, job db.Job) map[string]json.RawMessage {
 		t.Fatalf("unmarshal: %v", err)
 	}
 	return fields
+}
+
+func TestFromRowUnionsSkills(t *testing.T) {
+	enr, _ := json.Marshal(enrich.Enrichment{Skills: []string{"go", "docker"}})
+	j := db.Job{
+		ID: 1, Skills: []string{"go", "kubernetes"}, Enrichment: enr,
+	}
+	got, err := FromRow(j)
+	if err != nil {
+		t.Fatalf("FromRow: %v", err)
+	}
+	want := []string{"docker", "go", "kubernetes"}
+	if !reflect.DeepEqual(got.Skills, want) {
+		t.Fatalf("Skills = %#v, want %#v", got.Skills, want)
+	}
+	if got.Enrichment.Skills != nil {
+		t.Errorf("enrichment.skills should be folded out, got %#v", got.Enrichment.Skills)
+	}
 }
 
 // closed_at rides the wire shape so the SPA can render the closed state on the

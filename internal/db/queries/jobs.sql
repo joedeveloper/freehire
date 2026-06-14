@@ -70,14 +70,14 @@ WITH company_upsert AS (
 )
 INSERT INTO jobs (
     source, external_id, url, title, company, company_slug, location, remote, description, posted_at,
-    public_slug, countries, regions, work_mode
+    public_slug, countries, regions, work_mode, skills
 ) VALUES (
     sqlc.arg(source), sqlc.arg(external_id), sqlc.arg(url), sqlc.arg(title),
     sqlc.arg(company), sqlc.arg(company_slug), sqlc.arg(location), sqlc.arg(remote),
     sqlc.arg(description), sqlc.arg(posted_at),
     sqlc.arg(public_slug),
     COALESCE(sqlc.arg(countries)::text[], '{}'), COALESCE(sqlc.arg(regions)::text[], '{}'),
-    sqlc.arg(work_mode)
+    sqlc.arg(work_mode), COALESCE(sqlc.arg(skills)::text[], '{}')
 )
 -- public_slug is deliberately NOT in the DO UPDATE SET: the slug is minted once
 -- at insert and is the row's stable public identity. Re-ingest of the same
@@ -95,6 +95,7 @@ ON CONFLICT (source, external_id) DO UPDATE SET
     countries    = EXCLUDED.countries,
     regions      = EXCLUDED.regions,
     work_mode    = EXCLUDED.work_mode,
+    skills       = EXCLUDED.skills,
     -- The crawl saw the posting: refresh liveness and reopen if it was closed.
     last_seen_at = now(),
     closed_at    = NULL,
@@ -194,4 +195,14 @@ SET enrichment         = sqlc.arg(enrichment),
     enriched_at        = sqlc.arg(enriched_at),
     enrichment_version = sqlc.arg(enrichment_version),
     updated_at         = now()
+WHERE id = sqlc.arg(id);
+
+-- name: SetJobSkills :exec
+-- One-off backfill (cmd/backfill-skills): rewrite the deterministic skills column
+-- from the row's stored description. Skills are a pure function of the description,
+-- so this is idempotent. updated_at is deliberately left untouched (like
+-- SetJobLocation) so a backfill does not churn every row's timestamp. COALESCE maps
+-- a nil arg to '{}' to satisfy the NOT NULL array column.
+UPDATE jobs
+SET skills = COALESCE(sqlc.arg(skills)::text[], '{}')
 WHERE id = sqlc.arg(id);
