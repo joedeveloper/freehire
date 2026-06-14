@@ -11,6 +11,7 @@ import (
 	"github.com/strelov1/freehire/internal/auth"
 	"github.com/strelov1/freehire/internal/auth/oauth"
 	"github.com/strelov1/freehire/internal/db"
+	"github.com/strelov1/freehire/internal/jobtracking"
 	"github.com/strelov1/freehire/internal/search"
 )
 
@@ -33,6 +34,9 @@ type Handler struct {
 	// search is the job-search backend. Nil when Meilisearch is unconfigured —
 	// the search endpoint then reports 503 and the rest of the API is unaffected.
 	search searcher
+	// tracking owns the per-user job-interaction use cases (view/apply/save/
+	// unsave/track); the handlers translate wire ↔ domain and delegate to it.
+	tracking *jobtracking.Service
 }
 
 // pageParams reads and clamps the shared limit/offset pagination query params.
@@ -67,13 +71,15 @@ func listResponse(c *fiber.Ctx, data any, total int64, limit, offset int) error 
 // the cookie rides along with no CORS. The CORS allowlist is not credentialed —
 // it only permits non-credentialed cross-origin reads of the public endpoints.
 func Register(app *fiber.App, pool *pgxpool.Pool, frontendOrigin, jwtSecret string, jwtTTL time.Duration, cookieSecure bool, oauthProviders map[string]oauth.Provider, searchClient *search.Client) {
+	queries := db.New(pool)
 	h := &Handler{
 		pool:           pool,
-		queries:        db.New(pool),
+		queries:        queries,
 		issuer:         auth.NewIssuer(jwtSecret, jwtTTL),
 		cookieSecure:   cookieSecure,
 		oauth:          oauthProviders,
 		frontendOrigin: frontendOrigin,
+		tracking:       jobtracking.New(jobtracking.NewQueriesRepository(queries)),
 	}
 	// Assign only when configured: a nil *search.Client wrapped in the searcher
 	// interface would be a non-nil interface and defeat the nil check.

@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -10,16 +11,40 @@ import (
 	"github.com/gofiber/fiber/v2"
 
 	"github.com/strelov1/freehire/internal/auth"
+	"github.com/strelov1/freehire/internal/jobtracking"
 	"github.com/strelov1/freehire/internal/userjob"
 )
 
-// trackApp mounts the track route on a handler with no DB. The auth gate and the
-// body validation (empty / unknown stage) all reject before any query runs, so
-// the nil queries is never dereferenced. The DB-backed path is covered by the
-// user_jobs integration tests.
+// stubTrackingRepo is a DB-free jobtracking.Repository for the handler unit
+// tests. The empty/bad-stage cases under test are rejected by the Service before
+// it touches the repository, so these methods only need to exist (they panic if
+// the validation order ever regresses and a request unexpectedly reaches them).
+type stubTrackingRepo struct{}
+
+func (stubTrackingRepo) JobIDBySlug(context.Context, string) (int64, error) { return 1, nil }
+func (stubTrackingRepo) RecordView(context.Context, int64, int64) (jobtracking.Interaction, error) {
+	return jobtracking.Interaction{JobID: 1}, nil
+}
+func (stubTrackingRepo) MarkApplied(context.Context, int64, int64) (jobtracking.Interaction, error) {
+	return jobtracking.Interaction{JobID: 1}, nil
+}
+func (stubTrackingRepo) SaveJob(context.Context, int64, int64) (jobtracking.Interaction, error) {
+	return jobtracking.Interaction{JobID: 1}, nil
+}
+func (stubTrackingRepo) UnsaveJob(context.Context, int64, int64) (jobtracking.Interaction, error) {
+	return jobtracking.Interaction{JobID: 1}, nil
+}
+func (stubTrackingRepo) TrackJob(context.Context, int64, int64, *string, *string) (jobtracking.Interaction, error) {
+	return jobtracking.Interaction{JobID: 1}, nil
+}
+
+// trackApp mounts the track route on a handler whose tracking service is backed
+// by a stub repository (no DB). The auth gate and the service's body validation
+// (empty / unknown stage) reject before any repository call runs. The DB-backed
+// path is covered by the user_jobs integration tests.
 func trackApp() (*fiber.App, *auth.Issuer) {
 	iss := auth.NewIssuer("test-secret", time.Hour)
-	h := &Handler{issuer: iss}
+	h := &Handler{issuer: iss, tracking: jobtracking.New(stubTrackingRepo{})}
 	app := fiber.New()
 	app.Patch("/jobs/:slug/track", auth.RequireAuth(iss), h.TrackJob)
 	return app, iss
