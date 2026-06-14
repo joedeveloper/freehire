@@ -84,11 +84,15 @@ type Querier interface {
 	GetJobIDBySlug(ctx context.Context, publicSlug string) (int64, error)
 	// Login lookup. Case-insensitive on email; returns password_hash so the handler
 	// can verify the password (and reject accounts that have none).
-	GetUserByEmail(ctx context.Context, lower string) (User, error)
+	GetUserByEmail(ctx context.Context, lower string) (GetUserByEmailRow, error)
 	// Profile lookup for the authenticated user. Never selects password_hash.
 	GetUserByID(ctx context.Context, id int64) (GetUserByIDRow, error)
 	// OAuth sign-in fast path: resolve a provider identity straight to its user.
 	GetUserByIdentity(ctx context.Context, arg GetUserByIdentityParams) (GetUserByIdentityRow, error)
+	// Slim role lookup for the RequireRole authorization middleware: it runs on every
+	// request to a role-gated endpoint and needs only the role, so it does not drag the
+	// full user row (the GetJobIDBySlug precedent for a hot-path read).
+	GetUserRole(ctx context.Context, id int64) (string, error)
 	// Crawl write path: store a fetched post once. ON CONFLICT DO NOTHING makes
 	// re-crawling idempotent — a stored post (pending, done, or dead-lettered) is
 	// never reset. extracted_at is non-NULL when the ingest prefilter already
@@ -200,6 +204,18 @@ type Querier interface {
 	// why slugs are otherwise immutable). public_slug/company_slug are deterministic
 	// from the row's immutable fields, so recomputing and rewriting them is idempotent.
 	UpdateJobSlugs(ctx context.Context, arg UpdateJobSlugsParams) error
+	// Moderator edit of a hand-curated job, addressed by public_slug and scoped to
+	// source = 'manual' so this path can never rewrite an ATS/telegram vacancy. The
+	// partial merge (nil = unchanged) and facet re-derivation happen in the service; this
+	// query writes the resulting full field set, so geography/skills/company_slug stay
+	// consistent with the edited content. The source identity (url/external_id/public_slug)
+	// is deliberately NOT updatable here. The company row is upserted when a slug is present,
+	// so "a company's jobs" stays resolvable. updated_by records the acting moderator. Returns
+	// no row when the slug is missing or not a manual job (the caller maps that to 404).
+	// closed_at is deliberately NOT touched: an edit is a content fix, not a lifecycle change.
+	// Reopening a closed posting is the re-create (same-URL UpsertManualJob) path's job, so a
+	// content edit never resurrects a job the sweep/liveness worker closed.
+	UpdateManualJob(ctx context.Context, arg UpdateManualJobParams) (Job, error)
 	// Single atomic write: upsert the company (only when the slug is non-empty,
 	// via the WHERE on the SELECT) and the job together, keeping the "one write =
 	// one job" property of the pipeline's write path.
@@ -215,6 +231,14 @@ type Querier interface {
 	// (source, external_id) must not rewrite it, so external links stay valid even
 	// if the slug builder changes later (that would be a deliberate migration).
 	UpsertJob(ctx context.Context, arg UpsertJobParams) (Job, error)
+	// Moderator-authored write: the manual-source analogue of UpsertJob. source is fixed
+	// to 'manual' and the dedup key is (source, external_id = url), so re-POSTing the same
+	// URL updates the row idempotently instead of duplicating it. created_by is stamped
+	// once at insert; updated_by is (re)written on the conflict update. Like UpsertJob,
+	// public_slug is minted once and never rewritten, and the enrichment columns are left
+	// to SetJobEnrichment. The conflict reopens a previously closed posting (closed_at =
+	// NULL) since the moderator is re-asserting it.
+	UpsertManualJob(ctx context.Context, arg UpsertManualJobParams) (Job, error)
 }
 
 var _ Querier = (*Queries)(nil)

@@ -17,3 +17,11 @@ WHERE lower(email) = lower($1);
 SELECT id, email, created_at
 FROM users
 WHERE id = $1;
+
+-- name: GetUserRole :one
+-- Slim role lookup for the RequireRole authorization middleware: it runs on every
+-- request to a role-gated endpoint and needs only the role, so it does not drag the
+-- full user row (the GetJobIDBySlug precedent for a hot-path read).
+SELECT role
+FROM users
+WHERE id = $1;

@@ -43,11 +43,18 @@ FROM users
 WHERE lower(email) = lower($1)
 `
 
+type GetUserByEmailRow struct {
+	ID           int64              `json:"id"`
+	Email        string             `json:"email"`
+	PasswordHash pgtype.Text        `json:"password_hash"`
+	CreatedAt    pgtype.Timestamptz `json:"created_at"`
+}
+
 // Login lookup. Case-insensitive on email; returns password_hash so the handler
 // can verify the password (and reject accounts that have none).
-func (q *Queries) GetUserByEmail(ctx context.Context, lower string) (User, error) {
+func (q *Queries) GetUserByEmail(ctx context.Context, lower string) (GetUserByEmailRow, error) {
 	row := q.db.QueryRow(ctx, getUserByEmail, lower)
-	var i User
+	var i GetUserByEmailRow
 	err := row.Scan(
 		&i.ID,
 		&i.Email,
@@ -75,4 +82,20 @@ func (q *Queries) GetUserByID(ctx context.Context, id int64) (GetUserByIDRow, er
 	var i GetUserByIDRow
 	err := row.Scan(&i.ID, &i.Email, &i.CreatedAt)
 	return i, err
+}
+
+const getUserRole = `-- name: GetUserRole :one
+SELECT role
+FROM users
+WHERE id = $1
+`
+
+// Slim role lookup for the RequireRole authorization middleware: it runs on every
+// request to a role-gated endpoint and needs only the role, so it does not drag the
+// full user row (the GetJobIDBySlug precedent for a hot-path read).
+func (q *Queries) GetUserRole(ctx context.Context, id int64) (string, error) {
+	row := q.db.QueryRow(ctx, getUserRole, id)
+	var role string
+	err := row.Scan(&role)
+	return role, err
 }

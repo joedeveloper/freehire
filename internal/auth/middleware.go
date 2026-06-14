@@ -68,6 +68,35 @@ func RequireAuthOrKey(iss *Issuer, keys APIKeyAuthenticator) fiber.Handler {
 	}
 }
 
+// RoleLoader resolves an authenticated user id to its current role. It is satisfied
+// directly by *db.Queries (GetUserRole), so this package needs no database import.
+type RoleLoader interface {
+	GetUserRole(ctx context.Context, id int64) (string, error)
+}
+
+// RequireRole returns middleware that authorizes a request by the caller's role. It
+// runs AFTER an authentication middleware (RequireAuth/RequireAuthOrKey) has stored the
+// user id, reads that id, loads the current role from the database, and rejects unless
+// it matches. The role is read fresh per request (not from the token) so a role change
+// takes effect immediately. Failures fail closed: a missing user id or a role-load error
+// (e.g. the token's user no longer exists) is a 401; a role that does not match is a 403.
+func RequireRole(loader RoleLoader, role string) fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		id, ok := UserID(c)
+		if !ok {
+			return fiber.NewError(fiber.StatusUnauthorized, "not authenticated")
+		}
+		got, err := loader.GetUserRole(c.Context(), id)
+		if err != nil {
+			return fiber.NewError(fiber.StatusUnauthorized, "not authenticated")
+		}
+		if got != role {
+			return fiber.NewError(fiber.StatusForbidden, "forbidden")
+		}
+		return c.Next()
+	}
+}
+
 // bearerToken extracts the credential from an `Authorization: Bearer <token>`
 // header, returning "" when the header is absent or not a Bearer scheme.
 func bearerToken(c *fiber.Ctx) string {
