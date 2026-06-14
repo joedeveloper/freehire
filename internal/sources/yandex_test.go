@@ -37,9 +37,9 @@ func TestYandexProvider(t *testing.T) {
 	}
 }
 
-func TestYandexNotBoardless(t *testing.T) {
-	if _, ok := NewYandex(nil).(boardless); ok {
-		t.Error("yandex must NOT implement boardless (board selects host/language)")
+func TestYandexIsBoardless(t *testing.T) {
+	if _, ok := NewYandex(nil).(boardless); !ok {
+		t.Error("yandex must implement boardless: it is a single-company adapter; board selects host/language, not a different tenant")
 	}
 }
 

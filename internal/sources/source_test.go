@@ -2,6 +2,7 @@ package sources
 
 import (
 	"context"
+	"slices"
 	"testing"
 )
 
@@ -43,4 +44,24 @@ func TestRegPanicsOnDuplicateProvider(t *testing.T) {
 	}()
 
 	reg(fakeSource{"greenhouse"}, fakeSource{"greenhouse"})
+}
+
+func TestFilterableProviders(t *testing.T) {
+	got := FilterableProviders()
+
+	// Sorted, and multi-tenant ATS adapters are present.
+	for _, want := range []string{"greenhouse", "lever", "ashby", "workday"} {
+		if !slices.Contains(got, want) {
+			t.Errorf("FilterableProviders() missing %q", want)
+		}
+	}
+	// Single-company boardless adapters are excluded.
+	for _, excluded := range []string{"yandex", "ozon", "tbank", "vk", "sber"} {
+		if slices.Contains(got, excluded) {
+			t.Errorf("FilterableProviders() should exclude boardless %q", excluded)
+		}
+	}
+	if !slices.IsSorted(got) {
+		t.Errorf("FilterableProviders() not sorted: %v", got)
+	}
 }

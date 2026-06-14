@@ -5,6 +5,7 @@ package sources
 
 import (
 	"context"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -51,6 +52,23 @@ type Source interface {
 // board id. Config validation lets a boardless provider's entries omit board. Multi-tenant
 // ATS adapters (greenhouse, lever, …) do not implement it and still require a board.
 type boardless interface{ boardless() }
+
+// FilterableProviders returns the sorted provider keys of the multi-tenant ATS
+// adapters — those NOT implementing the boardless marker. The source facet filters
+// by platform, and a single-company (boardless) platform is redundant with the
+// company filter, so it is excluded. Passing a nil client is safe: Provider() and
+// the boardless assertion never touch the transport.
+func FilterableProviders() []string {
+	var out []string
+	for key, src := range All(nil) {
+		if _, isBoardless := src.(boardless); isBoardless {
+			continue
+		}
+		out = append(out, key)
+	}
+	slices.Sort(out)
+	return out
+}
 
 // All assembles the registered adapters into a provider-keyed registry, sharing one
 // HTTP client across them. Adding a platform is a new adapter plus one line here.
