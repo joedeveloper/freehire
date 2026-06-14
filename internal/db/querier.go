@@ -13,9 +13,16 @@ type Querier interface {
 	// expiry and touching last_used_at in one atomic statement. No row means the key is
 	// unknown, revoked, or expired; the caller treats pgx.ErrNoRows as 401.
 	AuthenticateAPIKey(ctx context.Context, tokenHash string) (int64, error)
-	// Claim a batch of live, unleased entries by stamping claimed_at. SKIP LOCKED lets
-	// concurrent workers take disjoint rows; the lease predicate reclaims entries whose
-	// worker died (stale claimed_at), so no separate reaper process is needed.
+	// Claim a batch of live, unleased entries for OPEN jobs, freshest job first, by
+	// stamping claimed_at. The jobs join lets the claim order by posting freshness and
+	// skip closed jobs, so LLM budget goes to live postings users will actually see.
+	// Freshness is COALESCE(posted_at, created_at): jobs without a source post date
+	// (telegram/linksource and some ATS) fall back to ingest time, so they rank by
+	// recency instead of starving behind every dated job under NULLS LAST. FOR UPDATE OF o
+	// locks only outbox rows (a bare FOR UPDATE would also lock jobs, making concurrent
+	// claim waves contend); SKIP LOCKED lets concurrent workers take disjoint rows; the
+	// lease predicate reclaims entries whose worker died (stale claimed_at), so no
+	// separate reaper process is needed.
 	ClaimEnrichmentBatch(ctx context.Context, arg ClaimEnrichmentBatchParams) ([]ClaimEnrichmentBatchRow, error)
 	// Claim a batch of pending posts by stamping claimed_at. SKIP LOCKED lets
 	// concurrent workers take disjoint rows; the lease predicate reclaims posts whose
@@ -61,9 +68,11 @@ type Querier interface {
 	// the outbox's UNIQUE (job_id, target_version). Run in the same transaction as the
 	// job's UpsertJob so a newly ingested job is queued atomically with its write.
 	EnqueueJobEnrichment(ctx context.Context, arg EnqueueJobEnrichmentParams) (int64, error)
-	// Idempotent backfill: enqueue every job that is unenriched or below the target
-	// schema version. ON CONFLICT keeps exactly one entry per (job_id, target_version),
-	// so running this every command invocation never duplicates work.
+	// Idempotent backfill: enqueue every OPEN job that is unenriched or below the target
+	// schema version. Closed jobs (closed_at IS NOT NULL) are skipped — a dead posting no
+	// user will see should not consume LLM budget. ON CONFLICT keeps exactly one entry per
+	// (job_id, target_version), so running this every command invocation never duplicates
+	// work.
 	EnqueuePendingJobs(ctx context.Context, targetVersion int32) (int64, error)
 	GetCompany(ctx context.Context, slug string) (Company, error)
 	GetJob(ctx context.Context, id int64) (Job, error)

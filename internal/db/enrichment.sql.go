@@ -13,13 +13,15 @@ import (
 
 const claimEnrichmentBatch = `-- name: ClaimEnrichmentBatch :many
 WITH claimable AS (
-    SELECT id
-    FROM enrichment_outbox
-    WHERE failed_at IS NULL
-      AND (claimed_at IS NULL
-           OR claimed_at < now() - make_interval(secs => $1::int))
-    ORDER BY id
-    FOR UPDATE SKIP LOCKED
+    SELECT o.id
+    FROM enrichment_outbox o
+    JOIN jobs j ON j.id = o.job_id
+    WHERE o.failed_at IS NULL
+      AND (o.claimed_at IS NULL
+           OR o.claimed_at < now() - make_interval(secs => $1::int))
+      AND j.closed_at IS NULL
+    ORDER BY COALESCE(j.posted_at, j.created_at) DESC, j.id DESC
+    FOR UPDATE OF o SKIP LOCKED
     LIMIT $2
 )
 UPDATE enrichment_outbox o
@@ -40,9 +42,16 @@ type ClaimEnrichmentBatchRow struct {
 	TargetVersion int32 `json:"target_version"`
 }
 
-// Claim a batch of live, unleased entries by stamping claimed_at. SKIP LOCKED lets
-// concurrent workers take disjoint rows; the lease predicate reclaims entries whose
-// worker died (stale claimed_at), so no separate reaper process is needed.
+// Claim a batch of live, unleased entries for OPEN jobs, freshest job first, by
+// stamping claimed_at. The jobs join lets the claim order by posting freshness and
+// skip closed jobs, so LLM budget goes to live postings users will actually see.
+// Freshness is COALESCE(posted_at, created_at): jobs without a source post date
+// (telegram/linksource and some ATS) fall back to ingest time, so they rank by
+// recency instead of starving behind every dated job under NULLS LAST. FOR UPDATE OF o
+// locks only outbox rows (a bare FOR UPDATE would also lock jobs, making concurrent
+// claim waves contend); SKIP LOCKED lets concurrent workers take disjoint rows; the
+// lease predicate reclaims entries whose worker died (stale claimed_at), so no
+// separate reaper process is needed.
 func (q *Queries) ClaimEnrichmentBatch(ctx context.Context, arg ClaimEnrichmentBatchParams) ([]ClaimEnrichmentBatchRow, error) {
 	rows, err := q.db.Query(ctx, claimEnrichmentBatch, arg.LeaseSeconds, arg.BatchSize)
 	if err != nil {
@@ -77,13 +86,16 @@ const enqueuePendingJobs = `-- name: EnqueuePendingJobs :execrows
 INSERT INTO enrichment_outbox (job_id, target_version)
 SELECT id, $1::int
 FROM jobs
-WHERE enriched_at IS NULL OR enrichment_version < $1::int
+WHERE closed_at IS NULL
+  AND (enriched_at IS NULL OR enrichment_version < $1::int)
 ON CONFLICT (job_id, target_version) DO NOTHING
 `
 
-// Idempotent backfill: enqueue every job that is unenriched or below the target
-// schema version. ON CONFLICT keeps exactly one entry per (job_id, target_version),
-// so running this every command invocation never duplicates work.
+// Idempotent backfill: enqueue every OPEN job that is unenriched or below the target
+// schema version. Closed jobs (closed_at IS NOT NULL) are skipped — a dead posting no
+// user will see should not consume LLM budget. ON CONFLICT keeps exactly one entry per
+// (job_id, target_version), so running this every command invocation never duplicates
+// work.
 func (q *Queries) EnqueuePendingJobs(ctx context.Context, targetVersion int32) (int64, error) {
 	result, err := q.db.Exec(ctx, enqueuePendingJobs, targetVersion)
 	if err != nil {

@@ -51,16 +51,29 @@ func TestLoadEnrich_defaultsAndOverrides(t *testing.T) {
 		t.Errorf("unexpected config: %+v", got)
 	}
 	// Tunables fall back to conservative defaults.
-	if got.BatchSize != 50 || got.LeaseSeconds != 300 || got.MaxAttempts != 3 {
-		t.Errorf("defaults wrong: batch=%d lease=%d max=%d", got.BatchSize, got.LeaseSeconds, got.MaxAttempts)
+	if got.Concurrency != 4 || got.LeaseSeconds != 300 || got.MaxAttempts != 3 {
+		t.Errorf("defaults wrong: concurrency=%d lease=%d max=%d", got.Concurrency, got.LeaseSeconds, got.MaxAttempts)
 	}
 
-	t.Setenv("ENRICH_BATCH_SIZE", "10")
+	t.Setenv("ENRICH_CONCURRENCY", "8")
 	got, err = LoadEnrich()
 	if err != nil {
 		t.Fatalf("LoadEnrich: %v", err)
 	}
-	if got.BatchSize != 10 {
-		t.Errorf("batch override = %d, want 10", got.BatchSize)
+	if got.Concurrency != 8 {
+		t.Errorf("concurrency override = %d, want 8", got.Concurrency)
+	}
+
+	// A non-positive concurrency would make the claim's LIMIT 0 — the worker would
+	// silently enrich nothing while the cron looks healthy. Clamp it to a working floor.
+	for _, bad := range []string{"0", "-3"} {
+		t.Setenv("ENRICH_CONCURRENCY", bad)
+		got, err = LoadEnrich()
+		if err != nil {
+			t.Fatalf("LoadEnrich: %v", err)
+		}
+		if got.Concurrency != 1 {
+			t.Errorf("ENRICH_CONCURRENCY=%s clamped to %d, want 1", bad, got.Concurrency)
+		}
 	}
 }

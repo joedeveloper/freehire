@@ -4,21 +4,37 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"sync"
 	"testing"
+	"time"
 )
 
 // --- fakes ------------------------------------------------------------------
 
+// funcProvider is shared by a wave's workers, so the call count is mutex-guarded.
 type funcProvider struct {
-	fn    func(JobInput) (Enrichment, error)
+	fn func(JobInput) (Enrichment, error)
+
+	mu    sync.Mutex
 	calls int
 }
 
 func (p *funcProvider) Enrich(_ context.Context, j JobInput) (Enrichment, error) {
+	p.mu.Lock()
 	p.calls++
+	p.mu.Unlock()
 	return p.fn(j)
 }
 
+// callCount reads the tally after Run has joined all workers (race-free).
+func (p *funcProvider) callCount() int {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.calls
+}
+
+// fakeStore's Complete/Fail are called from concurrent workers, so the result
+// slices are mutex-guarded.
 type fakeStore struct {
 	claims   [][]Claimed
 	claimIdx int
@@ -26,6 +42,7 @@ type fakeStore struct {
 	jobErr   map[int64]error
 	deadFor  map[int64]bool
 
+	mu        sync.Mutex
 	enqueued  bool
 	completed []int64
 	failed    []int64
@@ -50,17 +67,21 @@ func (s *fakeStore) Job(_ context.Context, id int64) (JobInput, error) {
 }
 
 func (s *fakeStore) Complete(_ context.Context, entry Claimed, _ json.RawMessage) error {
+	s.mu.Lock()
 	s.completed = append(s.completed, entry.OutboxID)
+	s.mu.Unlock()
 	return nil
 }
 
 func (s *fakeStore) Fail(_ context.Context, outboxID int64, _ string, _ int) (bool, error) {
+	s.mu.Lock()
 	s.failed = append(s.failed, outboxID)
+	s.mu.Unlock()
 	return s.deadFor[outboxID], nil
 }
 
 func opts() RunOptions {
-	return RunOptions{TargetVersion: Version, BatchSize: 10, LeaseSeconds: 300, MaxAttempts: 3}
+	return RunOptions{TargetVersion: Version, Concurrency: 4, LeaseSeconds: 300, MaxAttempts: 3}
 }
 
 // --- tests ------------------------------------------------------------------
@@ -113,8 +134,8 @@ func TestRun_outOfVocabEnumIsSanitizedAndWritten(t *testing.T) {
 	if len(store.failed) != 0 {
 		t.Errorf("failed = %v, want none", store.failed)
 	}
-	if prov.calls != 1 {
-		t.Errorf("provider called %d times, want 1 (sanitize fixes it, no retry)", prov.calls)
+	if prov.callCount() != 1 {
+		t.Errorf("provider called %d times, want 1 (sanitize fixes it, no retry)", prov.callCount())
 	}
 	if stats.Enriched != 1 || stats.Failed != 0 {
 		t.Errorf("stats = %+v, want Enriched:1", stats)
@@ -182,6 +203,57 @@ func TestRun_oneFailureDoesNotAbortBatch(t *testing.T) {
 	}
 	if stats.Enriched != 1 || stats.Failed != 1 {
 		t.Errorf("stats = %+v, want Enriched:1 Failed:1", stats)
+	}
+}
+
+func TestRun_waveDrainsConcurrently(t *testing.T) {
+	const wave = 3
+	claimed := make([]Claimed, wave)
+	jobs := map[int64]JobInput{}
+	for i := range claimed {
+		id := int64(i + 1)
+		claimed[i] = Claimed{OutboxID: id, JobID: id, TargetVersion: Version}
+		jobs[id] = JobInput{Title: "j"}
+	}
+	store := &fakeStore{claims: [][]Claimed{claimed}, jobs: jobs}
+
+	// Barrier: each worker signals arrival then blocks on release. The main goroutine
+	// only releases once all `wave` workers have arrived, so a sequential drain (which
+	// would block on the first worker forever) cannot reach the barrier and times out.
+	var arrived sync.WaitGroup
+	arrived.Add(wave)
+	release := make(chan struct{})
+	prov := &funcProvider{fn: func(JobInput) (Enrichment, error) {
+		arrived.Done()
+		<-release
+		return Enrichment{Seniority: "senior"}, nil
+	}}
+
+	allArrived := make(chan struct{})
+	go func() { arrived.Wait(); close(allArrived) }()
+
+	done := make(chan Stats)
+	go func() {
+		stats, err := Runner{Provider: prov, Store: store}.Run(context.Background(), opts())
+		if err != nil {
+			t.Errorf("Run: %v", err)
+		}
+		done <- stats
+	}()
+
+	select {
+	case <-allArrived:
+		close(release)
+	case <-time.After(2 * time.Second):
+		t.Fatal("workers did not run concurrently: not all entries reached the barrier (sequential drain)")
+	}
+
+	stats := <-done
+	if stats.Enriched != wave || stats.Failed != 0 {
+		t.Errorf("stats = %+v, want Enriched:%d", stats, wave)
+	}
+	if len(store.completed) != wave {
+		t.Errorf("completed = %d entries, want %d", len(store.completed), wave)
 	}
 }
 

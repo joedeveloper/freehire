@@ -37,7 +37,7 @@ func main() {
 
 	stats, err := runner.Run(ctx, enrich.RunOptions{
 		TargetVersion: enrich.Version,
-		BatchSize:     ecfg.BatchSize,
+		Concurrency:   ecfg.Concurrency,
 		LeaseSeconds:  ecfg.LeaseSeconds,
 		MaxAttempts:   ecfg.MaxAttempts,
 	})

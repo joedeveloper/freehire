@@ -16,7 +16,7 @@ type Enrich struct {
 	LLMAPIKey  string
 	LLMModel   string
 
-	BatchSize    int // entries claimed per run
+	Concurrency  int // LLM calls in flight; also the claim wave size (keeps each wave's lease window short)
 	LeaseSeconds int // how long a claim is held before it can be reclaimed
 	MaxAttempts  int // failed attempts before an entry is dead-lettered
 }
@@ -28,9 +28,15 @@ func LoadEnrich() (Enrich, error) {
 		LLMBaseURL:   os.Getenv("LLM_BASE_URL"),
 		LLMAPIKey:    os.Getenv("LLM_API_KEY"),
 		LLMModel:     os.Getenv("LLM_MODEL"),
-		BatchSize:    envInt("ENRICH_BATCH_SIZE", 50),
+		Concurrency:  envInt("ENRICH_CONCURRENCY", 4),
 		LeaseSeconds: envInt("ENRICH_LEASE_SECONDS", 300),
 		MaxAttempts:  envInt("ENRICH_MAX_ATTEMPTS", 3),
+	}
+
+	// A non-positive concurrency would make the claim's LIMIT 0 (silently no-op) or
+	// feed a negative LIMIT to Postgres; floor it so the worker always makes progress.
+	if e.Concurrency < 1 {
+		e.Concurrency = 1
 	}
 
 	var missing []string

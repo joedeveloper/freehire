@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"sync"
 	"time"
 )
 
@@ -36,9 +37,12 @@ type Store interface {
 // RunOptions are the per-run knobs.
 type RunOptions struct {
 	TargetVersion int
-	BatchSize     int
-	LeaseSeconds  int
-	MaxAttempts   int
+	// Concurrency is both the number of LLM calls in flight and the claim wave size.
+	// Sizing the wave to the concurrency keeps each claimed entry's lease window short
+	// (≈ one LLM call), so an overlapping run can't reclaim a still-in-flight entry.
+	Concurrency  int
+	LeaseSeconds int
+	MaxAttempts  int
 }
 
 // Stats reports what a run did.
@@ -62,33 +66,44 @@ func (r Runner) Run(ctx context.Context, opt RunOptions) (Stats, error) {
 	if err != nil {
 		return Stats{}, fmt.Errorf("enqueue: %w", err)
 	}
-	log.Printf("enrich: enqueued %d pending, draining (batch=%d)", enqueued, opt.BatchSize)
+	log.Printf("enrich: enqueued %d pending, draining (concurrency=%d)", enqueued, opt.Concurrency)
 
 	rn := &run{provider: r.Provider, store: r.Store, opt: opt}
 	for {
-		batch, err := r.Store.Claim(ctx, opt.BatchSize, opt.LeaseSeconds)
+		// Claim a wave the size of the concurrency, then drain it in parallel: each
+		// entry starts processing at once, so its lease window stays ≈ one LLM call.
+		batch, err := r.Store.Claim(ctx, opt.Concurrency, opt.LeaseSeconds)
 		if err != nil {
 			return rn.stats, fmt.Errorf("claim: %w", err)
 		}
 		if len(batch) == 0 {
 			return rn.stats, nil
 		}
+		var wg sync.WaitGroup
 		for _, entry := range batch {
-			rn.process(ctx, entry)
+			wg.Add(1)
+			go func(e Claimed) {
+				defer wg.Done()
+				rn.process(ctx, e)
+			}(entry)
 		}
-		// A heartbeat per batch so a long drain shows running totals instead of
+		wg.Wait()
+		// A heartbeat per wave so a long drain shows running totals instead of
 		// going silent for hours.
 		log.Printf("enrich: progress enriched=%d failed=%d dead=%d", rn.stats.Enriched, rn.stats.Failed, rn.stats.DeadLettered)
 	}
 }
 
 // run accumulates one Run's options and tallies so the per-entry helpers carry the
-// receiver instead of threading opt and a *Stats through every call.
+// receiver instead of threading opt and a *Stats through every call. A wave's workers
+// process entries concurrently, so the tallies are guarded by mu.
 type run struct {
 	provider Provider
 	store    Store
 	opt      RunOptions
-	stats    Stats
+
+	mu    sync.Mutex
+	stats Stats
 }
 
 // process handles one claimed entry. Any failure routes to fail so the run
@@ -123,7 +138,9 @@ func (rn *run) process(ctx context.Context, entry Claimed) {
 		log.Printf("enrich: job=%d write-back failed: %v", entry.JobID, err)
 		return
 	}
+	rn.mu.Lock()
 	rn.stats.Enriched++
+	rn.mu.Unlock()
 	log.Printf("enrich: job=%d ok in %s", entry.JobID, time.Since(start).Round(time.Millisecond))
 }
 
@@ -151,6 +168,8 @@ func (rn *run) enrich(ctx context.Context, job JobInput) (Enrichment, error) {
 
 func (rn *run) fail(ctx context.Context, entry Claimed, cause error) {
 	dead, err := rn.store.Fail(ctx, entry.OutboxID, cause.Error(), rn.opt.MaxAttempts)
+	rn.mu.Lock()
+	defer rn.mu.Unlock()
 	// Only a recorded dead-letter is distinct; a non-dead attempt and a Fail that
 	// couldn't even be recorded both count as a plain failure.
 	if err == nil && dead {
