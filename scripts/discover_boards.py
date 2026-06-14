@@ -14,6 +14,7 @@ Stdlib only; the github channel shells out to `gh`; google needs GOOGLE_CSE_KEY/
 
 from __future__ import annotations
 
+import argparse
 import json
 import os
 import re
@@ -23,7 +24,7 @@ import urllib.request
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from ats_boards import VALIDATORS, github_fragments  # noqa: E402
+from ats_boards import VALIDATORS, github_fragments, extract_slugs, emit_survivors  # noqa: E402
 
 # Provider -> the ATS host to put in a `site:` search / Common Crawl prefix.
 PROVIDER_HOSTS = {
@@ -139,3 +140,65 @@ def channel_cc(host: str, query: str, limit: int) -> set[str]:
     cap = (limit or 100) * 5  # over-fetch; many rows collapse to one slug
     url = f"{base}?url={urllib.parse.quote(host)}/*&output=json&limit={cap}"
     return parse_cc_jsonl(get_text(url, timeout=60))
+
+
+CHANNELS = {
+    "ddg": channel_ddg,
+    "google": channel_google,
+    "github": channel_github,
+    "cc": lambda host, query, limit: channel_cc(host, query, limit),
+}
+
+
+def collect_candidates(providers: list[str], channels: list[str], query: str,
+                       limit: int) -> dict[tuple[str, str], str]:
+    """Run each channel for each provider; return {(provider, slug): slug}.
+
+    Results are filtered to the queried provider so noise from other ATS links on a
+    results page is dropped. Company name is best-effort (the slug) for web sources.
+    """
+    cand: dict[tuple[str, str], str] = {}
+    for provider in providers:
+        host = PROVIDER_HOSTS[provider]
+        for ch in channels:
+            urls = CHANNELS[ch](host, query, limit)
+            found = set()
+            for u in urls:
+                found |= extract_slugs(u)
+            keep = {(p, s) for (p, s) in found if p == provider}
+            for p, s in keep:
+                cand.setdefault((p, s), s)
+            print(f"  [{ch}/{provider}] {len(urls)} urls -> {len(keep)} {provider} slugs",
+                  file=sys.stderr)
+    return cand
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description="Query-driven ATS board discovery")
+    ap.add_argument("--query", default="", help="search term for this run")
+    ap.add_argument("--provider", default="", help="comma list; default = all")
+    ap.add_argument("--channel", default="ddg", help="comma list from ddg,google,github,cc")
+    ap.add_argument("--write", action="store_true", help="append survivors to sources/<provider>.yml")
+    ap.add_argument("--limit", type=int, default=20, help="cap results per channel/provider")
+    args = ap.parse_args()
+
+    providers = [p.strip() for p in args.provider.split(",") if p.strip()] or list(PROVIDER_HOSTS)
+    channels = [c.strip() for c in args.channel.split(",") if c.strip()]
+    bad_p = [p for p in providers if p not in PROVIDER_HOSTS]
+    bad_c = [c for c in channels if c not in CHANNELS]
+    if bad_p:
+        ap.error(f"unknown provider(s): {bad_p}; choose from {list(PROVIDER_HOSTS)}")
+    if bad_c:
+        ap.error(f"unknown channel(s): {bad_c}; choose from {list(CHANNELS)}")
+    if not args.query and channels != ["cc"]:
+        ap.error("--query is required for keyword channels (ddg/google/github)")
+
+    print(f"== discovering: query={args.query!r} providers={providers} channels={channels} ==",
+          file=sys.stderr)
+    cand = collect_candidates(providers, channels, args.query, args.limit)
+    emit_survivors(cand, args.write)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

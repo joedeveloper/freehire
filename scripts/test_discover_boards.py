@@ -73,6 +73,24 @@ def test_parse_cc_jsonl_collects_urls_and_skips_garbage():
     }
 
 
+def test_collect_candidates_filters_to_provider():
+    import discover_boards as dd
+    saved = dd.CHANNELS.copy()
+    # ashby search accidentally also surfaces a lever URL; keep only ashby for the ashby host.
+    dd.CHANNELS = {
+        "stub": lambda host, query, limit: {
+            "https://jobs.ashbyhq.com/Clipbook",
+            "https://jobs.lever.co/strayco",
+        }
+    }
+    try:
+        cand = dd.collect_candidates(["ashby"], ["stub"], "anything", limit=10)
+    finally:
+        dd.CHANNELS = saved
+    assert ("ashby", "Clipbook") in cand
+    assert ("lever", "strayco") not in cand  # filtered: not the queried provider
+
+
 def _run():
     fns = [v for k, v in sorted(globals().items()) if k.startswith("test_") and callable(v)]
     failed = 0
