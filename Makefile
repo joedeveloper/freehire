@@ -1,4 +1,4 @@
-.PHONY: help run reindex build tidy sqlc up down logs migrate psql
+.PHONY: help run reindex build tidy sqlc gen-contracts up down logs migrate psql
 
 help: ## Show available commands
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-10s\033[0m %s\n", $$1, $$2}'
@@ -17,6 +17,9 @@ tidy: ## Tidy up dependencies
 
 sqlc: ## Generate code from SQL (via Docker, no local sqlc needed)
 	docker run --rm -v "$(PWD):/src" -w /src sqlc/sqlc generate
+
+gen-contracts: ## Regenerate web/src/lib/generated/contracts.ts from Go contracts
+	go run ./cmd/gen-contracts
 
 up: ## Start everything in Docker (app + postgres)
 	docker compose up --build -d
