@@ -174,3 +174,19 @@ func TestYandexEmptyListYieldsNoJobsNoError(t *testing.T) {
 		t.Fatalf("got %d jobs, want 0", len(jobs))
 	}
 }
+
+func TestYandexDefaultsBoardToRU(t *testing.T) {
+	// Route is keyed on the exact "yandex.ru/jobs/api/publications" substring.
+	// With an empty Board the adapter currently builds "yandex./jobs/..." which matches
+	// no route, causing GetJSON to return an error and Fetch to fail. After the fix the
+	// board defaults to "ru" so the URL is well-formed and the route matches.
+	fake := (&routedHTTP{}).route("yandex.ru/jobs/api/publications", yandexListPage(""))
+
+	jobs, err := NewYandex(fake).Fetch(context.Background(), CompanyEntry{Company: "Yandex", Provider: "yandex"})
+	if err != nil {
+		t.Fatalf("Fetch with empty Board: %v — want list URL to target yandex.ru/jobs/api/publications, not yandex./jobs", err)
+	}
+	if len(jobs) != 0 {
+		t.Fatalf("got %d jobs, want 0", len(jobs))
+	}
+}

@@ -10,12 +10,13 @@ import (
 )
 
 // yandex adapts Yandex's public jobs API (yandex.ru/jobs and yandex.com/jobs). It is a
-// single-company adapter (boardless): its board field selects the host and language segment
-// ("ru" or "com"), not a different tenant, so a board is still required for config but the
-// adapter is not a multi-tenant platform. The list endpoint paginates by an opaque cursor and
-// carries no body, so each kept publication's description comes from its own detail request,
-// fanned out like SmartRecruiters. List items that redirect out (redirect_url) or belong to
-// a hiring event (fast_track) are not real vacancies and are dropped.
+// single-company boardless adapter: its optional board field selects the host and language
+// segment ("ru" or "com") and defaults to "ru" when unset, so a boardless config entry
+// is well-formed and targets the primary market. The list endpoint paginates by an opaque
+// cursor and carries no body, so each kept publication's description comes from its own
+// detail request, fanned out like SmartRecruiters. List items that redirect out
+// (redirect_url) or belong to a hiring event (fast_track) are not real vacancies and are
+// dropped.
 type yandex struct {
 	http JSONGetter
 }
@@ -54,6 +55,11 @@ type yandexItem struct {
 }
 
 func (y yandex) Fetch(ctx context.Context, e CompanyEntry) ([]Job, error) {
+	// board selects the host/language segment ("ru" or "com"); default to the
+	// primary (ru) market when unset, so a boardless yandex entry is well-formed.
+	if e.Board == "" {
+		e.Board = "ru"
+	}
 	items, err := y.list(ctx, e.Board)
 	if err != nil {
 		return nil, err
