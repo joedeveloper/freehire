@@ -9,11 +9,9 @@ import (
 // smartRecruitersBaseURL is the SmartRecruiters public postings API root.
 const smartRecruitersBaseURL = "https://api.smartrecruiters.com/v1/companies"
 
-// smartRecruitersPageLimit is the postings page size; smartRecruitersDetailWorkers caps
-// how many per-posting detail requests a single board issues concurrently.
+// smartRecruitersPageLimit is the postings page size.
 const (
-	smartRecruitersPageLimit     = 100
-	smartRecruitersDetailWorkers = 8
+	smartRecruitersPageLimit = 100
 )
 
 // smartRecruiters adapts the SmartRecruiters public API. Unlike the other adapters its
@@ -54,7 +52,7 @@ func (s smartRecruiters) Fetch(ctx context.Context, e CompanyEntry) ([]Job, erro
 
 	// Each posting's description comes from its own detail request, fanned out under a
 	// bounded worker pool.
-	return fetchDetails(postings, smartRecruitersDetailWorkers, func(p smartRecruitersPosting) (Job, bool) {
+	return fetchDetails(postings, defaultDetailWorkers, func(p smartRecruitersPosting) (Job, bool) {
 		return s.detail(ctx, e, p)
 	}), nil
 }

@@ -20,10 +20,9 @@ type yandex struct {
 }
 
 const (
-	yandexListURL       = "https://yandex.%s/jobs/api/publications"
-	yandexDetailURL     = "https://yandex.%s/jobs/api/publications/%d"
-	yandexVacancyURL    = "https://yandex.%s/jobs/vacancies/%s"
-	yandexDetailWorkers = 8
+	yandexListURL    = "https://yandex.%s/jobs/api/publications"
+	yandexDetailURL  = "https://yandex.%s/jobs/api/publications/%d"
+	yandexVacancyURL = "https://yandex.%s/jobs/vacancies/%s"
 )
 
 // NewYandex builds the Yandex adapter over the given HTTP client.
@@ -64,7 +63,7 @@ func (y yandex) Fetch(ctx context.Context, e CompanyEntry) ([]Job, error) {
 		}
 	}
 
-	return fetchDetails(open, yandexDetailWorkers, func(it yandexItem) (Job, bool) {
+	return fetchDetails(open, defaultDetailWorkers, func(it yandexItem) (Job, bool) {
 		return y.detail(ctx, e, it)
 	}), nil
 }

@@ -21,8 +21,7 @@ const (
 	dodoDetailURL = "https://career-api.dodoteam.ru/api/v1/pages/vacancy/%d"
 	// Public host UNCONFIRMED: dodo.team/vacancy/<id> is a best-effort canonical URL —
 	// the careers API does not return a public posting URL.
-	dodoVacancyURL    = "https://dodo.team/vacancy/%d"
-	dodoDetailWorkers = 8
+	dodoVacancyURL = "https://dodo.team/vacancy/%d"
 )
 
 // dodoBodyTypes are the content-block types whose text forms the description body; other
@@ -66,7 +65,7 @@ func (d dodo) Fetch(ctx context.Context, e CompanyEntry) ([]Job, error) {
 		items = append(items, g.Items...)
 	}
 
-	return fetchDetails(items, dodoDetailWorkers, func(it dodoItem) (Job, bool) {
+	return fetchDetails(items, defaultDetailWorkers, func(it dodoItem) (Job, bool) {
 		return d.detail(ctx, e, it)
 	}), nil
 }
@@ -97,10 +96,7 @@ func (d dodo) detail(ctx context.Context, e CompanyEntry, it dodoItem) (Job, boo
 		}
 	}
 
-	company := it.Brand
-	if company == "" {
-		company = e.Company
-	}
+	company := firstNonEmpty(it.Brand, e.Company)
 
 	return Job{
 		ExternalID:  strconv.FormatInt(it.ID, 10),
@@ -109,7 +105,7 @@ func (d dodo) detail(ctx context.Context, e CompanyEntry, it dodoItem) (Job, boo
 		Company:     company,
 		Location:    it.Location,
 		Description: sanitizeHTML(body.String()),
-		Remote:      isRemote(normalizeNBSP(strings.Join(it.WorkFormat, " "))),
+		Remote:      isRemote(strings.Join(it.WorkFormat, " ")),
 		PostedAt:    nil, // the careers API carries no publish date
 	}, true
 }

@@ -92,6 +92,11 @@ func All(c HTTPClient) map[string]Source {
 	)
 }
 
+// defaultDetailWorkers bounds the per-board detail-fetch fan-out for adapters whose
+// list endpoint omits the description. All detail adapters share this default; an
+// adapter needing a different bound reintroduces its own const at that call site.
+const defaultDetailWorkers = 8
+
 // fetchDetails maps each posting to a Job via fetch, running fetch concurrently with a
 // bounded worker pool of the given size. A posting whose fetch returns ok=false is
 // dropped, so one failed detail request never aborts the board. The surviving jobs keep
@@ -193,6 +198,21 @@ func joinNonEmpty(parts ...string) string {
 		}
 	}
 	return strings.Join(kept, ", ")
+}
+
+// firstNonEmpty returns the first part that is not the empty string, or "" when every
+// part is empty. Adapters use it for the common "this value, else fall back to that one"
+// choice (e.g. a posting's own employer name, else the configured company). The check is
+// exact-empty (not whitespace-trimmed), so it is a drop-in for the inline
+// `if x == "" { x = fallback }` idiom it replaces; unlike joinNonEmpty it does not treat a
+// whitespace-only value as blank.
+func firstNonEmpty(parts ...string) string {
+	for _, p := range parts {
+		if p != "" {
+			return p
+		}
+	}
+	return ""
 }
 
 // parseEpochMillis converts a Unix-millisecond timestamp into a posted_at, returning

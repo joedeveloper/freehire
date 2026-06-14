@@ -17,10 +17,9 @@ type huntflow struct {
 }
 
 const (
-	huntflowListURL       = "https://%s.huntflow.io/_payload.json"
-	huntflowDetailURL     = "https://%s.huntflow.io/vacancy/%s/_payload.json"
-	huntflowVacancyURL    = "https://%s.huntflow.io/vacancy/%s"
-	huntflowDetailWorkers = 8
+	huntflowListURL    = "https://%s.huntflow.io/_payload.json"
+	huntflowDetailURL  = "https://%s.huntflow.io/vacancy/%s/_payload.json"
+	huntflowVacancyURL = "https://%s.huntflow.io/vacancy/%s"
 )
 
 // NewHuntflow builds the Huntflow adapter over the given HTTP client.
@@ -50,7 +49,7 @@ func (h huntflow) Fetch(ctx context.Context, e CompanyEntry) ([]Job, error) {
 		}
 	}
 
-	return fetchDetails(open, huntflowDetailWorkers, func(it hfItem) (Job, bool) {
+	return fetchDetails(open, defaultDetailWorkers, func(it hfItem) (Job, bool) {
 		return h.detail(ctx, e, it)
 	}), nil
 }

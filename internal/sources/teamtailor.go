@@ -22,12 +22,10 @@ func NewTeamtailor(c HTTPClient) Source { return teamtailor{http: c} }
 
 func (teamtailor) Provider() string { return "teamtailor" }
 
-// ttDetailWorkers caps how many per-job detail page requests a single board issues
-// concurrently. ttMaxPages bounds listing pagination so a board that never returns an
-// empty page cannot loop forever.
+// ttMaxPages bounds listing pagination so a board that never returns an empty page
+// cannot loop forever.
 const (
-	ttDetailWorkers = 8
-	ttMaxPages      = 100
+	ttMaxPages = 100
 )
 
 func (t teamtailor) Fetch(ctx context.Context, e CompanyEntry) ([]Job, error) {
@@ -65,7 +63,7 @@ func (t teamtailor) Fetch(ctx context.Context, e CompanyEntry) ([]Job, error) {
 	}
 
 	// Each job's posting comes from its own page fetch, fanned out under a bounded pool.
-	return fetchDetails(urls, ttDetailWorkers, func(u string) (Job, bool) {
+	return fetchDetails(urls, defaultDetailWorkers, func(u string) (Job, bool) {
 		return t.detail(ctx, e, u)
 	}), nil
 }

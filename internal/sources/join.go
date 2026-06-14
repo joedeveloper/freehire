@@ -9,11 +9,9 @@ import (
 	"github.com/yuin/goldmark"
 )
 
-// joinPageSize is the list-API page size; joinDetailWorkers caps how many per-job detail
-// requests a single board issues concurrently.
+// joinPageSize is the list-API page size.
 const (
-	joinPageSize      = 100
-	joinDetailWorkers = 8
+	joinPageSize = 100
 )
 
 // join adapts Join.com career pages over its public JSON API. The board is the numeric Join
@@ -73,7 +71,7 @@ func (j join) Fetch(ctx context.Context, e CompanyEntry) ([]Job, error) {
 	}
 
 	// Each job's description comes from its own detail request, fanned out under a bounded pool.
-	return fetchDetails(items, joinDetailWorkers, func(it joinJob) (Job, bool) {
+	return fetchDetails(items, defaultDetailWorkers, func(it joinJob) (Job, bool) {
 		return j.detail(ctx, e, it)
 	}), nil
 }

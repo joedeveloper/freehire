@@ -80,11 +80,7 @@ func (s sber) list(ctx context.Context) ([]sberVac, error) {
 // toJob maps an inline vacancy to a Job. The body is assembled from the four text fields
 // (any may be empty); the employer company falls back to the configured entry when blank.
 func (s sber) toJob(e CompanyEntry, v sberVac) Job {
-	company := v.Company
-	if company == "" {
-		company = e.Company
-	}
-
+	company := firstNonEmpty(v.Company, e.Company)
 	body := v.Introduction + v.Duties + v.Requirements + v.Conditions
 
 	return Job{

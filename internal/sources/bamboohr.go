@@ -5,10 +5,6 @@ import (
 	"fmt"
 )
 
-// bambooHRDetailWorkers caps how many per-posting detail requests a single BambooHR board
-// issues concurrently.
-const bambooHRDetailWorkers = 8
-
 // bambooHR adapts the BambooHR public careers API. Its list endpoint carries no
 // description, so it fetches each posting's detail (bounded-concurrency) to assemble the
 // body, like the SmartRecruiters and Rippling adapters.
@@ -40,7 +36,7 @@ func (b bambooHR) Fetch(ctx context.Context, e CompanyEntry) ([]Job, error) {
 
 	// Each posting's description comes from its own detail request, fanned out under a
 	// bounded worker pool.
-	return fetchDetails(list.Result, bambooHRDetailWorkers, func(p bambooHRPosting) (Job, bool) {
+	return fetchDetails(list.Result, defaultDetailWorkers, func(p bambooHRPosting) (Job, bool) {
 		return b.detail(ctx, e, p)
 	}), nil
 }

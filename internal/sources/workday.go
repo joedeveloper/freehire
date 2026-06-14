@@ -7,11 +7,9 @@ import (
 	"time"
 )
 
-// workdayPageLimit is Workday's max listing page size; workdayDetailWorkers caps how
-// many per-posting detail requests a single board issues concurrently.
+// workdayPageLimit is Workday's max listing page size.
 const (
-	workdayPageLimit     = 20
-	workdayDetailWorkers = 8
+	workdayPageLimit = 20
 )
 
 // workday adapts Workday's public "CXS" careers API. The board id is the public board
@@ -67,7 +65,7 @@ func (s workday) Fetch(ctx context.Context, e CompanyEntry) ([]Job, error) {
 
 	// Each posting's description comes from its own detail request, fanned out under a
 	// bounded worker pool.
-	return fetchDetails(postings, workdayDetailWorkers, func(p workdayPosting) (Job, bool) {
+	return fetchDetails(postings, defaultDetailWorkers, func(p workdayPosting) (Job, bool) {
 		return s.detail(ctx, e, b, p)
 	}), nil
 }

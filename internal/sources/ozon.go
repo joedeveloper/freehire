@@ -17,12 +17,11 @@ type ozon struct {
 }
 
 const (
-	ozonListURL       = "https://job-api.ozon.ru/v2/vacancy?page=%d&limit=50"
-	ozonDetailURL     = "https://job-api.ozon.ru/vacancy/%d"
-	ozonVacancyURL    = "https://career.ozon.ru/vacancy/%s/"
-	ozonExternalType  = "external_vacancy"
-	ozonDetailWorkers = 8
-	ozonTimeLayout    = "2006-01-02 15:04:05"
+	ozonListURL      = "https://job-api.ozon.ru/v2/vacancy?page=%d&limit=50"
+	ozonDetailURL    = "https://job-api.ozon.ru/vacancy/%d"
+	ozonVacancyURL   = "https://career.ozon.ru/vacancy/%s/"
+	ozonExternalType = "external_vacancy"
+	ozonTimeLayout   = "2006-01-02 15:04:05"
 )
 
 // NewOzon builds the Ozon adapter over the given HTTP client.
@@ -49,7 +48,7 @@ func (o ozon) Fetch(ctx context.Context, e CompanyEntry) ([]Job, error) {
 		return nil, err
 	}
 
-	return fetchDetails(items, ozonDetailWorkers, func(it ozonItem) (Job, bool) {
+	return fetchDetails(items, defaultDetailWorkers, func(it ozonItem) (Job, bool) {
 		return o.detail(ctx, e, it)
 	}), nil
 }
@@ -98,10 +97,7 @@ func (o ozon) detail(ctx context.Context, e CompanyEntry, it ozonItem) (Job, boo
 		return Job{}, false
 	}
 
-	title := d.Name
-	if title == "" {
-		title = it.Title
-	}
+	title := firstNonEmpty(d.Name, it.Title)
 
 	return Job{
 		ExternalID:  strconv.FormatInt(it.HHID, 10),
@@ -110,15 +106,7 @@ func (o ozon) detail(ctx context.Context, e CompanyEntry, it ozonItem) (Job, boo
 		Company:     e.Company,
 		Location:    d.City,
 		Description: sanitizeHTML(d.Descr),
-		// Ozon's RU remote value is "Удалённо", which arrives with a non-breaking space;
-		// normalizing it to a normal space lets isRemote's "удал" substring match.
-		Remote:   isRemote(normalizeNBSP(strings.Join(d.WorkFormat, " "))),
-		PostedAt: parseLayout(ozonTimeLayout, d.PublishedAt),
+		Remote:      isRemote(strings.Join(d.WorkFormat, " ")),
+		PostedAt:    parseLayout(ozonTimeLayout, d.PublishedAt),
 	}, true
-}
-
-// normalizeNBSP replaces non-breaking spaces with normal spaces so substring heuristics
-// (e.g. isRemote) match text the source emits with nbsp.
-func normalizeNBSP(s string) string {
-	return strings.ReplaceAll(s, " ", " ")
 }

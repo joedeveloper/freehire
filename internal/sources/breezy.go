@@ -22,10 +22,6 @@ func NewBreezy(c HTTPClient) Source { return breezy{http: c} }
 
 func (breezy) Provider() string { return "breezy" }
 
-// breezyDetailWorkers caps how many per-position detail page requests a single board
-// issues concurrently.
-const breezyDetailWorkers = 8
-
 // breezyPosting is one item from the /json listing. The description is not here — it
 // lives on the position page (see detail).
 type breezyPosting struct {
@@ -50,7 +46,7 @@ func (b breezy) Fetch(ctx context.Context, e CompanyEntry) ([]Job, error) {
 		return nil, fmt.Errorf("breezy: list board %s: %w", e.Board, err)
 	}
 
-	return fetchDetails(postings, breezyDetailWorkers, func(p breezyPosting) (Job, bool) {
+	return fetchDetails(postings, defaultDetailWorkers, func(p breezyPosting) (Job, bool) {
 		return b.detail(ctx, e, p)
 	}), nil
 }
