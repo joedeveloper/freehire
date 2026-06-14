@@ -2,31 +2,49 @@ package handler
 
 import (
 	"errors"
-	"net/mail"
-	"strings"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
-	"github.com/jackc/pgx/v5/pgtype"
 
+	"github.com/strelov1/freehire/internal/accounts"
 	"github.com/strelov1/freehire/internal/auth"
-	"github.com/strelov1/freehire/internal/db"
 )
 
-const minPasswordLen = 8
-
 // userResponse is the public shape of a user. It deliberately omits
-// password_hash so the hash never reaches a response (db.User carries it).
+// password_hash so the hash never reaches a response.
 type userResponse struct {
-	ID        int64              `json:"id"`
-	Email     string             `json:"email"`
-	CreatedAt pgtype.Timestamptz `json:"created_at"`
+	ID        int64      `json:"id"`
+	Email     string     `json:"email"`
+	CreatedAt *time.Time `json:"created_at"`
 }
 
 type credentials struct {
 	Email    string `json:"email"`
 	Password string `json:"password"`
+}
+
+// toUserResponse maps an accounts.User to its public response shape.
+func toUserResponse(u accounts.User) userResponse {
+	return userResponse{ID: u.ID, Email: u.Email, CreatedAt: u.CreatedAt}
+}
+
+// accountsError maps the accounts service sentinels to HTTP errors, preserving
+// the statuses and generic messages the handlers used before delegation.
+func accountsError(err error) error {
+	switch {
+	case errors.Is(err, accounts.ErrInvalidEmail):
+		return fiber.NewError(fiber.StatusBadRequest, "invalid email")
+	case errors.Is(err, accounts.ErrPasswordTooShort):
+		return fiber.NewError(fiber.StatusBadRequest, "password must be at least 8 characters")
+	case errors.Is(err, accounts.ErrEmailTaken):
+		return fiber.NewError(fiber.StatusConflict, "email already registered")
+	case errors.Is(err, accounts.ErrInvalidCredentials):
+		return fiber.NewError(fiber.StatusUnauthorized, "invalid credentials")
+	case errors.Is(err, accounts.ErrUserNotFound):
+		return fiber.NewError(fiber.StatusUnauthorized, "unauthorized")
+	default:
+		return err
+	}
 }
 
 // Register creates an account, starts a session (auth cookie), and returns the
@@ -36,38 +54,14 @@ func (h *Handler) Register(c *fiber.Ctx) error {
 	if err := c.BodyParser(&in); err != nil {
 		return fiber.NewError(fiber.StatusBadRequest, "invalid request body")
 	}
-
-	email, err := normalizeEmail(in.Email)
+	user, err := h.accounts.Register(c.Context(), in.Email, in.Password)
 	if err != nil {
-		return fiber.NewError(fiber.StatusBadRequest, "invalid email")
+		return accountsError(err)
 	}
-	if len(in.Password) < minPasswordLen {
-		return fiber.NewError(fiber.StatusBadRequest, "password must be at least 8 characters")
-	}
-
-	hash, err := auth.HashPassword(in.Password)
-	if err != nil {
-		return fiber.NewError(fiber.StatusInternalServerError, "failed to hash password")
-	}
-
-	row, err := h.queries.CreateUser(c.Context(), db.CreateUserParams{
-		Email:        email,
-		PasswordHash: pgtype.Text{String: hash, Valid: true},
-	})
-	if isUniqueViolation(err) {
-		return fiber.NewError(fiber.StatusConflict, "email already registered")
-	}
-	if err != nil {
-		return fiber.NewError(fiber.StatusInternalServerError, "failed to create user")
-	}
-
-	if err := h.setSession(c, row.ID); err != nil {
+	if err := h.setSession(c, user.ID); err != nil {
 		return err
 	}
-
-	return c.Status(fiber.StatusCreated).JSON(fiber.Map{
-		"data": userResponse{ID: row.ID, Email: row.Email, CreatedAt: row.CreatedAt},
-	})
+	return c.Status(fiber.StatusCreated).JSON(fiber.Map{"data": toUserResponse(user)})
 }
 
 // Login verifies credentials, starts a session (auth cookie), and returns the
@@ -78,26 +72,14 @@ func (h *Handler) Login(c *fiber.Ctx) error {
 	if err := c.BodyParser(&in); err != nil {
 		return fiber.NewError(fiber.StatusBadRequest, "invalid request body")
 	}
-
-	// Normalize through the same seam as Register so the Go layer is the single
-	// normalizer; a malformed email simply has no account (generic 401).
-	email, err := normalizeEmail(in.Email)
+	user, err := h.accounts.Login(c.Context(), in.Email, in.Password)
 	if err != nil {
-		return fiber.NewError(fiber.StatusUnauthorized, "invalid credentials")
+		return accountsError(err)
 	}
-
-	user, err := h.queries.GetUserByEmail(c.Context(), email)
-	if err != nil || !user.PasswordHash.Valid || auth.CheckPassword(user.PasswordHash.String, in.Password) != nil {
-		return fiber.NewError(fiber.StatusUnauthorized, "invalid credentials")
-	}
-
 	if err := h.setSession(c, user.ID); err != nil {
 		return err
 	}
-
-	return c.JSON(fiber.Map{
-		"data": userResponse{ID: user.ID, Email: user.Email, CreatedAt: user.CreatedAt},
-	})
+	return c.JSON(fiber.Map{"data": toUserResponse(user)})
 }
 
 // Logout clears the auth cookie. It is public and idempotent: clearing an
@@ -124,18 +106,11 @@ func (h *Handler) Me(c *fiber.Ctx) error {
 	if !ok {
 		return fiber.NewError(fiber.StatusUnauthorized, "unauthorized")
 	}
-
-	user, err := h.queries.GetUserByID(c.Context(), id)
-	if errors.Is(err, pgx.ErrNoRows) {
-		// Valid token, but the user is gone: unauthorized, not 404.
-		return fiber.NewError(fiber.StatusUnauthorized, "unauthorized")
-	}
+	user, err := h.accounts.UserByID(c.Context(), id)
 	if err != nil {
-		// Other failures fall through to ErrorHandler (500).
-		return err
+		return accountsError(err)
 	}
-
-	return c.JSON(fiber.Map{"data": userResponse{ID: user.ID, Email: user.Email, CreatedAt: user.CreatedAt}})
+	return c.JSON(fiber.Map{"data": toUserResponse(user)})
 }
 
 // authHasher adapts the auth package's bcrypt helpers to the accounts.PasswordHasher
@@ -144,20 +119,3 @@ type authHasher struct{}
 
 func (authHasher) Hash(plain string) (string, error) { return auth.HashPassword(plain) }
 func (authHasher) Check(hash, plain string) error     { return auth.CheckPassword(hash, plain) }
-
-// normalizeEmail validates and lowercases an email address. Lowercasing matches
-// the case-insensitive unique index on users(lower(email)).
-func normalizeEmail(raw string) (string, error) {
-	addr, err := mail.ParseAddress(strings.TrimSpace(raw))
-	if err != nil {
-		return "", err
-	}
-	return strings.ToLower(addr.Address), nil
-}
-
-// isUniqueViolation reports whether err is a Postgres unique-constraint
-// violation (SQLSTATE 23505) — here, a duplicate email.
-func isUniqueViolation(err error) bool {
-	var pgErr *pgconn.PgError
-	return errors.As(err, &pgErr) && pgErr.Code == "23505"
-}
