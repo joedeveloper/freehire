@@ -24,9 +24,9 @@
 
 ## 5. Handler & routes (`internal/handler`)
 
-- [ ] 5.1 Add `jobs_moderation.go`: `CreateJob` (201) and `UpdateJob` (200) handlers — parse body, call `moderation.Service`, return `{ "data": job }`; errors flow through the central `ErrorHandler`
-- [ ] 5.2 Wire routes in `Register`: `api.Post("/jobs", RequireAuthOrKey, RequireRole("moderator"), h.CreateJob)` and `api.Patch("/jobs/:slug", RequireAuthOrKey, RequireRole("moderator"), h.UpdateJob)`; construct the `moderation.Service` once in `Register`
-- [ ] 5.3 Confirm `created_by`/`updated_by` are absent from the `jobview` wire shape (no change needed; assert in a handler test)
+- [x] 5.1 Add `jobs_moderation.go`: `CreateJob` (201) and `UpdateJob` (200) handlers — parse body, call `moderation.Service`, return `{ "data": job }`; errors flow through the central `ErrorHandler`
+- [x] 5.2 Wire routes in `Register`: `api.Post("/jobs", keyAuth, RequireRole("moderator"), h.CreateJob)` and `api.Patch("/jobs/:slug", keyAuth, RequireRole("moderator"), h.UpdateJob)`; construct the `moderation.Service` once in `Register`
+- [x] 5.3 Confirm `created_by`/`updated_by` are absent from the `jobview` wire shape (asserted in `jobview/audit_test.go`)
 
 ## 6. Integration tests (`-tags=integration`, testcontainers)
 

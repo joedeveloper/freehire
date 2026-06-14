@@ -12,7 +12,9 @@ import (
 	"github.com/strelov1/freehire/internal/auth"
 	"github.com/strelov1/freehire/internal/auth/oauth"
 	"github.com/strelov1/freehire/internal/db"
+	"github.com/strelov1/freehire/internal/enrich"
 	"github.com/strelov1/freehire/internal/jobtracking"
+	"github.com/strelov1/freehire/internal/moderation"
 	"github.com/strelov1/freehire/internal/search"
 )
 
@@ -41,6 +43,9 @@ type Handler struct {
 	// accounts resolves external OAuth identities into local user accounts
 	// (identity-first lookup, verified-email gate, link-or-create, race retry).
 	accounts *accounts.Service
+	// moderation owns the moderator-authored job use cases (create/edit a manual
+	// vacancy); the handlers translate wire ↔ domain and delegate to it.
+	moderation *moderation.Service
 }
 
 // pageParams reads and clamps the shared limit/offset pagination query params.
@@ -85,6 +90,7 @@ func Register(app *fiber.App, pool *pgxpool.Pool, frontendOrigin, jwtSecret stri
 		frontendOrigin: frontendOrigin,
 		tracking:       jobtracking.New(jobtracking.NewQueriesRepository(queries)),
 		accounts:       accounts.New(accounts.NewQueriesRepository(queries, pool)),
+		moderation:     moderation.New(moderation.NewQueriesRepository(queries, pool, enrich.Version)),
 	}
 	// Assign only when configured: a nil *search.Client wrapped in the searcher
 	// interface would be a non-nil interface and defeat the nil check.
@@ -115,6 +121,13 @@ func Register(app *fiber.App, pool *pgxpool.Pool, frontendOrigin, jwtSecret stri
 	api.Post("/jobs/:slug/save", keyAuth, h.SaveJob)
 	api.Delete("/jobs/:slug/save", keyAuth, h.UnsaveJob)
 	api.Patch("/jobs/:slug/track", keyAuth, h.TrackJob)
+
+	// Moderator-authored jobs: create a hand-curated vacancy and edit it. Authenticated
+	// by cookie or API key (the CLI uses a key), then gated on the moderator role. The
+	// public job reads above stay unauthenticated; a non-moderator gets 403.
+	requireModerator := auth.RequireRole(h.queries, "moderator")
+	api.Post("/jobs", keyAuth, requireModerator, h.CreateJob)
+	api.Patch("/jobs/:slug", keyAuth, requireModerator, h.UpdateJob)
 
 	// User-scoped reads live under /me (consistent with /auth/me): the my-jobs
 	// listing joins the caller's interactions with the jobs they touch.

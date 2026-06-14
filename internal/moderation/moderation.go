@@ -24,7 +24,9 @@ import (
 // 400, surfacing the wrapped message); ErrJobNotFound is the missing-or-non-manual edit
 // target (mapped to 404).
 var (
-	ErrInvalid     = errors.New("moderation: invalid input")
+	// ErrInvalid wraps validation failures. Its text is user-facing: the handler
+	// surfaces the wrapped message in the 400 body, so it carries no package prefix.
+	ErrInvalid     = errors.New("invalid request")
 	ErrJobNotFound = errors.New("moderation: job not found")
 )
 
