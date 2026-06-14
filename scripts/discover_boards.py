@@ -133,7 +133,13 @@ def parse_cc_jsonl(text: str) -> set[str]:
 
 
 def channel_cc(host: str, query: str, limit: int) -> set[str]:
-    """Bulk-dump board URLs for <host>/* from Common Crawl. Ignores the keyword."""
+    """Bulk-dump board URLs for <host>/* from Common Crawl. Ignores the keyword.
+
+    Only effective for path-based providers (greenhouse/lever/ashby/smartrecruiters/
+    workable). Subdomain-board providers (recruitee, bamboohr, breezy, personio,
+    teamtailor) sit on <slug>.<host>, which a <host>/* prefix never matches — they
+    yield zero here; use ddg/google/github for those.
+    """
     base = cc_api_base()
     if not base:
         return set()
@@ -146,7 +152,7 @@ CHANNELS = {
     "ddg": channel_ddg,
     "google": channel_google,
     "github": channel_github,
-    "cc": lambda host, query, limit: channel_cc(host, query, limit),
+    "cc": channel_cc,
 }
 
 
