@@ -147,6 +147,12 @@ type Querier interface {
 	// a later re-crawl overwrites it with the structured value where the adapter has
 	// one.
 	SetJobLocation(ctx context.Context, arg SetJobLocationParams) error
+	// One-off backfill (cmd/backfill-skills): rewrite the deterministic skills column
+	// from the row's stored description. Skills are a pure function of the description,
+	// so this is idempotent. updated_at is deliberately left untouched (like
+	// SetJobLocation) so a backfill does not churn every row's timestamp. COALESCE maps
+	// a nil arg to '{}' to satisfy the NOT NULL array column.
+	SetJobSkills(ctx context.Context, arg SetJobSkillsParams) error
 	// Rebuild the companies catalogue from jobs. The companies table is derivable
 	// from jobs (slug = company_slug, name = company), so after a slug-builder change
 	// re-keys jobs, this re-keys companies to match. DISTINCT ON collapses a slug's
