@@ -35,6 +35,6 @@
 
 ## 7. Verify & finish
 
-- [ ] 7.1 `go build ./... && go vet ./... && go test ./...` green; integration suite green
-- [ ] 7.2 Manual smoke: grant a moderator via psql, `POST`/`PATCH` with an API key, confirm 201/200, 403 for a non-moderator, 401 unauthenticated
-- [ ] 7.3 Note follow-up: `freehire jobs add` / `jobs edit` CLI command in the separate `freehire-cli` repo (out of scope for this change)
+- [x] 7.1 `go build ./... && go vet ./... && go test ./...` green; integration suite green
+- [x] 7.2 End-to-end HTTP smoke automated in `handler/jobs_moderation_integration_test.go` (real DB): 201 create, 403 non-moderator, 401 unauthenticated, 400 missing field, 200 edit, 404 non-manual edit, URL idempotency, authorship recorded + not leaked
+- [x] 7.3 Follow-up noted: `freehire jobs add` / `jobs edit` CLI command in the separate `freehire-cli` repo (out of scope for this change)
