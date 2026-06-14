@@ -49,6 +49,17 @@ def test_parse_cse_items_empty_on_no_items():
     assert d.parse_cse_items({}) == set()
 
 
+def test_channel_github_extracts_from_fragments():
+    import discover_boards as dd
+    orig = dd.github_fragments
+    dd.github_fragments = lambda query, pages: ["see https://jobs.ashbyhq.com/Clipbook here"]
+    try:
+        urls = dd.channel_github("jobs.ashbyhq.com", "fintech", limit=10)
+    finally:
+        dd.github_fragments = orig
+    assert any("jobs.ashbyhq.com/Clipbook" in u for u in urls)
+
+
 def _run():
     fns = [v for k, v in sorted(globals().items()) if k.startswith("test_") and callable(v)]
     failed = 0

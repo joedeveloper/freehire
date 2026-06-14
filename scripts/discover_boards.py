@@ -23,7 +23,7 @@ import urllib.request
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from ats_boards import VALIDATORS  # noqa: E402
+from ats_boards import VALIDATORS, github_fragments  # noqa: E402
 
 # Provider -> the ATS host to put in a `site:` search / Common Crawl prefix.
 PROVIDER_HOSTS = {
@@ -90,3 +90,10 @@ def channel_google(host: str, query: str, limit: int) -> set[str]:
         return parse_cse_items(json.loads(body))
     except Exception:
         return set()
+
+
+def channel_github(host: str, query: str, limit: int, pages: int = 2) -> set[str]:
+    """`<query> <host>` via GitHub code search -> the matched fragments as text."""
+    frags = github_fragments(f"{query} {host}", pages)
+    out = set(frags)
+    return set(list(out)[:limit]) if limit else out
