@@ -13,12 +13,18 @@ import (
 // server-rendered HTML carrying a schema.org JobPosting ld+json block, so the description
 // comes from a per-position detail fetch (bounded-concurrency), like the other detail
 // adapters.
+// breezyHTTP is the transport breezy needs: a JSON listing plus HTML detail pages.
+type breezyHTTP interface {
+	JSONGetter
+	HTMLGetter
+}
+
 type breezy struct {
-	http HTTPClient
+	http breezyHTTP
 }
 
 // NewBreezy builds the Breezy adapter over the given HTTP client.
-func NewBreezy(c HTTPClient) Source { return breezy{http: c} }
+func NewBreezy(c breezyHTTP) Source { return breezy{http: c} }
 
 func (breezy) Provider() string { return "breezy" }
 

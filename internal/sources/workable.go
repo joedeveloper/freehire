@@ -11,11 +11,11 @@ const workableBaseURL = "https://apply.workable.com/api/v1/widget/accounts"
 // workable adapts the Workable public widget API. With details=true the list endpoint
 // carries an inline HTML description, so no per-posting detail request is needed.
 type workable struct {
-	http HTTPClient
+	http JSONGetter
 }
 
 // NewWorkable builds the Workable adapter over the given HTTP client.
-func NewWorkable(c HTTPClient) Source { return workable{http: c} }
+func NewWorkable(c JSONGetter) Source { return workable{http: c} }
 
 func (workable) Provider() string { return "workable" }
 

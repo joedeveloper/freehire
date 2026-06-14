@@ -11,7 +11,7 @@ import (
 // carries the description inline, so no detail fan-out is needed. cityId is a code resolved
 // against a cities dictionary fetched once per Fetch.
 type alfabank struct {
-	http HTTPClient
+	http JSONGetter
 }
 
 const (
@@ -22,7 +22,7 @@ const (
 )
 
 // NewAlfaBank builds the Alfa-Bank adapter over the given HTTP client.
-func NewAlfaBank(c HTTPClient) Source { return alfabank{http: c} }
+func NewAlfaBank(c JSONGetter) Source { return alfabank{http: c} }
 
 func (alfabank) Provider() string { return "alfabank" }
 

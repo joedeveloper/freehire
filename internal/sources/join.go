@@ -18,11 +18,11 @@ const (
 // company id. The list endpoint carries no description, so each posting's body comes from its
 // own detail request (bounded-concurrency), like the SmartRecruiters and Gem adapters.
 type join struct {
-	http HTTPClient
+	http JSONGetter
 }
 
 // NewJoin builds the Join.com adapter over the given HTTP client.
-func NewJoin(c HTTPClient) Source { return join{http: c} }
+func NewJoin(c JSONGetter) Source { return join{http: c} }
 
 func (join) Provider() string { return "join" }
 

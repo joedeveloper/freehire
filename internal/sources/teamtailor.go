@@ -14,11 +14,11 @@ import (
 // server-rendered HTML carrying a schema.org JobPosting ld+json block, so the description
 // comes from a per-job detail fetch (bounded-concurrency), like the other detail adapters.
 type teamtailor struct {
-	http HTTPClient
+	http HTMLGetter
 }
 
 // NewTeamtailor builds the Teamtailor adapter over the given HTTP client.
-func NewTeamtailor(c HTTPClient) Source { return teamtailor{http: c} }
+func NewTeamtailor(c HTMLGetter) Source { return teamtailor{http: c} }
 
 func (teamtailor) Provider() string { return "teamtailor" }
 

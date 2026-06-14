@@ -37,11 +37,11 @@ const (
 // so it fetches each posting's detail (bounded-concurrency) to assemble the body, like the
 // SmartRecruiters and Rippling adapters.
 type gem struct {
-	http HTTPClient
+	http JSONPoster
 }
 
 // NewGem builds the Gem adapter over the given HTTP client.
-func NewGem(c HTTPClient) Source { return gem{http: c} }
+func NewGem(c JSONPoster) Source { return gem{http: c} }
 
 func (gem) Provider() string { return "gem" }
 

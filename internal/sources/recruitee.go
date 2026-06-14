@@ -14,11 +14,11 @@ const recruiteeBaseURL = "https://%s.recruitee.com/api/offers/"
 // across separate description and requirements HTML fields, which the adapter combines,
 // so no per-posting detail request is needed.
 type recruitee struct {
-	http HTTPClient
+	http JSONGetter
 }
 
 // NewRecruitee builds the Recruitee adapter over the given HTTP client.
-func NewRecruitee(c HTTPClient) Source { return recruitee{http: c} }
+func NewRecruitee(c JSONGetter) Source { return recruitee{http: c} }
 
 func (recruitee) Provider() string { return "recruitee" }
 

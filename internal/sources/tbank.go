@@ -12,7 +12,7 @@ import (
 // and carries no body, so each vacancy's description comes from its own POST detail request,
 // fanned out like the other detail-fetching adapters. The "publisher" source covers all roles.
 type tbank struct {
-	http HTTPClient
+	http JSONPoster
 }
 
 const (
@@ -23,7 +23,7 @@ const (
 )
 
 // NewTBank builds the T-Bank adapter over the given HTTP client.
-func NewTBank(c HTTPClient) Source { return tbank{http: c} }
+func NewTBank(c JSONPoster) Source { return tbank{http: c} }
 
 func (tbank) Provider() string { return "tbank" }
 

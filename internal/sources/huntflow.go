@@ -13,7 +13,7 @@ import (
 // payload carries no description, so each open vacancy's body comes from its own detail
 // payload, fanned out like SmartRecruiters.
 type huntflow struct {
-	http HTTPClient
+	http JSONGetter
 }
 
 const (
@@ -23,7 +23,7 @@ const (
 )
 
 // NewHuntflow builds the Huntflow adapter over the given HTTP client.
-func NewHuntflow(c HTTPClient) Source { return huntflow{http: c} }
+func NewHuntflow(c JSONGetter) Source { return huntflow{http: c} }
 
 func (huntflow) Provider() string { return "huntflow" }
 

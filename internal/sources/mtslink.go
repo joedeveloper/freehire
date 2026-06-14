@@ -11,7 +11,7 @@ import (
 // returns every vacancy with empty body fields, so each open vacancy's body comes from
 // its own detail request, fanned out like SmartRecruiters. Only OPEN vacancies are kept.
 type mtslink struct {
-	http HTTPClient
+	http JSONGetter
 }
 
 const (
@@ -23,7 +23,7 @@ const (
 )
 
 // NewMtslink builds the MTS Link adapter over the given HTTP client.
-func NewMtslink(c HTTPClient) Source { return mtslink{http: c} }
+func NewMtslink(c JSONGetter) Source { return mtslink{http: c} }
 
 func (mtslink) Provider() string { return "mtslink" }
 

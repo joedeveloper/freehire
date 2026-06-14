@@ -14,11 +14,11 @@ const (
 // description, so it fetches each posting's detail (bounded-concurrency) to assemble the
 // body, like the SmartRecruiters adapter.
 type rippling struct {
-	http HTTPClient
+	http JSONGetter
 }
 
 // NewRippling builds the Rippling adapter over the given HTTP client.
-func NewRippling(c HTTPClient) Source { return rippling{http: c} }
+func NewRippling(c JSONGetter) Source { return rippling{http: c} }
 
 func (rippling) Provider() string { return "rippling" }
 

@@ -13,7 +13,7 @@ import (
 // and each body is assembled from its detail page's content blocks, fanned out like
 // SmartRecruiters.
 type dodo struct {
-	http HTTPClient
+	http JSONGetter
 }
 
 const (
@@ -34,7 +34,7 @@ var dodoBodyTypes = map[string]bool{
 }
 
 // NewDodo builds the Dodo adapter over the given HTTP client.
-func NewDodo(c HTTPClient) Source { return dodo{http: c} }
+func NewDodo(c JSONGetter) Source { return dodo{http: c} }
 
 func (dodo) Provider() string { return "dodo" }
 

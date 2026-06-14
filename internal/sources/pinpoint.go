@@ -10,11 +10,11 @@ import (
 // HTML sections (description, responsibilities, skills, benefits), so no per-posting
 // detail request is needed.
 type pinpoint struct {
-	http HTTPClient
+	http JSONGetter
 }
 
 // NewPinpoint builds the Pinpoint adapter over the given HTTP client.
-func NewPinpoint(c HTTPClient) Source { return pinpoint{http: c} }
+func NewPinpoint(c JSONGetter) Source { return pinpoint{http: c} }
 
 func (pinpoint) Provider() string { return "pinpoint" }
 

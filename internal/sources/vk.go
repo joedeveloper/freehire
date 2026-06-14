@@ -18,8 +18,14 @@ import (
 // details serially with a pause between requests (interval) to stay under the limit. A
 // posting that is still challenged keeps its list fields with an empty description rather
 // than being dropped, so the worst case is identical to no pacing — never a regression.
+// vkHTTP is the transport vk needs: a JSON listing plus HTML detail pages.
+type vkHTTP interface {
+	JSONGetter
+	HTMLGetter
+}
+
 type vk struct {
-	http     HTTPClient
+	http     vkHTTP
 	interval time.Duration
 }
 
@@ -31,10 +37,10 @@ const (
 )
 
 // NewVK builds the VK adapter over the given HTTP client.
-func NewVK(c HTTPClient) Source { return newVK(c, vkDetailInterval) }
+func NewVK(c vkHTTP) Source { return newVK(c, vkDetailInterval) }
 
 // newVK builds the adapter with an explicit detail-fetch pace, so tests can disable it.
-func newVK(c HTTPClient, interval time.Duration) vk { return vk{http: c, interval: interval} }
+func newVK(c vkHTTP, interval time.Duration) vk { return vk{http: c, interval: interval} }
 
 func (vk) Provider() string { return "vk" }
 

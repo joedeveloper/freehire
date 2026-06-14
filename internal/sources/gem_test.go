@@ -8,11 +8,9 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"golang.org/x/net/html"
 )
 
-// gqlHTTP is a body-aware test HTTPClient for the GraphQL adapters: Gem sends both its
+// gqlHTTP is a body-aware test JSONPoster for the GraphQL adapters: Gem sends both its
 // list and its detail request as POST to the same URL, distinguished only by the request
 // body, so this fake routes the canned response on the operation name and (for detail)
 // the extId in the variables — not the URL. A detail extId listed in failExtIDs returns
@@ -22,26 +20,6 @@ type gqlHTTP struct {
 	detail     map[string]string // extId -> canned ExternalJobPostingQuery response
 	failExtIDs map[string]bool   // extIds whose detail request errors
 	gotURL     string
-}
-
-func (f *gqlHTTP) GetJSON(context.Context, string, any) error {
-	return errors.New("gqlHTTP: unexpected GetJSON")
-}
-
-func (f *gqlHTTP) GetXML(context.Context, string, any) error {
-	return errors.New("gqlHTTP: unexpected GetXML")
-}
-
-func (f *gqlHTTP) GetHTML(context.Context, string) (*html.Node, error) {
-	return nil, errors.New("gqlHTTP: unexpected GetHTML")
-}
-
-func (f *gqlHTTP) GetJSONWithHeaders(context.Context, string, map[string]string, any) error {
-	return errors.New("gqlHTTP: unexpected GetJSONWithHeaders")
-}
-
-func (f *gqlHTTP) PostJSONWithHeaders(context.Context, string, map[string]string, any, any) error {
-	return errors.New("gqlHTTP: unexpected PostJSONWithHeaders")
 }
 
 func (f *gqlHTTP) PostJSON(_ context.Context, url string, body, v any) error {

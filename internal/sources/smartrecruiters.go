@@ -18,11 +18,11 @@ const (
 // list endpoint carries no description, so it paginates the postings and fetches each
 // posting's detail (bounded-concurrency) to assemble the description.
 type smartRecruiters struct {
-	http HTTPClient
+	http JSONGetter
 }
 
 // NewSmartRecruiters builds the SmartRecruiters adapter over the given HTTP client.
-func NewSmartRecruiters(c HTTPClient) Source { return smartRecruiters{http: c} }
+func NewSmartRecruiters(c JSONGetter) Source { return smartRecruiters{http: c} }
 
 func (smartRecruiters) Provider() string { return "smartrecruiters" }
 

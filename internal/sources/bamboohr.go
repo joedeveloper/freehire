@@ -9,11 +9,11 @@ import (
 // description, so it fetches each posting's detail (bounded-concurrency) to assemble the
 // body, like the SmartRecruiters and Rippling adapters.
 type bambooHR struct {
-	http HTTPClient
+	http JSONGetter
 }
 
 // NewBambooHR builds the BambooHR adapter over the given HTTP client.
-func NewBambooHR(c HTTPClient) Source { return bambooHR{http: c} }
+func NewBambooHR(c JSONGetter) Source { return bambooHR{http: c} }
 
 func (bambooHR) Provider() string { return "bamboohr" }
 

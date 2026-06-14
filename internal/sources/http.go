@@ -15,22 +15,57 @@ import (
 	"golang.org/x/net/html"
 )
 
-// HTTPClient is the narrow transport an adapter needs: fetch a URL and decode its
-// JSON (or XML) body into v. PostJSON sends a JSON request body (Workday's listing
-// API is POST-only). Adapters depend on this interface so tests inject a fake and
-// never touch the network; the real client is Client below.
-type HTTPClient interface {
+// The capability interfaces below are the narrow transport roles an adapter depends
+// on (interface segregation): a JSON-list adapter takes a JSONGetter, an HTML-detail
+// adapter an HTMLGetter, and so on. The real Client implements them all, so one Client
+// serves every adapter; a test fake implements only the role(s) its adapter uses
+// rather than stubbing a six-method surface. Composed roles (e.g. JSON list + HTML
+// detail) are declared as a small embedded interface at the adapter that needs them.
+
+// JSONGetter fetches a URL and decodes its JSON body into v.
+type JSONGetter interface {
 	GetJSON(ctx context.Context, url string, v any) error
+}
+
+// XMLGetter fetches a URL and decodes its XML body into v (platforms publishing an XML
+// feed, e.g. Personio).
+type XMLGetter interface {
 	GetXML(ctx context.Context, url string, v any) error
-	PostJSON(ctx context.Context, url string, body, v any) error
-	// GetHTML fetches url and returns its parsed HTML tree, for adapters whose detail is
-	// server-rendered HTML rather than a structured body (e.g. SuccessFactors).
+}
+
+// HTMLGetter fetches a URL and returns its parsed HTML tree, for adapters whose detail
+// is server-rendered HTML rather than a structured body (e.g. SuccessFactors).
+type HTMLGetter interface {
 	GetHTML(ctx context.Context, url string) (*html.Node, error)
-	// GetJSONWithHeaders and PostJSONWithHeaders behave like GetJSON/PostJSON but attach
-	// extra request headers, for an API gated behind a non-secret header (e.g. MTS's public
-	// x-api-key). The custom headers never override the standard User-Agent/Accept.
+}
+
+// JSONPoster sends a JSON request body and decodes the JSON response (platforms whose
+// listing API is POST-only, e.g. Workday).
+type JSONPoster interface {
+	PostJSON(ctx context.Context, url string, body, v any) error
+}
+
+// HeaderJSONGetter and HeaderJSONPoster behave like JSONGetter/JSONPoster but attach
+// extra request headers, for an API gated behind a non-secret header (e.g. MTS's public
+// x-api-key). The custom headers never override the standard User-Agent/Accept.
+type HeaderJSONGetter interface {
 	GetJSONWithHeaders(ctx context.Context, url string, headers map[string]string, v any) error
+}
+
+type HeaderJSONPoster interface {
 	PostJSONWithHeaders(ctx context.Context, url string, headers map[string]string, body, v any) error
+}
+
+// HTTPClient is the full transport surface, composing every capability role. The real
+// Client implements it; sources.All holds one and passes it to each adapter, which then
+// narrows it to the role(s) it actually uses.
+type HTTPClient interface {
+	JSONGetter
+	XMLGetter
+	HTMLGetter
+	JSONPoster
+	HeaderJSONGetter
+	HeaderJSONPoster
 }
 
 // Client is the real HTTPClient: a timeout-bounded GET with a project User-Agent and

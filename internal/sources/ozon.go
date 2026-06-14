@@ -13,7 +13,7 @@ import (
 // like SmartRecruiters. Only external_vacancy items are real Ozon postings; the rest are
 // dropped.
 type ozon struct {
-	http HTTPClient
+	http JSONGetter
 }
 
 const (
@@ -25,7 +25,7 @@ const (
 )
 
 // NewOzon builds the Ozon adapter over the given HTTP client.
-func NewOzon(c HTTPClient) Source { return ozon{http: c} }
+func NewOzon(c JSONGetter) Source { return ozon{http: c} }
 
 func (ozon) Provider() string { return "ozon" }
 

@@ -11,7 +11,7 @@ import (
 // plain JSON array carrying no description, so each vacancy's body comes from its own
 // Remix-loader detail request, fanned out like SmartRecruiters.
 type aviasales struct {
-	http HTTPClient
+	http JSONGetter
 }
 
 const (
@@ -23,7 +23,7 @@ const (
 )
 
 // NewAviasales builds the Aviasales adapter over the given HTTP client.
-func NewAviasales(c HTTPClient) Source { return aviasales{http: c} }
+func NewAviasales(c JSONGetter) Source { return aviasales{http: c} }
 
 func (aviasales) Provider() string { return "aviasales" }
 

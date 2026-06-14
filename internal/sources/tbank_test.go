@@ -6,11 +6,9 @@ import (
 	"errors"
 	"strings"
 	"testing"
-
-	"golang.org/x/net/html"
 )
 
-// tbankHTTP is a body-aware test HTTPClient for T-Bank: both the list and the detail are
+// tbankHTTP is a body-aware test JSONPoster for T-Bank: both the list and the detail are
 // POSTs to fixed URLs, distinguished by the request body. The list fake paginates on the
 // requested offset (page 1 → page 2, then isFinished); the detail fake routes the canned
 // description[] on the request's urlSlug. A urlSlug in failSlugs errors so detail-isolation
@@ -20,22 +18,6 @@ type tbankHTTP struct {
 	detail    map[string]string // urlSlug -> canned getVacancyDescription payload
 	failSlugs map[string]bool   // urlSlugs whose detail request errors
 	listCalls int               // number of getVacancies requests served (loop-termination guard)
-}
-
-func (f *tbankHTTP) GetJSON(context.Context, string, any) error {
-	return errors.New("tbankHTTP: unexpected GetJSON")
-}
-func (f *tbankHTTP) GetXML(context.Context, string, any) error {
-	return errors.New("tbankHTTP: unexpected GetXML")
-}
-func (f *tbankHTTP) GetHTML(context.Context, string) (*html.Node, error) {
-	return nil, errors.New("tbankHTTP: unexpected GetHTML")
-}
-func (f *tbankHTTP) GetJSONWithHeaders(context.Context, string, map[string]string, any) error {
-	return errors.New("tbankHTTP: unexpected GetJSONWithHeaders")
-}
-func (f *tbankHTTP) PostJSONWithHeaders(context.Context, string, map[string]string, any, any) error {
-	return errors.New("tbankHTTP: unexpected PostJSONWithHeaders")
 }
 
 func (f *tbankHTTP) PostJSON(_ context.Context, url string, body, v any) error {

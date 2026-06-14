@@ -11,11 +11,11 @@ const ashbyBaseURL = "https://api.ashbyhq.com/posting-api/job-board"
 // ashby adapts the Ashby public job-board API. The list endpoint carries an HTML
 // description and an explicit remote flag, so no per-posting detail request is needed.
 type ashby struct {
-	http HTTPClient
+	http JSONGetter
 }
 
 // NewAshby builds the Ashby adapter over the given HTTP client.
-func NewAshby(c HTTPClient) Source { return ashby{http: c} }
+func NewAshby(c JSONGetter) Source { return ashby{http: c} }
 
 func (ashby) Provider() string { return "ashby" }
 

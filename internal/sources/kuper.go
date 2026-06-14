@@ -13,7 +13,7 @@ import (
 // list of category blocks; the pagination block carries the page count and the vacancies
 // block carries the postings.
 type kuper struct {
-	http HTTPClient
+	http JSONGetter
 }
 
 const (
@@ -22,7 +22,7 @@ const (
 )
 
 // NewKuper builds the Kuper adapter over the given HTTP client.
-func NewKuper(c HTTPClient) Source { return kuper{http: c} }
+func NewKuper(c JSONGetter) Source { return kuper{http: c} }
 
 func (kuper) Provider() string { return "kuper" }
 

@@ -13,11 +13,11 @@ const leverBaseURL = "https://api.lever.co/v0/postings"
 // postings whose body is split across HTML description/lists/additional fields, which
 // the adapter assembles, so no per-posting detail request is needed.
 type lever struct {
-	http HTTPClient
+	http JSONGetter
 }
 
 // NewLever builds the Lever adapter over the given HTTP client.
-func NewLever(c HTTPClient) Source { return lever{http: c} }
+func NewLever(c JSONGetter) Source { return lever{http: c} }
 
 func (lever) Provider() string { return "lever" }
 

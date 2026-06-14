@@ -10,7 +10,7 @@ import (
 // description, so each vacancy's body comes from its own slug-keyed detail request,
 // fanned out like SmartRecruiters.
 type domclick struct {
-	http HTTPClient
+	http JSONGetter
 }
 
 const (
@@ -21,7 +21,7 @@ const (
 )
 
 // NewDomclick builds the DomClick adapter over the given HTTP client.
-func NewDomclick(c HTTPClient) Source { return domclick{http: c} }
+func NewDomclick(c JSONGetter) Source { return domclick{http: c} }
 
 func (domclick) Provider() string { return "domclick" }
 

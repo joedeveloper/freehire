@@ -11,7 +11,7 @@ import (
 // paginates by skip/take. Sber publishes for many employer entities (СберТех, etc.), so each
 // vacancy's own company is the employer, with the configured entry as a fallback.
 type sber struct {
-	http HTTPClient
+	http JSONGetter
 }
 
 const (
@@ -21,7 +21,7 @@ const (
 )
 
 // NewSber builds the Sber adapter over the given HTTP client.
-func NewSber(c HTTPClient) Source { return sber{http: c} }
+func NewSber(c JSONGetter) Source { return sber{http: c} }
 
 func (sber) Provider() string { return "sber" }
 

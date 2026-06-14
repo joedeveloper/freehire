@@ -12,7 +12,7 @@ import (
 // city and employment types but no body, so each vacancy's description comes from its own
 // detail request, fanned out like SmartRecruiters.
 type rwb struct {
-	http HTTPClient
+	http JSONGetter
 }
 
 const (
@@ -23,7 +23,7 @@ const (
 )
 
 // NewRWB builds the Wildberries adapter over the given HTTP client.
-func NewRWB(c HTTPClient) Source { return rwb{http: c} }
+func NewRWB(c JSONGetter) Source { return rwb{http: c} }
 
 func (rwb) Provider() string { return "rwb" }
 

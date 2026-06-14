@@ -11,7 +11,7 @@ import (
 // per-tenant board id (boardless). The list endpoint paginates by offset and carries only
 // a summary, so each posting's body comes from its own detail request, fanned out.
 type lamoda struct {
-	http HTTPClient
+	http JSONGetter
 }
 
 const (
@@ -22,7 +22,7 @@ const (
 )
 
 // NewLamoda builds the Lamoda adapter over the given HTTP client.
-func NewLamoda(c HTTPClient) Source { return lamoda{http: c} }
+func NewLamoda(c JSONGetter) Source { return lamoda{http: c} }
 
 func (lamoda) Provider() string { return "lamoda" }
 

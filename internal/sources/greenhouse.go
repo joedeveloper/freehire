@@ -14,11 +14,11 @@ const greenhouseBaseURL = "https://boards-api.greenhouse.io/v1/boards"
 // description inline when asked with content=true, so no per-posting detail request
 // is needed.
 type greenhouse struct {
-	http HTTPClient
+	http JSONGetter
 }
 
 // NewGreenhouse builds the Greenhouse adapter over the given HTTP client.
-func NewGreenhouse(c HTTPClient) Source { return greenhouse{http: c} }
+func NewGreenhouse(c JSONGetter) Source { return greenhouse{http: c} }
 
 func (greenhouse) Provider() string { return "greenhouse" }
 

@@ -16,7 +16,7 @@ import (
 // fanned out like SmartRecruiters. List items that redirect out (redirect_url) or belong to
 // a hiring event (fast_track) are not real vacancies and are dropped.
 type yandex struct {
-	http HTTPClient
+	http JSONGetter
 }
 
 const (
@@ -26,7 +26,7 @@ const (
 )
 
 // NewYandex builds the Yandex adapter over the given HTTP client.
-func NewYandex(c HTTPClient) Source { return yandex{http: c} }
+func NewYandex(c JSONGetter) Source { return yandex{http: c} }
 
 func (yandex) Provider() string { return "yandex" }
 

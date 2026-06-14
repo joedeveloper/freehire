@@ -10,12 +10,12 @@ import (
 	"golang.org/x/net/html"
 )
 
-// mtsHTTP is a body-aware test HTTPClient for MTS: the list is a POST that paginates on the
+// fakeMTS is a body-aware test fake for MTS (the mtsHTTP roles): the list is a POST that paginates on the
 // request body's offset, the detail is a GET keyed by the vacancy id in the URL, and both
 // must carry the harvested x-api-key header. The fake records the header seen on each call
 // so the test can assert it is sent. GetHTML serves a canned config page for the apiKey
 // harvest. A detail id in failIDs errors so detail-isolation can be exercised.
-type mtsHTTP struct {
+type fakeMTS struct {
 	configHTML string            // page served by GetHTML (carries apiKey)
 	pages      map[int]string    // offset -> canned list payload
 	detail     map[string]string // id -> canned detail payload
@@ -25,42 +25,32 @@ type mtsHTTP struct {
 	detailKey string // x-api-key seen on a detail GET
 }
 
-func (f *mtsHTTP) GetJSON(context.Context, string, any) error {
-	return errors.New("mtsHTTP: unexpected GetJSON")
-}
-func (f *mtsHTTP) GetXML(context.Context, string, any) error {
-	return errors.New("mtsHTTP: unexpected GetXML")
-}
-func (f *mtsHTTP) PostJSON(context.Context, string, any, any) error {
-	return errors.New("mtsHTTP: unexpected PostJSON")
-}
-
-func (f *mtsHTTP) GetHTML(_ context.Context, _ string) (*html.Node, error) {
+func (f *fakeMTS) GetHTML(_ context.Context, _ string) (*html.Node, error) {
 	return html.Parse(strings.NewReader(f.configHTML))
 }
 
-func (f *mtsHTTP) GetJSONWithHeaders(_ context.Context, url string, headers map[string]string, v any) error {
+func (f *fakeMTS) GetJSONWithHeaders(_ context.Context, url string, headers map[string]string, v any) error {
 	f.detailKey = headers["x-api-key"]
 	id := url[strings.LastIndex(url, "/")+1:]
 	if f.failIDs[id] {
-		return errors.New("mtsHTTP: detail boom for " + id)
+		return errors.New("fakeMTS: detail boom for " + id)
 	}
 	raw, ok := f.detail[id]
 	if !ok {
-		return errors.New("mtsHTTP: no canned detail for " + id)
+		return errors.New("fakeMTS: no canned detail for " + id)
 	}
 	return json.Unmarshal([]byte(raw), v)
 }
 
-func (f *mtsHTTP) PostJSONWithHeaders(_ context.Context, _ string, headers map[string]string, body, v any) error {
+func (f *fakeMTS) PostJSONWithHeaders(_ context.Context, _ string, headers map[string]string, body, v any) error {
 	f.listKey = headers["x-api-key"]
 	req, ok := body.(mtsListRequest)
 	if !ok {
-		return errors.New("mtsHTTP: list body is not a mtsListRequest")
+		return errors.New("fakeMTS: list body is not a mtsListRequest")
 	}
 	raw, ok := f.pages[req.Offset]
 	if !ok {
-		return errors.New("mtsHTTP: no canned page for offset")
+		return errors.New("fakeMTS: no canned page for offset")
 	}
 	return json.Unmarshal([]byte(raw), v)
 }
@@ -116,7 +106,7 @@ func TestMTSAPIKeyExtractionMissing(t *testing.T) {
 
 func TestMTSFetchPaginatesMapsAndSendsKey(t *testing.T) {
 	// total=400 forces two pages at the fixed 200 page size: offset 0 then offset 200.
-	fake := &mtsHTTP{
+	fake := &fakeMTS{
 		configHTML: mtsConfigHTML,
 		pages: map[int]string{
 			0: mtsListPage(400,
@@ -187,7 +177,7 @@ func TestMTSFetchPaginatesMapsAndSendsKey(t *testing.T) {
 }
 
 func TestMTSFailedDetailDropsOnlyThatPosting(t *testing.T) {
-	fake := &mtsHTTP{
+	fake := &fakeMTS{
 		configHTML: mtsConfigHTML,
 		pages: map[int]string{
 			0: mtsListPage(1,
@@ -210,14 +200,14 @@ func TestMTSFailedDetailDropsOnlyThatPosting(t *testing.T) {
 
 func TestMTSHarvestFailureErrors(t *testing.T) {
 	// Config page without an apiKey → harvest fails → Fetch errors so the board is isolated.
-	fake := &mtsHTTP{configHTML: `<html><body><script>window.x=1</script></body></html>`}
+	fake := &fakeMTS{configHTML: `<html><body><script>window.x=1</script></body></html>`}
 	if _, err := NewMTS(fake).Fetch(context.Background(), CompanyEntry{Company: "MTS"}); err == nil {
 		t.Fatal("Fetch: want error when apiKey harvest fails, got nil")
 	}
 }
 
 func TestMTSEmptyListYieldsNoJobsNoError(t *testing.T) {
-	fake := &mtsHTTP{configHTML: mtsConfigHTML, pages: map[int]string{0: mtsListPage(0)}}
+	fake := &fakeMTS{configHTML: mtsConfigHTML, pages: map[int]string{0: mtsListPage(0)}}
 
 	jobs, err := NewMTS(fake).Fetch(context.Background(), CompanyEntry{Company: "MTS"})
 	if err != nil {

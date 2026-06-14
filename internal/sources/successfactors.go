@@ -11,12 +11,19 @@ import (
 // job page is server-rendered HTML carrying schema.org JobPosting microdata, so the
 // description comes from a per-job detail fetch (bounded-concurrency), like the other
 // detail-fetching adapters.
+// successfactorsHTTP is the transport successfactors needs: an XML sitemap plus HTML
+// detail pages.
+type successfactorsHTTP interface {
+	XMLGetter
+	HTMLGetter
+}
+
 type successfactors struct {
-	http HTTPClient
+	http successfactorsHTTP
 }
 
 // NewSuccessFactors builds the SuccessFactors adapter over the given HTTP client.
-func NewSuccessFactors(c HTTPClient) Source { return successfactors{http: c} }
+func NewSuccessFactors(c successfactorsHTTP) Source { return successfactors{http: c} }
 
 func (successfactors) Provider() string { return "successfactors" }
 

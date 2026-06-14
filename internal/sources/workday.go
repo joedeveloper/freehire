@@ -17,12 +17,18 @@ const (
 // the API tenant is the host's first label (here "ringcentral"). The listing endpoint
 // is POST-only and carries no description, so it pages the postings and fetches each
 // posting's detail (bounded-concurrency) to assemble the description.
+// workdayHTTP is the transport workday needs: a POST-only JSON listing plus JSON detail.
+type workdayHTTP interface {
+	JSONGetter
+	JSONPoster
+}
+
 type workday struct {
-	http HTTPClient
+	http workdayHTTP
 }
 
 // NewWorkday builds the Workday adapter over the given HTTP client.
-func NewWorkday(c HTTPClient) Source { return workday{http: c} }
+func NewWorkday(c workdayHTTP) Source { return workday{http: c} }
 
 func (workday) Provider() string { return "workday" }
 

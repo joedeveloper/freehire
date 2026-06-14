@@ -11,12 +11,18 @@ import (
 // publishes every open position in one document, with the body inline across one or
 // more jobDescription HTML values — so no per-posting detail request is needed. The
 // feed carries no posting URL, so the adapter builds one from the board and position id.
+// personioHTTP is the transport personio needs: an XML feed plus HTML detail pages.
+type personioHTTP interface {
+	XMLGetter
+	HTMLGetter
+}
+
 type personio struct {
-	http HTTPClient
+	http personioHTTP
 }
 
 // NewPersonio builds the Personio adapter over the given HTTP client.
-func NewPersonio(c HTTPClient) Source { return personio{http: c} }
+func NewPersonio(c personioHTTP) Source { return personio{http: c} }
 
 func (personio) Provider() string { return "personio" }
 

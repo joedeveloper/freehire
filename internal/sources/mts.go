@@ -13,8 +13,16 @@ import (
 // that the public SPA bakes into its Nuxt runtime config, so each run harvests the key from
 // job.mts.ru first, then pages the list and fans out per-vacancy detail fetches like the
 // other detail-fetching adapters.
+// mtsHTTP is the transport mts needs: HTML (to harvest the x-api-key from the SPA) plus
+// header-bearing JSON GET/POST for the gated list and detail endpoints.
+type mtsHTTP interface {
+	HTMLGetter
+	HeaderJSONGetter
+	HeaderJSONPoster
+}
+
 type mts struct {
-	http HTTPClient
+	http mtsHTTP
 }
 
 const (
@@ -26,7 +34,7 @@ const (
 )
 
 // NewMTS builds the MTS adapter over the given HTTP client.
-func NewMTS(c HTTPClient) Source { return mts{http: c} }
+func NewMTS(c mtsHTTP) Source { return mts{http: c} }
 
 func (mts) Provider() string { return "mts" }
 
