@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { page } from '$app/state';
   import { login, register } from '$lib/auth.svelte';
   import { ApiError, oauthProviders } from '$lib/api';
   import { Button } from '$lib/ui';
@@ -37,6 +38,11 @@
     .catch(() => {});
 
   const title = $derived(mode === 'login' ? 'Sign in' : 'Create account');
+
+  // OAuth leaves the SPA entirely, so the page to return to after sign-in is
+  // passed to the backend (which echoes it back, sanitized, on the callback).
+  // Password login stays in this dialog, so it needs no redirect.
+  const returnTo = $derived(page.url.pathname + page.url.search);
 
   function messageFor(e: unknown): string {
     if (e instanceof ApiError) {
@@ -85,7 +91,10 @@
     {#if providers.length > 0}
       <div class="mb-4 flex flex-col gap-2">
         {#each providers as provider (provider)}
-          <Button variant="outline" href={`/api/v1/auth/oauth/${provider}/start`}>
+          <Button
+            variant="outline"
+            href={`/api/v1/auth/oauth/${provider}/start?returnTo=${encodeURIComponent(returnTo)}`}
+          >
             <ProviderIcon {provider} />
             Continue with {providerLabels[provider]}
           </Button>

@@ -30,6 +30,29 @@ func TestNewState_RandomAndURLSafe(t *testing.T) {
 	}
 }
 
+func TestSafeReturnPath(t *testing.T) {
+	cases := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{"empty falls back to root", "", "/"},
+		{"relative path kept", "/jobs/performance-engineer-kyw26tid", "/jobs/performance-engineer-kyw26tid"},
+		{"query preserved", "/jobs?remote=true&q=go", "/jobs?remote=true&q=go"},
+		{"absolute url rejected", "https://evil.com/phish", "/"},
+		{"scheme-relative url rejected", "//evil.com/phish", "/"},
+		{"non-rooted path rejected", "jobs/foo", "/"},
+		{"backslash trick rejected", "\\evil.com", "/"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := SafeReturnPath(tc.in); got != tc.want {
+				t.Errorf("SafeReturnPath(%q) = %q, want %q", tc.in, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestStateCookie_SetAndClear(t *testing.T) {
 	app := fiber.New()
 	app.Get("/set", func(c *fiber.Ctx) error {
