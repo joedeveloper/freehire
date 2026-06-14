@@ -20,6 +20,7 @@ import (
 
 	"github.com/strelov1/freehire/internal/auth"
 	"github.com/strelov1/freehire/internal/db"
+	"github.com/strelov1/freehire/internal/jobtracking"
 )
 
 func TestSaveUnsaveEndpoints(t *testing.T) {
@@ -43,7 +44,8 @@ func TestSaveUnsaveEndpoints(t *testing.T) {
 		t.Fatalf("issue token: %v", err)
 	}
 
-	h := &Handler{pool: pool, queries: db.New(pool), issuer: iss}
+	queries := db.New(pool)
+	h := &Handler{pool: pool, queries: queries, issuer: iss, tracking: jobtracking.New(jobtracking.NewQueriesRepository(queries))}
 	app := fiber.New(fiber.Config{ErrorHandler: ErrorHandler})
 	app.Post("/api/v1/jobs/:slug/save", auth.RequireAuth(iss), h.SaveJob)
 	app.Delete("/api/v1/jobs/:slug/save", auth.RequireAuth(iss), h.UnsaveJob)
