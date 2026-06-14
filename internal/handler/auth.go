@@ -118,4 +118,4 @@ func (h *Handler) Me(c *fiber.Ctx) error {
 type authHasher struct{}
 
 func (authHasher) Hash(plain string) (string, error) { return auth.HashPassword(plain) }
-func (authHasher) Check(hash, plain string) error     { return auth.CheckPassword(hash, plain) }
+func (authHasher) Check(hash, plain string) error    { return auth.CheckPassword(hash, plain) }

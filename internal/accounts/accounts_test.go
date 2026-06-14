@@ -61,10 +61,10 @@ type createUserCall struct {
 }
 
 type userByEmailResult struct {
-	user        User
+	user         User
 	passwordHash string
-	hasPassword bool
-	err         error
+	hasPassword  bool
+	err          error
 }
 
 type userByIDResult struct {
