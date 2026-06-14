@@ -1,15 +1,18 @@
-// Command ingest is the standalone source-ingest worker. It loads ONE provider's
-// board file (sources/<provider>.yml — passed as the first argument or via
-// SOURCES_FILE), fetches each board through that platform's adapter, normalizes the
-// postings, and upserts them — enqueuing new ones for enrichment in the same write.
-// Run one invocation per provider on a schedule (e.g. cron); each processes its
-// boards once and exits, so a slow or throttled provider never blocks the others.
+// Command ingest is the standalone source-ingest worker. It loads one board file
+// (sources/<provider>.yml, or a mixed sources/custom.yml — passed as the first argument
+// or via SOURCES_FILE), fetches each board through its adapter, normalizes the postings,
+// and upserts them — enqueuing new ones for enrichment in the same write. A file's
+// entries usually share the file-name provider, but an entry may name its own, so one
+// file can cover several single-source providers. After the run each provider that
+// ingested at least one job has its stale jobs swept. Run on a schedule (e.g. cron); it
+// processes its boards once and exits.
 package main
 
 import (
 	"context"
 	"log"
 	"os"
+	"sort"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
@@ -25,9 +28,10 @@ import (
 func main() {
 	cfg := config.Load()
 
-	// The board file is one provider's list (sources/<provider>.yml); the provider is
-	// its file name. Accept it as the first argument (cron passes it per provider) or
-	// via SOURCES_FILE.
+	// The board file is usually one provider's list (sources/<provider>.yml, provider =
+	// file name), but an entry may name its own provider, so it may be a mixed file
+	// (sources/custom.yml). Accept it as the first argument (cron passes the file) or via
+	// SOURCES_FILE.
 	path := os.Getenv("SOURCES_FILE")
 	if len(os.Args) > 1 && os.Args[1] != "" {
 		path = os.Args[1]
@@ -59,28 +63,46 @@ func main() {
 		Store:    newDBStore(pool, enrich.Version),
 	}
 
-	stats, err := runner.Run(ctx, sourceCfg.Sources)
+	runStats, err := runner.Run(ctx, sourceCfg.Sources)
 	if err != nil {
 		log.Fatalf("ingest: %v", err)
 	}
 
-	log.Printf("ingest done: provider=%s ingested=%d failed=%d skipped=%d", sourceCfg.Provider, stats.Ingested, stats.Failed, stats.Skipped)
+	total := runStats.Total()
+	log.Printf("ingest done: file=%s providers=%d ingested=%d failed=%d skipped=%d",
+		path, len(runStats), total.Ingested, total.Failed, total.Skipped)
 
-	// Post-run sweep (job-lifecycle spec): close THIS provider's open jobs unseen for
-	// the whole grace window. Scoped to the provider so one provider's run never
-	// closes another's jobs. Guarded so a run that ingested nothing (a total crawl
-	// outage for this provider) can never mass-close its catalogue.
-	if shouldSweep(stats) {
-		cutoff := pgtype.Timestamptz{Time: time.Now().Add(-staleAfter), Valid: true}
-		closed, err := db.New(pool).CloseUnseenJobs(ctx, db.CloseUnseenJobsParams{
-			Source: sourceCfg.Provider,
+	// Post-run sweep (job-lifecycle spec): per provider, close that provider's open jobs
+	// unseen for the whole grace window. Scoped per provider so one provider's run never
+	// closes another's jobs, and guarded per provider (only those that ingested at least
+	// one job) so a total crawl outage for one provider cannot mass-close its catalogue —
+	// even when several providers share one run (e.g. custom.yml).
+	queries := db.New(pool)
+	cutoff := pgtype.Timestamptz{Time: time.Now().Add(-staleAfter), Valid: true}
+	for _, provider := range sweepableProviders(runStats) {
+		closed, err := queries.CloseUnseenJobs(ctx, db.CloseUnseenJobsParams{
+			Source: provider,
 			Cutoff: cutoff,
 		})
 		if err != nil {
 			log.Fatalf("close stale jobs: %v", err)
 		}
-		log.Printf("closed %d stale %s jobs (unseen for %s)", closed, sourceCfg.Provider, staleAfter)
+		log.Printf("closed %d stale %s jobs (unseen for %s)", closed, provider, staleAfter)
 	}
+}
+
+// sweepableProviders returns, sorted, the providers in a run that ingested at least one
+// job — the only ones safe to sweep (a zero-ingest provider proves only that its crawl
+// failed). Sorting gives a deterministic sweep order across runs and tests.
+func sweepableProviders(rs pipeline.RunStats) []string {
+	var providers []string
+	for provider, s := range rs {
+		if shouldSweep(s) {
+			providers = append(providers, provider)
+		}
+	}
+	sort.Strings(providers)
+	return providers
 }
 
 // staleAfter is the grace window before an unseen job is closed: many crawl cycles

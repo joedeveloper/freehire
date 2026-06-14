@@ -1,10 +1,44 @@
 package main
 
 import (
+	"reflect"
 	"testing"
 
 	"github.com/strelov1/freehire/internal/pipeline"
+	"github.com/strelov1/freehire/internal/sources"
 )
+
+// The shared custom.yml must load and pass validation against the real adapter registry,
+// so a bad provider name or a missing board there fails the build, not a 2am cron run.
+// Validate never fetches, so a nil HTTP client is fine for building the registry.
+func TestCustomYAMLValidates(t *testing.T) {
+	cfg, err := sources.LoadConfig("../../sources/custom.yml")
+	if err != nil {
+		t.Fatalf("load custom.yml: %v", err)
+	}
+	if err := cfg.Validate(sources.All(nil)); err != nil {
+		t.Fatalf("custom.yml failed validation against the real registry: %v", err)
+	}
+	if len(cfg.Sources) < 13 {
+		t.Errorf("custom.yml has %d entries, want >= 13 single-source providers", len(cfg.Sources))
+	}
+}
+
+// In a multi-provider run only the providers that ingested at least one job are swept,
+// so a provider whose crawl failed (ingested 0) never has its catalogue mass-closed. The
+// result is sorted for a deterministic sweep order.
+func TestSweepableProviders(t *testing.T) {
+	rs := pipeline.RunStats{
+		"vk":   {Ingested: 5},
+		"ozon": {Ingested: 0, Failed: 3}, // crawl failed → excluded
+		"sber": {Ingested: 2},
+	}
+	got := sweepableProviders(rs)
+	want := []string{"sber", "vk"}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("sweepableProviders = %v, want %v", got, want)
+	}
+}
 
 // The sweep guard: closing stale jobs is only safe after a run that actually saw
 // postings — a zero-ingest run (total crawl outage) must not trigger the sweep.

@@ -1,0 +1,38 @@
+# Single-source configs that don't merit their own file: each entry names its own
+# provider (the file name "custom" is not a provider). Multi-tenant board lists
+# (greenhouse.yml, gem.yml, …) keep their own per-provider files.
+
+- company: VK
+  provider: vk
+- company: Ozon
+  provider: ozon
+- company: Sber
+  provider: sber
+- company: Alfa-Bank
+  provider: alfabank
+- company: Lamoda
+  provider: lamoda
+- company: Kuper
+  provider: kuper
+- company: Aviasales
+  provider: aviasales
+- company: Dodo
+  provider: dodo
+- company: DomClick
+  provider: domclick
+- company: MTS Link
+  provider: mtslink
+- company: T-Bank
+  provider: tbank
+- company: MTS
+  provider: mts
+- company: Wildberries
+  provider: rwb
+
+# Yandex selects host + language by board (one source, two variants).
+- company: Yandex
+  provider: yandex
+  board: ru
+- company: Yandex
+  provider: yandex
+  board: com

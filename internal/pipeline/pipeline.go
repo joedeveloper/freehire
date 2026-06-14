@@ -58,6 +58,22 @@ type Stats struct {
 	Skipped  int
 }
 
+// RunStats is a run's outcome broken down by provider. A run may cover several providers
+// (a mixed board file), and the post-run unseen-job sweep is per provider, so the breakdown
+// is kept rather than a single aggregate; Total folds it back when only the sum is needed.
+type RunStats map[string]Stats
+
+// Total sums the per-provider stats into one aggregate (for the run's done-log line).
+func (rs RunStats) Total() Stats {
+	var t Stats
+	for _, s := range rs {
+		t.Ingested += s.Ingested
+		t.Failed += s.Failed
+		t.Skipped += s.Skipped
+	}
+	return t
+}
+
 // Runner drives ingest: for each configured board it looks up the adapter, fetches,
 // normalizes, and saves. Boards run concurrently up to defaultConcurrency; a board
 // failure is isolated and never aborts the run.
@@ -66,13 +82,15 @@ type Runner struct {
 	Store    Store
 }
 
-// Run ingests every configured board and returns the aggregate stats. It returns an
-// error only for a context cancellation, never for a single board's failure.
-func (r Runner) Run(ctx context.Context, entries []sources.CompanyEntry) (Stats, error) {
+// Run ingests every configured board and returns the stats per provider. It returns an
+// error only for a context cancellation, never for a single board's failure. All boards
+// run in one bounded concurrent pool regardless of provider, so a slow self-pacing
+// provider occupies one slot without blocking the others.
+func (r Runner) Run(ctx context.Context, entries []sources.CompanyEntry) (RunStats, error) {
 	var (
-		mu    sync.Mutex
-		stats Stats
-		wg    sync.WaitGroup
+		mu     sync.Mutex
+		byProv = RunStats{}
+		wg     sync.WaitGroup
 	)
 	sem := make(chan struct{}, defaultConcurrency)
 
@@ -96,15 +114,17 @@ func (r Runner) Run(ctx context.Context, entries []sources.CompanyEntry) (Stats,
 			ingested, failed, skipped := r.ingestBoard(ctx, e)
 
 			mu.Lock()
-			stats.Ingested += ingested
-			stats.Failed += failed
-			stats.Skipped += skipped
+			s := byProv[e.Provider]
+			s.Ingested += ingested
+			s.Failed += failed
+			s.Skipped += skipped
+			byProv[e.Provider] = s
 			mu.Unlock()
 		}(e)
 	}
 	wg.Wait()
 
-	return stats, ctx.Err()
+	return byProv, ctx.Err()
 }
 
 // ingestBoard fetches and saves one board, returning how many jobs it ingested, whether

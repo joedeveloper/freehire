@@ -109,3 +109,69 @@ func TestConfigValidateRejectsEmptyCompanyEvenForBoardlessProvider(t *testing.T)
 		t.Fatal("expected error for empty company, got nil")
 	}
 }
+
+// An entry may name its own provider; it wins over the file-name default. An entry that
+// omits provider falls back to the file name, so existing per-provider files are unchanged.
+// One file can thus carry several providers (e.g. a shared custom.yml).
+func TestParseConfigKeepsPerEntryProvider(t *testing.T) {
+	data := []byte(`
+- company: VK
+  provider: vk
+- company: Yandex
+  provider: yandex
+  board: ru
+- company: NoProv
+  board: x
+`)
+	cfg, err := ParseConfig("custom", data)
+	if err != nil {
+		t.Fatalf("ParseConfig: %v", err)
+	}
+	want := []CompanyEntry{
+		{Company: "VK", Provider: "vk"},
+		{Company: "Yandex", Provider: "yandex", Board: "ru"},
+		{Company: "NoProv", Provider: "custom", Board: "x"}, // fell back to the file name
+	}
+	for i, w := range want {
+		if cfg.Sources[i] != w {
+			t.Errorf("Sources[%d] = %+v, want %+v", i, cfg.Sources[i], w)
+		}
+	}
+}
+
+// Validation resolves each entry's provider independently, so a single file with mixed
+// providers validates each against its own adapter.
+func TestConfigValidateAcceptsMixedPerEntryProviders(t *testing.T) {
+	cfg := Config{Provider: "custom", Sources: []CompanyEntry{
+		{Company: "VK", Provider: "vk"},                      // boardless: empty board ok
+		{Company: "Acme", Provider: "greenhouse", Board: "acme"}, // board-based: has board
+	}}
+
+	if err := cfg.Validate(reg(fakeBoardlessSource{"vk"}, fakeSource{"greenhouse"})); err != nil {
+		t.Errorf("Validate: mixed per-entry providers should pass, got %v", err)
+	}
+}
+
+// An entry whose resolved provider has no adapter fails fast — including the custom.yml
+// case where the file name "custom" is not a provider and the entry omitted one.
+func TestConfigValidateRejectsUnknownPerEntryProvider(t *testing.T) {
+	cfg := Config{Provider: "custom", Sources: []CompanyEntry{{Company: "Orphan", Board: "x"}}}
+
+	err := cfg.Validate(reg(fakeSource{"greenhouse"}))
+	if err == nil {
+		t.Fatal("expected error for an entry resolving to an unregistered provider, got nil")
+	}
+	if !strings.Contains(err.Error(), "custom") {
+		t.Errorf("error %q should name the unknown resolved provider", err.Error())
+	}
+}
+
+// A board-based provider named per entry still requires a board.
+func TestConfigValidateRejectsEmptyBoardForPerEntryBoardProvider(t *testing.T) {
+	cfg := Config{Provider: "custom", Sources: []CompanyEntry{{Company: "Acme", Provider: "greenhouse"}}}
+
+	err := cfg.Validate(reg(fakeSource{"greenhouse"}, fakeBoardlessSource{"vk"}))
+	if err == nil || !strings.Contains(err.Error(), "Acme") {
+		t.Fatalf("expected empty-board error naming Acme, got %v", err)
+	}
+}

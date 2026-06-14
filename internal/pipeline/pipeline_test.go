@@ -62,7 +62,7 @@ func TestRunNormalizesAndNamespaces(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	if stats.Ingested != 1 || stats.Failed != 0 {
+	if stats.Total().Ingested != 1 || stats.Total().Failed != 0 {
 		t.Fatalf("stats = %+v, want Ingested=1 Failed=0", stats)
 	}
 	if len(store.saved) != 1 {
@@ -135,11 +135,11 @@ func TestRunIsolatesSourceFailure(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Run should not return an error when a single source fails: %v", err)
 	}
-	if stats.Failed != 1 {
-		t.Errorf("stats.Failed = %d, want 1", stats.Failed)
+	if stats.Total().Failed != 1 {
+		t.Errorf("stats.Total().Failed = %d, want 1", stats.Total().Failed)
 	}
-	if stats.Ingested != 1 {
-		t.Errorf("stats.Ingested = %d, want 1 (the healthy board)", stats.Ingested)
+	if stats.Total().Ingested != 1 {
+		t.Errorf("stats.Total().Ingested = %d, want 1 (the healthy board)", stats.Total().Ingested)
 	}
 	if len(store.saved) != 1 || store.saved[0].Source != "greenhouse" {
 		t.Errorf("only the healthy board's job should be saved, got %+v", store.saved)
@@ -160,8 +160,8 @@ func TestRunSkipsWorkOnCancelledContext(t *testing.T) {
 	if err == nil {
 		t.Fatal("Run should return the context error on a cancelled context")
 	}
-	if stats.Ingested != 0 {
-		t.Errorf("stats.Ingested = %d, want 0 (no work on a cancelled context)", stats.Ingested)
+	if stats.Total().Ingested != 0 {
+		t.Errorf("stats.Total().Ingested = %d, want 0 (no work on a cancelled context)", stats.Total().Ingested)
 	}
 	if len(store.saved) != 0 {
 		t.Errorf("saved %d jobs, want 0 on a cancelled context", len(store.saved))
@@ -180,16 +180,16 @@ func TestRunIsolatesPerJobSaveError(t *testing.T) {
 		t.Fatalf("Run: a per-job save error must not fail the run: %v", err)
 	}
 	// A save error is skipped: the job is not counted ingested, but the board did not fail.
-	if stats.Ingested != 0 {
-		t.Errorf("stats.Ingested = %d, want 0 (save failed)", stats.Ingested)
+	if stats.Total().Ingested != 0 {
+		t.Errorf("stats.Total().Ingested = %d, want 0 (save failed)", stats.Total().Ingested)
 	}
-	if stats.Failed != 0 {
-		t.Errorf("stats.Failed = %d, want 0 (a save error is not a board failure)", stats.Failed)
+	if stats.Total().Failed != 0 {
+		t.Errorf("stats.Total().Failed = %d, want 0 (a save error is not a board failure)", stats.Total().Failed)
 	}
 	// The skip is counted so a run whose every save fails (e.g. schema drift) is not
 	// reported as a clean ingested=0/failed=0 success.
-	if stats.Skipped != 1 {
-		t.Errorf("stats.Skipped = %d, want 1 (the save error is counted, not silently swallowed)", stats.Skipped)
+	if stats.Total().Skipped != 1 {
+		t.Errorf("stats.Total().Skipped = %d, want 1 (the save error is counted, not silently swallowed)", stats.Total().Skipped)
 	}
 }
 
@@ -203,7 +203,33 @@ func TestRunCountsUnknownProviderAsFailed(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	if stats.Failed != 1 || stats.Ingested != 0 {
+	if stats.Total().Failed != 1 || stats.Total().Ingested != 0 {
 		t.Errorf("stats = %+v, want Failed=1 Ingested=0", stats)
+	}
+}
+
+// A run over several providers tallies stats per provider (one map key each), so the
+// caller can sweep each provider independently. Ingest counts are kept apart.
+func TestRunReturnsPerProviderStats(t *testing.T) {
+	gh := fakeSource{provider: "greenhouse", jobs: []sources.Job{{ExternalID: "1", Title: "a"}}}
+	lv := fakeSource{provider: "lever", jobs: []sources.Job{{ExternalID: "2", Title: "b"}, {ExternalID: "3", Title: "c"}}}
+	store := &fakeStore{}
+	r := Runner{Registry: registry(gh, lv), Store: store}
+
+	stats, err := r.Run(context.Background(), []sources.CompanyEntry{
+		{Company: "GH", Provider: "greenhouse", Board: "gh"},
+		{Company: "LV", Provider: "lever", Board: "lv"},
+	})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if len(stats) != 2 {
+		t.Fatalf("want stats for 2 providers, got %d: %+v", len(stats), stats)
+	}
+	if stats["greenhouse"].Ingested != 1 {
+		t.Errorf("greenhouse Ingested = %d, want 1", stats["greenhouse"].Ingested)
+	}
+	if stats["lever"].Ingested != 2 {
+		t.Errorf("lever Ingested = %d, want 2", stats["lever"].Ingested)
 	}
 }

@@ -9,16 +9,17 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// Config is one provider's parsed board file: the boards to crawl, all sharing the
-// provider taken from the file name.
+// Config is a parsed board file: the boards to crawl plus the file's default provider
+// (its base name). Each entry's provider is normally this default, but an entry may name
+// its own, so one file can list boards for several providers (e.g. a shared custom.yml).
 type Config struct {
 	Provider string
 	Sources  []CompanyEntry
 }
 
-// LoadConfig reads a per-provider board file (e.g. sources/greenhouse.yml). The
-// provider is the file's base name without extension; the file itself is a flat list
-// of company + board entries, so the provider is never repeated per line.
+// LoadConfig reads a board file (e.g. sources/greenhouse.yml or sources/custom.yml). The
+// file's base name is the default provider; an entry that names its own provider keeps it,
+// so a per-provider file repeats nothing while a mixed file names the provider per entry.
 func LoadConfig(path string) (Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -28,35 +29,42 @@ func LoadConfig(path string) (Config, error) {
 	return ParseConfig(provider, data)
 }
 
-// ParseConfig parses a provider's board-list bytes, stamping each entry with the
-// provider so the rest of the pipeline still sees a fully-populated CompanyEntry.
+// ParseConfig parses a board-list, filling the file's default provider only where an entry
+// left it blank — an entry's own provider wins — so every CompanyEntry ends up with a
+// provider set for the rest of the pipeline.
 func ParseConfig(provider string, data []byte) (Config, error) {
 	var entries []CompanyEntry
 	if err := yaml.Unmarshal(data, &entries); err != nil {
 		return Config{}, fmt.Errorf("sources: parse config: %w", err)
 	}
 	for i := range entries {
-		entries[i].Provider = provider
+		if entries[i].Provider == "" {
+			entries[i].Provider = provider
+		}
 	}
 	return Config{Provider: provider, Sources: entries}, nil
 }
 
-// Validate checks the file's provider is registered and every entry is complete, so
-// the ingest command fails fast instead of silently skipping a misconfigured board.
+// Validate checks every entry against the registry by its own resolved provider, so the
+// ingest command fails fast instead of silently skipping a misconfigured board. Each
+// entry's provider is its own when set, else the file's default.
 func (c Config) Validate(registry map[string]Source) error {
-	src, ok := registry[c.Provider]
-	if !ok {
-		return fmt.Errorf("sources: unknown provider %q (from the file name)", c.Provider)
-	}
-	// A boardless provider crawls one company's own API and has no board id, so its
-	// entries may omit board; every other provider still requires one.
-	_, noBoard := src.(boardless)
 	for _, e := range c.Sources {
-		if e.Company == "" {
-			return fmt.Errorf("sources: %s entry has empty company", c.Provider)
+		provider := e.Provider
+		if provider == "" {
+			provider = c.Provider
 		}
-		if e.Board == "" && !noBoard {
-			return fmt.Errorf("sources: %s entry for company %q has empty board", c.Provider, e.Company)
+		src, ok := registry[provider]
+		if !ok {
+			return fmt.Errorf("sources: unknown provider %q", provider)
+		}
+		if e.Company == "" {
+			return fmt.Errorf("sources: %s entry has empty company", provider)
+		}
+		// A boardless provider crawls one company's own API and has no board id, so its
+		// entries may omit board; every other provider still requires one.
+		if _, noBoard := src.(boardless); !noBoard && e.Board == "" {
+			return fmt.Errorf("sources: %s entry for company %q has empty board", provider, e.Company)
 		}
 	}
 	return nil
