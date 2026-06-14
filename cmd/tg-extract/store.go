@@ -13,6 +13,7 @@ import (
 	"github.com/strelov1/freehire/internal/enrich"
 	"github.com/strelov1/freehire/internal/location"
 	"github.com/strelov1/freehire/internal/normalize"
+	"github.com/strelov1/freehire/internal/skilltag"
 	"github.com/strelov1/freehire/internal/telegram"
 )
 
@@ -79,6 +80,7 @@ func (s *extractStore) Complete(ctx context.Context, post telegram.PendingPost, 
 	for i, j := range jobs {
 		externalID := base + "/" + strconv.Itoa(i)
 		geo := location.Parse(j.Location)
+		descHTML := telegram.TextToHTML(j.Description)
 		saved, err := qtx.UpsertJob(ctx, db.UpsertJobParams{
 			Source:      "telegram",
 			ExternalID:  externalID,
@@ -89,11 +91,12 @@ func (s *extractStore) Complete(ctx context.Context, post telegram.PendingPost, 
 			PublicSlug:  normalize.JobSlug(j.Title, j.Company, "telegram", externalID),
 			Location:    j.Location,
 			Remote:      j.Remote,
-			Description: telegram.TextToHTML(j.Description),
+			Description: descHTML,
 			PostedAt:    pgtype.Timestamptz{Time: post.PostedAt, Valid: true},
 			Countries:   geo.Countries,
 			Regions:     geo.Regions,
 			WorkMode:    geo.WorkMode,
+			Skills:      skilltag.Parse(descHTML),
 		})
 		if err != nil {
 			return fmt.Errorf("upsert job %s: %w", externalID, err)
@@ -152,6 +155,7 @@ func (s *extractStore) CompleteLinks(ctx context.Context, post telegram.PendingP
 			Countries:   geo.Countries,
 			Regions:     geo.Regions,
 			WorkMode:    workMode,
+			Skills:      skilltag.Parse(j.Description),
 		})
 		if err != nil {
 			return fmt.Errorf("upsert job %s/%s: %w", j.Source, j.ExternalID, err)
