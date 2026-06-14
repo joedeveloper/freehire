@@ -30,9 +30,13 @@ func insertPost(t *testing.T, q *Queries, channel string, msgID int64, extracted
 		extractedAt = pgtype.Timestamptz{Time: time.Now(), Valid: true}
 	}
 	_, err := q.InsertTelegramPost(context.Background(), InsertTelegramPostParams{
-		Channel:     channel,
-		MsgID:       msgID,
-		Text:        "We are hiring a Go engineer",
+		Channel: channel,
+		MsgID:   msgID,
+		Text:    "We are hiring a Go engineer",
+		// links is JSONB NOT NULL; the real caller (postStore.Insert) always passes
+		// a valid array, defaulting to "[]" for a linkless post — mirror that here so
+		// a nil []byte is not sent as SQL NULL.
+		Links:       []byte("[]"),
 		PostedAt:    pgtype.Timestamptz{Time: time.Now().Add(-time.Hour), Valid: true},
 		ExtractedAt: extractedAt,
 	})
