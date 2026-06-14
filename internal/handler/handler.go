@@ -67,32 +67,44 @@ func listResponse(c *fiber.Ctx, data any, total int64, limit, offset int) error 
 	})
 }
 
-// Register wires all routes onto the application. frontendOrigin is the single
-// browser origin allowed to call the API cross-origin; jwtSecret/jwtTTL
-// configure the token issuer behind the auth endpoints; cookieSecure marks the
-// auth cookie HTTPS-only. Auth is same-origin only: the SPA reaches the API
-// under one origin (a dev Vite proxy mirrors the production reverse proxy), so
-// the cookie rides along with no CORS. The CORS allowlist is not credentialed —
-// it only permits non-credentialed cross-origin reads of the public endpoints.
-func Register(app *fiber.App, pool *pgxpool.Pool, frontendOrigin, jwtSecret string, jwtTTL time.Duration, cookieSecure bool, oauthProviders map[string]oauth.Provider, searchClient *search.Client) {
-	queries := db.New(pool)
+// Config is the dependency bundle Register wires onto the app: the DB pool, the
+// single browser origin allowed cross-origin (FrontendOrigin), the token-issuer
+// settings (JWTSecret/JWTTTL), the HTTPS-only cookie flag (CookieSecure), the
+// enabled OAuth providers, and the optional search client (nil disables search).
+type Config struct {
+	Pool           *pgxpool.Pool
+	FrontendOrigin string
+	JWTSecret      string
+	JWTTTL         time.Duration
+	CookieSecure   bool
+	OAuthProviders map[string]oauth.Provider
+	Search         *search.Client
+}
+
+// Register wires all routes onto the application from cfg. Auth is same-origin
+// only: the SPA reaches the API under one origin (a dev Vite proxy mirrors the
+// production reverse proxy), so the cookie rides along with no CORS. The CORS
+// allowlist is not credentialed — it only permits non-credentialed cross-origin
+// reads of the public endpoints.
+func Register(app *fiber.App, cfg Config) {
+	queries := db.New(cfg.Pool)
 	h := &Handler{
-		pool:           pool,
+		pool:           cfg.Pool,
 		queries:        queries,
-		issuer:         auth.NewIssuer(jwtSecret, jwtTTL),
-		cookieSecure:   cookieSecure,
-		oauth:          oauthProviders,
-		frontendOrigin: frontendOrigin,
+		issuer:         auth.NewIssuer(cfg.JWTSecret, cfg.JWTTTL),
+		cookieSecure:   cfg.CookieSecure,
+		oauth:          cfg.OAuthProviders,
+		frontendOrigin: cfg.FrontendOrigin,
 		tracking:       jobtracking.New(jobtracking.NewQueriesRepository(queries)),
-		accounts:       accounts.New(accounts.NewQueriesRepository(queries, pool), authHasher{}),
+		accounts:       accounts.New(accounts.NewQueriesRepository(queries, cfg.Pool), authHasher{}),
 	}
 	// Assign only when configured: a nil *search.Client wrapped in the searcher
 	// interface would be a non-nil interface and defeat the nil check.
-	if searchClient != nil {
-		h.search = searchClient
+	if cfg.Search != nil {
+		h.search = cfg.Search
 	}
 
-	app.Use(cors.New(cors.Config{AllowOrigins: frontendOrigin}))
+	app.Use(cors.New(cors.Config{AllowOrigins: cfg.FrontendOrigin}))
 
 	app.Get("/health", h.Health)
 

@@ -55,7 +55,15 @@ func main() {
 	// auth. Redirect URLs derive from the same-origin frontend origin.
 	oauthProviders := oauth.NewRegistry(cfg.FrontendOrigin, cfg.OAuth)
 
-	handler.Register(app, pool, cfg.FrontendOrigin, cfg.JWTSecret, cfg.JWTTTL, cfg.CookieSecure, oauthProviders, searchClient)
+	handler.Register(app, handler.Config{
+		Pool:           pool,
+		FrontendOrigin: cfg.FrontendOrigin,
+		JWTSecret:      cfg.JWTSecret,
+		JWTTTL:         cfg.JWTTTL,
+		CookieSecure:   cfg.CookieSecure,
+		OAuthProviders: oauthProviders,
+		Search:         searchClient,
+	})
 
 	// Run the server in a goroutine so main can wait for a shutdown signal.
 	// Fiber's Listen returns nil on graceful shutdown, so any error is fatal.

@@ -39,7 +39,7 @@ func TestAuthMe_AuthenticatesByAPIKey(t *testing.T) {
 	}
 
 	app := fiber.New(fiber.Config{ErrorHandler: ErrorHandler})
-	Register(app, pool, "http://localhost", "test-secret", time.Hour, false, nil, nil)
+	Register(app, Config{Pool: pool, FrontendOrigin: "http://localhost", JWTSecret: "test-secret", JWTTTL: time.Hour})
 
 	req := httptest.NewRequest(fiber.MethodGet, "/api/v1/auth/me", nil)
 	req.Header.Set("Authorization", "Bearer "+token)
