@@ -26,6 +26,7 @@ const SENIORITY: Record<string, string> = {
   middle: 'Middle',
   senior: 'Senior',
   lead: 'Lead',
+  staff: 'Staff',
   principal: 'Principal',
   c_level: 'C-level',
 };

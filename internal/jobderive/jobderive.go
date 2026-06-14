@@ -6,6 +6,7 @@
 package jobderive
 
 import (
+	"github.com/strelov1/freehire/internal/classify"
 	"github.com/strelov1/freehire/internal/location"
 	"github.com/strelov1/freehire/internal/normalize"
 	"github.com/strelov1/freehire/internal/skilltag"
@@ -33,17 +34,21 @@ type Derived struct {
 	Regions     []string
 	WorkMode    string
 	Skills      []string
+	Seniority   string
+	Category    string
 }
 
-// Derive computes the slugs and dictionary facets for a job. Geography and skills come
-// from the curated dictionaries (which emit nothing for what they cannot resolve); the
-// work-mode precedence is structured signal first, then the location parser's hint.
+// Derive computes the slugs and dictionary facets for a job. Geography, skills, and the
+// title classification (seniority/category) come from the curated dictionaries (which
+// emit nothing for what they cannot resolve); the work-mode precedence is structured
+// signal first, then the location parser's hint.
 func Derive(in Input) Derived {
 	geo := location.Parse(in.Location)
 	workMode := in.WorkMode
 	if workMode == "" {
 		workMode = geo.WorkMode
 	}
+	class := classify.Parse(in.Title)
 	return Derived{
 		CompanySlug: normalize.Slug(in.Company),
 		PublicSlug:  normalize.JobSlug(in.Title, in.Company, in.Source, in.ExternalID),
@@ -51,5 +56,7 @@ func Derive(in Input) Derived {
 		Regions:     geo.Regions,
 		WorkMode:    workMode,
 		Skills:      skilltag.Parse(in.Description),
+		Seniority:   class.Seniority,
+		Category:    class.Category,
 	}
 }

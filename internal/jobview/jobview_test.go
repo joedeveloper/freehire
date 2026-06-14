@@ -286,6 +286,40 @@ func TestFromRowUnionsSkills(t *testing.T) {
 	}
 }
 
+// Seniority/category follow the work_mode precedence: the LLM value wins when
+// present, the deterministic column is the fallback. Both stay nested under
+// enrichment (not promoted top-level), so the existing facet path is unchanged.
+func TestFromRow_ClassificationLLMWinsElseParsed(t *testing.T) {
+	// LLM present: wins over the parsed column.
+	raw, err := json.Marshal(enrich.Enrichment{Seniority: "lead", Category: "devops"})
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	view, err := FromRow(db.Job{
+		ID: 1, Title: "x", PublicSlug: "x-1",
+		Seniority: "senior", Category: "backend", // parsed, loses to the LLM
+		Enrichment: raw,
+	})
+	if err != nil {
+		t.Fatalf("FromRow: %v", err)
+	}
+	if view.Enrichment.Seniority != "lead" || view.Enrichment.Category != "devops" {
+		t.Errorf("LLM should win: got {%q, %q}", view.Enrichment.Seniority, view.Enrichment.Category)
+	}
+
+	// No enrichment: the parsed column surfaces as the fallback.
+	fb, err := FromRow(db.Job{
+		ID: 2, Title: "x", PublicSlug: "x-2",
+		Seniority: "senior", Category: "backend",
+	})
+	if err != nil {
+		t.Fatalf("FromRow: %v", err)
+	}
+	if fb.Enrichment.Seniority != "senior" || fb.Enrichment.Category != "backend" {
+		t.Errorf("parsed fallback expected: got {%q, %q}", fb.Enrichment.Seniority, fb.Enrichment.Category)
+	}
+}
+
 // closed_at rides the wire shape so the SPA can render the closed state on the
 // detail page (lists never serve closed jobs — see the job-lifecycle spec).
 func TestFromRow_CarriesClosedAt(t *testing.T) {

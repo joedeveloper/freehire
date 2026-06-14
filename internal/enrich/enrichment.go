@@ -82,7 +82,7 @@ var (
 	EmploymentTypeValues = []string{"full_time", "part_time", "contract", "internship"}
 	RelocationValues     = []string{"not_supported", "supported", "required"}
 	SalaryPeriodValues   = []string{"year", "month", "day", "hour"}
-	SeniorityValues      = []string{"intern", "junior", "middle", "senior", "lead", "principal", "c_level"}
+	SeniorityValues      = []string{"intern", "junior", "middle", "senior", "lead", "staff", "principal", "c_level"}
 	EnglishLevelValues   = []string{"none", "a1", "a2", "b1", "b2", "c1", "c2", "native"}
 	EducationLevelValues = []string{"none", "bachelor", "master", "phd"}
 	CategoryValues       = []string{

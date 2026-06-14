@@ -22,6 +22,7 @@ import (
 
 	"github.com/strelov1/freehire/internal/auth"
 	"github.com/strelov1/freehire/internal/db"
+	"github.com/strelov1/freehire/internal/jobtracking"
 )
 
 func TestAPIKeysEndToEnd(t *testing.T) {
@@ -44,7 +45,8 @@ func TestAPIKeysEndToEnd(t *testing.T) {
 	iss := auth.NewIssuer("test-secret", time.Hour)
 	ownerCookie, _ := iss.Issue(ownerID)
 	otherCookie, _ := iss.Issue(otherID)
-	h := &Handler{pool: pool, queries: db.New(pool), issuer: iss}
+	queries := db.New(pool)
+	h := &Handler{pool: pool, queries: queries, issuer: iss, tracking: jobtracking.New(jobtracking.NewQueriesRepository(queries))}
 
 	app := fiber.New(fiber.Config{ErrorHandler: ErrorHandler})
 	keyAuth := auth.RequireAuthOrKey(iss, h.queries)

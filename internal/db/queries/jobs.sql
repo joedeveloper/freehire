@@ -70,14 +70,14 @@ WITH company_upsert AS (
 )
 INSERT INTO jobs (
     source, external_id, url, title, company, company_slug, location, remote, description, posted_at,
-    public_slug, countries, regions, work_mode, skills
+    public_slug, countries, regions, work_mode, skills, seniority, category
 ) VALUES (
     sqlc.arg(source), sqlc.arg(external_id), sqlc.arg(url), sqlc.arg(title),
     sqlc.arg(company), sqlc.arg(company_slug), sqlc.arg(location), sqlc.arg(remote),
     sqlc.arg(description), sqlc.arg(posted_at),
     sqlc.arg(public_slug),
     COALESCE(sqlc.arg(countries)::text[], '{}'), COALESCE(sqlc.arg(regions)::text[], '{}'),
-    sqlc.arg(work_mode), COALESCE(sqlc.arg(skills)::text[], '{}')
+    sqlc.arg(work_mode), COALESCE(sqlc.arg(skills)::text[], '{}'), sqlc.arg(seniority), sqlc.arg(category)
 )
 -- public_slug is deliberately NOT in the DO UPDATE SET: the slug is minted once
 -- at insert and is the row's stable public identity. Re-ingest of the same
@@ -96,6 +96,8 @@ ON CONFLICT (source, external_id) DO UPDATE SET
     regions      = EXCLUDED.regions,
     work_mode    = EXCLUDED.work_mode,
     skills       = EXCLUDED.skills,
+    seniority    = EXCLUDED.seniority,
+    category     = EXCLUDED.category,
     -- The crawl saw the posting: refresh liveness and reopen if it was closed.
     last_seen_at = now(),
     closed_at    = NULL,
@@ -120,14 +122,15 @@ WITH company_upsert AS (
 )
 INSERT INTO jobs (
     source, external_id, url, title, company, company_slug, location, remote, description, posted_at,
-    public_slug, countries, regions, work_mode, skills, created_by
+    public_slug, countries, regions, work_mode, skills, seniority, category, created_by
 ) VALUES (
     'manual', sqlc.arg(external_id), sqlc.arg(url), sqlc.arg(title),
     sqlc.arg(company), sqlc.arg(company_slug), sqlc.arg(location), sqlc.arg(remote),
     sqlc.arg(description), sqlc.arg(posted_at),
     sqlc.arg(public_slug),
     COALESCE(sqlc.arg(countries)::text[], '{}'), COALESCE(sqlc.arg(regions)::text[], '{}'),
-    sqlc.arg(work_mode), COALESCE(sqlc.arg(skills)::text[], '{}'), sqlc.arg(created_by)::bigint
+    sqlc.arg(work_mode), COALESCE(sqlc.arg(skills)::text[], '{}'),
+    sqlc.arg(seniority), sqlc.arg(category), sqlc.arg(created_by)::bigint
 )
 ON CONFLICT (source, external_id) DO UPDATE SET
     url          = EXCLUDED.url,
@@ -142,6 +145,8 @@ ON CONFLICT (source, external_id) DO UPDATE SET
     regions      = EXCLUDED.regions,
     work_mode    = EXCLUDED.work_mode,
     skills       = EXCLUDED.skills,
+    seniority    = EXCLUDED.seniority,
+    category     = EXCLUDED.category,
     updated_by   = sqlc.arg(updated_by)::bigint,
     closed_at    = NULL,
     updated_at   = now()
@@ -179,6 +184,8 @@ SET title        = sqlc.arg(title),
     regions      = COALESCE(sqlc.arg(regions)::text[], '{}'),
     work_mode    = sqlc.arg(work_mode),
     skills       = COALESCE(sqlc.arg(skills)::text[], '{}'),
+    seniority    = sqlc.arg(seniority),
+    category     = sqlc.arg(category),
     updated_by   = sqlc.arg(updated_by)::bigint,
     updated_at   = now()
 WHERE public_slug = sqlc.arg(public_slug) AND source = 'manual'
@@ -287,4 +294,14 @@ WHERE id = sqlc.arg(id);
 -- a nil arg to '{}' to satisfy the NOT NULL array column.
 UPDATE jobs
 SET skills = COALESCE(sqlc.arg(skills)::text[], '{}')
+WHERE id = sqlc.arg(id);
+
+-- name: SetJobClassification :exec
+-- One-off backfill (cmd/backfill-class): rewrite the title-derived classification
+-- columns from the row's stored title. They are deterministic from `title`, so
+-- this is idempotent. updated_at is deliberately left untouched (like
+-- SetJobLocation) so a backfill does not churn every row's timestamp.
+UPDATE jobs
+SET seniority = sqlc.arg(seniority),
+    category  = sqlc.arg(category)
 WHERE id = sqlc.arg(id);

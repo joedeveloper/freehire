@@ -20,7 +20,7 @@ func oauthHandler(t *testing.T) *Handler {
 	t.Helper()
 	pool := startPostgres(t)
 	queries := db.New(pool)
-	return &Handler{pool: pool, queries: queries, accounts: accounts.New(accounts.NewQueriesRepository(queries, pool))}
+	return &Handler{pool: pool, queries: queries, accounts: accounts.New(accounts.NewQueriesRepository(queries, pool), authHasher{})}
 }
 
 func TestResolveOAuthUser_CreatesPasswordlessUser(t *testing.T) {

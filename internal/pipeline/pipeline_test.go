@@ -222,6 +222,19 @@ func TestNormalizeJobDerivesSkills(t *testing.T) {
 	}
 }
 
+func TestNormalizeJobDerivesClassification(t *testing.T) {
+	job := normalizeJob(
+		sources.CompanyEntry{Provider: "greenhouse", Board: "acme", Company: "Acme"},
+		sources.Job{ExternalID: "1", Title: "Senior Backend Engineer", Description: "x"},
+	)
+	if job.Seniority != "senior" {
+		t.Errorf("Seniority = %q, want senior", job.Seniority)
+	}
+	if job.Category != "backend" {
+		t.Errorf("Category = %q, want backend", job.Category)
+	}
+}
+
 // A run over several providers tallies stats per provider (one map key each), so the
 // caller can sweep each provider independently. Ingest counts are kept apart.
 func TestRunReturnsPerProviderStats(t *testing.T) {

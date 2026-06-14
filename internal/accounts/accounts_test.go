@@ -19,6 +19,19 @@ type fakeRepo struct {
 
 	// recorded calls
 	linkCalls []linkCall
+
+	// CreateUser responses and calls
+	createUserResults []createUserResult
+	createUserCallIdx int
+	createUserCalls   []createUserCall
+
+	// UserByEmail responses
+	userByEmailResults []userByEmailResult
+	userByEmailCallIdx int
+
+	// UserByID responses
+	userByIDResults []userByIDResult
+	userByIDCallIdx int
 }
 
 type idResult struct {
@@ -35,6 +48,28 @@ type linkCall struct {
 	provider       string
 	providerUserID string
 	email          string
+}
+
+type createUserResult struct {
+	user User
+	err  error
+}
+
+type createUserCall struct {
+	email        string
+	passwordHash string
+}
+
+type userByEmailResult struct {
+	user         User
+	passwordHash string
+	hasPassword  bool
+	err          error
+}
+
+type userByIDResult struct {
+	user User
+	err  error
 }
 
 func (f *fakeRepo) UserIDByIdentity(_ context.Context, provider, providerUserID string) (int64, error) {
@@ -56,12 +91,64 @@ func (f *fakeRepo) LinkOrCreateByEmail(_ context.Context, provider, providerUser
 	return r.id, r.err
 }
 
+func (f *fakeRepo) CreateUser(_ context.Context, email, passwordHash string) (User, error) {
+	f.createUserCalls = append(f.createUserCalls, createUserCall{email, passwordHash})
+	if f.createUserCallIdx >= len(f.createUserResults) {
+		return User{}, errors.New("fakeRepo: unexpected CreateUser call")
+	}
+	r := f.createUserResults[f.createUserCallIdx]
+	f.createUserCallIdx++
+	return r.user, r.err
+}
+
+func (f *fakeRepo) UserByEmail(_ context.Context, email string) (User, string, bool, error) {
+	if f.userByEmailCallIdx >= len(f.userByEmailResults) {
+		return User{}, "", false, ErrUserNotFound
+	}
+	r := f.userByEmailResults[f.userByEmailCallIdx]
+	f.userByEmailCallIdx++
+	return r.user, r.passwordHash, r.hasPassword, r.err
+}
+
+func (f *fakeRepo) UserByID(_ context.Context, id int64) (User, error) {
+	if f.userByIDCallIdx >= len(f.userByIDResults) {
+		return User{}, ErrUserNotFound
+	}
+	r := f.userByIDResults[f.userByIDCallIdx]
+	f.userByIDCallIdx++
+	return r.user, r.err
+}
+
+// fakeHasher is a test double for PasswordHasher.
+// Hash returns "hashed:"+plain; Check returns nil iff hash == "hashed:"+plain.
+type fakeHasher struct {
+	hashCalls  int
+	checkCalls int
+}
+
+func (h *fakeHasher) Hash(plain string) (string, error) {
+	h.hashCalls++
+	return "hashed:" + plain, nil
+}
+
+func (h *fakeHasher) Check(hash, plain string) error {
+	h.checkCalls++
+	if hash == "hashed:"+plain {
+		return nil
+	}
+	return errors.New("fakeHasher: password mismatch")
+}
+
+// ---------------------------------------------------------------------------
+// OAuth tests (existing, updated to New(repo, hasher) signature)
+// ---------------------------------------------------------------------------
+
 // (a) identity found → returns that id; LinkOrCreateByEmail NOT called.
 func TestResolveOAuthAccount_IdentityFound(t *testing.T) {
 	repo := &fakeRepo{
 		identityResults: []idResult{{id: 7, err: nil}},
 	}
-	svc := New(repo)
+	svc := New(repo, &fakeHasher{})
 
 	id, err := svc.ResolveOAuthAccount(context.Background(), "google", "gid-1", "user@example.com", true)
 	if err != nil {
@@ -82,7 +169,7 @@ func TestResolveOAuthAccount_LinkOrCreate(t *testing.T) {
 		identityResults: []idResult{{id: 0, err: ErrIdentityNotFound}},
 		linkResults:     []linkResult{{id: 99, err: nil}},
 	}
-	svc := New(repo)
+	svc := New(repo, &fakeHasher{})
 
 	id, err := svc.ResolveOAuthAccount(context.Background(), "github", "ghid-2", "  USER@Example.COM  ", true)
 	if err != nil {
@@ -108,7 +195,7 @@ func TestResolveOAuthAccount_UnverifiedEmail(t *testing.T) {
 	repo := &fakeRepo{
 		identityResults: []idResult{{id: 0, err: ErrIdentityNotFound}},
 	}
-	svc := New(repo)
+	svc := New(repo, &fakeHasher{})
 
 	_, err := svc.ResolveOAuthAccount(context.Background(), "google", "gid-3", "user@example.com", false)
 	if !errors.Is(err, ErrNoVerifiedEmail) {
@@ -125,7 +212,7 @@ func TestResolveOAuthAccount_EmptyEmail(t *testing.T) {
 		repo := &fakeRepo{
 			identityResults: []idResult{{id: 0, err: ErrIdentityNotFound}},
 		}
-		svc := New(repo)
+		svc := New(repo, &fakeHasher{})
 
 		_, err := svc.ResolveOAuthAccount(context.Background(), "google", "gid-4", email, true)
 		if !errors.Is(err, ErrNoVerifiedEmail) {
@@ -149,7 +236,7 @@ func TestResolveOAuthAccount_Race_ReturnsWinner(t *testing.T) {
 			{id: 0, err: ErrIdentityConflict},
 		},
 	}
-	svc := New(repo)
+	svc := New(repo, &fakeHasher{})
 
 	id, err := svc.ResolveOAuthAccount(context.Background(), "google", "gid-5", "winner@example.com", true)
 	if err != nil {
@@ -171,10 +258,185 @@ func TestResolveOAuthAccount_Race_RetryFails(t *testing.T) {
 			{id: 0, err: ErrIdentityConflict},
 		},
 	}
-	svc := New(repo)
+	svc := New(repo, &fakeHasher{})
 
 	_, err := svc.ResolveOAuthAccount(context.Background(), "google", "gid-6", "ghost@example.com", true)
 	if err == nil {
 		t.Fatal("want non-nil error when race retry also returns ErrIdentityNotFound")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Register tests
+// ---------------------------------------------------------------------------
+
+// Register invalid email → ErrInvalidEmail; CreateUser NOT called.
+func TestRegister_InvalidEmail(t *testing.T) {
+	repo := &fakeRepo{}
+	hasher := &fakeHasher{}
+	svc := New(repo, hasher)
+
+	_, err := svc.Register(context.Background(), "not-an-email", "password123")
+	if !errors.Is(err, ErrInvalidEmail) {
+		t.Errorf("want ErrInvalidEmail, got %v", err)
+	}
+	if len(repo.createUserCalls) != 0 {
+		t.Errorf("CreateUser should NOT be called, got %d calls", len(repo.createUserCalls))
+	}
+}
+
+// Register short password → ErrPasswordTooShort; CreateUser NOT called.
+func TestRegister_ShortPassword(t *testing.T) {
+	repo := &fakeRepo{}
+	hasher := &fakeHasher{}
+	svc := New(repo, hasher)
+
+	_, err := svc.Register(context.Background(), "user@example.com", "short")
+	if !errors.Is(err, ErrPasswordTooShort) {
+		t.Errorf("want ErrPasswordTooShort, got %v", err)
+	}
+	if len(repo.createUserCalls) != 0 {
+		t.Errorf("CreateUser should NOT be called, got %d calls", len(repo.createUserCalls))
+	}
+}
+
+// Register happy path → hashes then calls CreateUser with the hash, returns user.
+func TestRegister_Happy(t *testing.T) {
+	wantUser := User{ID: 1, Email: "user@example.com"}
+	repo := &fakeRepo{
+		createUserResults: []createUserResult{{user: wantUser, err: nil}},
+	}
+	hasher := &fakeHasher{}
+	svc := New(repo, hasher)
+
+	got, err := svc.Register(context.Background(), "USER@Example.COM", "password123")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != wantUser {
+		t.Errorf("want %+v, got %+v", wantUser, got)
+	}
+	if len(repo.createUserCalls) != 1 {
+		t.Fatalf("want 1 CreateUser call, got %d", len(repo.createUserCalls))
+	}
+	call := repo.createUserCalls[0]
+	if call.email != "user@example.com" {
+		t.Errorf("email not normalized: want %q, got %q", "user@example.com", call.email)
+	}
+	if call.passwordHash != "hashed:password123" {
+		t.Errorf("password not hashed: want %q, got %q", "hashed:password123", call.passwordHash)
+	}
+}
+
+// Register when CreateUser returns ErrEmailTaken → propagated.
+func TestRegister_EmailTaken(t *testing.T) {
+	repo := &fakeRepo{
+		createUserResults: []createUserResult{{user: User{}, err: ErrEmailTaken}},
+	}
+	svc := New(repo, &fakeHasher{})
+
+	_, err := svc.Register(context.Background(), "user@example.com", "password123")
+	if !errors.Is(err, ErrEmailTaken) {
+		t.Errorf("want ErrEmailTaken, got %v", err)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Login tests
+// ---------------------------------------------------------------------------
+
+// Login when UserByEmail returns ErrUserNotFound → ErrInvalidCredentials.
+func TestLogin_UserNotFound(t *testing.T) {
+	repo := &fakeRepo{
+		userByEmailResults: []userByEmailResult{{err: ErrUserNotFound}},
+	}
+	svc := New(repo, &fakeHasher{})
+
+	_, err := svc.Login(context.Background(), "user@example.com", "password123")
+	if !errors.Is(err, ErrInvalidCredentials) {
+		t.Errorf("want ErrInvalidCredentials, got %v", err)
+	}
+}
+
+// Login when hasPassword=false → ErrInvalidCredentials; Check NOT called.
+func TestLogin_NoPassword(t *testing.T) {
+	wantUser := User{ID: 5, Email: "user@example.com"}
+	repo := &fakeRepo{
+		userByEmailResults: []userByEmailResult{{user: wantUser, hasPassword: false}},
+	}
+	hasher := &fakeHasher{}
+	svc := New(repo, hasher)
+
+	_, err := svc.Login(context.Background(), "user@example.com", "password123")
+	if !errors.Is(err, ErrInvalidCredentials) {
+		t.Errorf("want ErrInvalidCredentials, got %v", err)
+	}
+	if hasher.checkCalls != 0 {
+		t.Errorf("Check should NOT be called when hasPassword=false, got %d calls", hasher.checkCalls)
+	}
+}
+
+// Login when Check fails → ErrInvalidCredentials.
+func TestLogin_WrongPassword(t *testing.T) {
+	wantUser := User{ID: 5, Email: "user@example.com"}
+	repo := &fakeRepo{
+		userByEmailResults: []userByEmailResult{{user: wantUser, passwordHash: "hashed:correct", hasPassword: true}},
+	}
+	svc := New(repo, &fakeHasher{})
+
+	_, err := svc.Login(context.Background(), "user@example.com", "wrongpassword")
+	if !errors.Is(err, ErrInvalidCredentials) {
+		t.Errorf("want ErrInvalidCredentials, got %v", err)
+	}
+}
+
+// Login success → returns user.
+func TestLogin_Happy(t *testing.T) {
+	wantUser := User{ID: 5, Email: "user@example.com"}
+	repo := &fakeRepo{
+		userByEmailResults: []userByEmailResult{{user: wantUser, passwordHash: "hashed:correct", hasPassword: true}},
+	}
+	svc := New(repo, &fakeHasher{})
+
+	got, err := svc.Login(context.Background(), "USER@Example.COM", "correct")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != wantUser {
+		t.Errorf("want %+v, got %+v", wantUser, got)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// UserByID tests
+// ---------------------------------------------------------------------------
+
+// UserByID found → returns user.
+func TestUserByID_Found(t *testing.T) {
+	wantUser := User{ID: 10, Email: "someone@example.com"}
+	repo := &fakeRepo{
+		userByIDResults: []userByIDResult{{user: wantUser}},
+	}
+	svc := New(repo, &fakeHasher{})
+
+	got, err := svc.UserByID(context.Background(), 10)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != wantUser {
+		t.Errorf("want %+v, got %+v", wantUser, got)
+	}
+}
+
+// UserByID when repo returns ErrUserNotFound → propagated.
+func TestUserByID_NotFound(t *testing.T) {
+	repo := &fakeRepo{
+		userByIDResults: []userByIDResult{{err: ErrUserNotFound}},
+	}
+	svc := New(repo, &fakeHasher{})
+
+	_, err := svc.UserByID(context.Background(), 99)
+	if !errors.Is(err, ErrUserNotFound) {
+		t.Errorf("want ErrUserNotFound, got %v", err)
 	}
 }

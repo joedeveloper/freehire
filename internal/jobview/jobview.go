@@ -76,6 +76,15 @@ func FromRow(j db.Job) (Job, error) {
 	if workMode == "" {
 		workMode = j.WorkMode
 	}
+	// Seniority/category: the LLM value wins, the deterministic column is the
+	// fallback (the work_mode precedence rule). They stay nested under enrichment,
+	// so the existing enrichment.seniority/category facets are unchanged.
+	if e.Seniority == "" {
+		e.Seniority = j.Seniority
+	}
+	if e.Category == "" {
+		e.Category = j.Category
+	}
 	skills := mergeSets(j.Skills, e.Skills)
 	e.Countries, e.Regions, e.WorkMode = nil, nil, ""
 	e.Skills = nil

@@ -108,6 +108,8 @@ func (s *Service) Create(ctx context.Context, actorID int64, in CreateInput) (db
 		Regions:     d.Regions,
 		WorkMode:    d.WorkMode,
 		Skills:      d.Skills,
+		Seniority:   d.Seniority,
+		Category:    d.Category,
 		CreatedBy:   actorID,
 		UpdatedBy:   actorID,
 	})
@@ -163,6 +165,8 @@ func (s *Service) Update(ctx context.Context, actorID int64, slug string, p Upda
 		Regions:     d.Regions,
 		WorkMode:    d.WorkMode,
 		Skills:      d.Skills,
+		Seniority:   d.Seniority,
+		Category:    d.Category,
 		UpdatedBy:   actorID,
 	})
 }

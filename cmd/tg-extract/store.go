@@ -9,6 +9,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/strelov1/freehire/internal/classify"
 	"github.com/strelov1/freehire/internal/db"
 	"github.com/strelov1/freehire/internal/enrich"
 	"github.com/strelov1/freehire/internal/location"
@@ -80,6 +81,7 @@ func (s *extractStore) Complete(ctx context.Context, post telegram.PendingPost, 
 	for i, j := range jobs {
 		externalID := base + "/" + strconv.Itoa(i)
 		geo := location.Parse(j.Location)
+		class := classify.Parse(j.Title)
 		descHTML := telegram.TextToHTML(j.Description)
 		saved, err := qtx.UpsertJob(ctx, db.UpsertJobParams{
 			Source:      "telegram",
@@ -97,6 +99,8 @@ func (s *extractStore) Complete(ctx context.Context, post telegram.PendingPost, 
 			Regions:     geo.Regions,
 			WorkMode:    geo.WorkMode,
 			Skills:      skilltag.Parse(descHTML),
+			Seniority:   class.Seniority,
+			Category:    class.Category,
 		})
 		if err != nil {
 			return fmt.Errorf("upsert job %s: %w", externalID, err)
@@ -132,6 +136,7 @@ func (s *extractStore) CompleteLinks(ctx context.Context, post telegram.PendingP
 
 	for _, j := range jobs {
 		geo := location.Parse(j.Location)
+		class := classify.Parse(j.Title)
 		workMode := j.WorkMode
 		if workMode == "" {
 			workMode = geo.WorkMode
@@ -156,6 +161,8 @@ func (s *extractStore) CompleteLinks(ctx context.Context, post telegram.PendingP
 			Regions:     geo.Regions,
 			WorkMode:    workMode,
 			Skills:      skilltag.Parse(j.Description),
+			Seniority:   class.Seniority,
+			Category:    class.Category,
 		})
 		if err != nil {
 			return fmt.Errorf("upsert job %s/%s: %w", j.Source, j.ExternalID, err)

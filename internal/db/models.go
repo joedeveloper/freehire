@@ -64,6 +64,8 @@ type Job struct {
 	WorkMode          string             `json:"work_mode"`
 	LivenessStrikes   int32              `json:"liveness_strikes"`
 	Skills            []string           `json:"skills"`
+	Seniority         string             `json:"seniority"`
+	Category          string             `json:"category"`
 	CreatedBy         pgtype.Int8        `json:"created_by"`
 	UpdatedBy         pgtype.Int8        `json:"updated_by"`
 }

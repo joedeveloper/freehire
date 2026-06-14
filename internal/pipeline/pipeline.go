@@ -41,6 +41,10 @@ type Job struct {
 	// Skills are the deterministic technology tags parsed from Description by
 	// internal/skilltag. Empty when the description resolves no known skill.
 	Skills []string
+	// Seniority and Category are deterministic classification parsed from Title by
+	// internal/classify. Each is "" when the title resolves nothing.
+	Seniority string
+	Category  string
 }
 
 // Store persists one normalized job and enqueues it for enrichment when needed,
@@ -176,9 +180,10 @@ func (r Runner) ingestBoard(ctx context.Context, e sources.CompanyEntry) (ingest
 func normalizeJob(e sources.CompanyEntry, j sources.Job) Job {
 	source := e.Provider
 	externalID := fmt.Sprintf("%s:%s", e.Board, j.ExternalID)
-	// The slugs and dictionary facets (geography/work-mode/skills) are derived by the
-	// shared jobderive helper, so ingest and the moderator write path produce identical
-	// facets. Work-mode precedence (structured signal over the parser hint) lives there.
+	// The slugs and dictionary facets (geography/work-mode/skills/classification) are
+	// derived by the shared jobderive helper, so ingest and the moderator write path
+	// produce identical facets. Work-mode precedence (structured signal over the parser
+	// hint) lives there.
 	d := jobderive.Derive(jobderive.Input{
 		Title:       j.Title,
 		Company:     j.Company,
@@ -204,5 +209,7 @@ func normalizeJob(e sources.CompanyEntry, j sources.Job) Job {
 		Regions:     d.Regions,
 		WorkMode:    d.WorkMode,
 		Skills:      d.Skills,
+		Seniority:   d.Seniority,
+		Category:    d.Category,
 	}
 }

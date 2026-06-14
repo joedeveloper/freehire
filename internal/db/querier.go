@@ -162,6 +162,11 @@ type Querier interface {
 	// ATS provider set from the sources registry; <> ALL excludes them, so a new adapter
 	// never silently becomes a probe target. Closed jobs are skipped (already not open).
 	SelectOrphanLivenessCandidates(ctx context.Context, atsProviders []string) ([]SelectOrphanLivenessCandidatesRow, error)
+	// One-off backfill (cmd/backfill-class): rewrite the title-derived classification
+	// columns from the row's stored title. They are deterministic from `title`, so
+	// this is idempotent. updated_at is deliberately left untouched (like
+	// SetJobLocation) so a backfill does not churn every row's timestamp.
+	SetJobClassification(ctx context.Context, arg SetJobClassificationParams) error
 	// Targeted enrichment write used by the enrichment command: set only the payload
 	// and the provenance stamp, touching no raw source field. Kept separate from
 	// UpsertJob (the ingest full-upsert path) so ingest and enrichment stay decoupled.
@@ -207,6 +212,9 @@ type Querier interface {
 	// is deliberately NOT updatable here. The company row is upserted when a slug is present,
 	// so "a company's jobs" stays resolvable. updated_by records the acting moderator. Returns
 	// no row when the slug is missing or not a manual job (the caller maps that to 404).
+	// closed_at is deliberately NOT touched: an edit is a content fix, not a lifecycle change.
+	// Reopening a closed posting is the re-create (same-URL UpsertManualJob) path's job, so a
+	// content edit never resurrects a job the sweep/liveness worker closed.
 	UpdateManualJob(ctx context.Context, arg UpdateManualJobParams) (Job, error)
 	// Single atomic write: upsert the company (only when the slug is non-empty,
 	// via the WHERE on the SELECT) and the job together, keeping the "one write =
