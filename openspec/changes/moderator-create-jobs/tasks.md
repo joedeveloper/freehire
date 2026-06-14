@@ -8,8 +8,8 @@
 
 ## 2. Shared derivation helper
 
-- [ ] 2.1 Factor the geo/skills/slug/work-mode derivation out of `pipeline.normalizeJob` into a reusable helper (RED: test the helper's output for a sample input)
-- [ ] 2.2 Re-point `pipeline.normalizeJob` at the helper; confirm existing pipeline tests stay green
+- [x] 2.1 Factor the geo/skills/slug/work-mode derivation out of `pipeline.normalizeJob` into a reusable helper (RED: test the helper's output for a sample input)
+- [x] 2.2 Re-point `pipeline.normalizeJob` at the helper; confirm existing pipeline tests stay green
 
 ## 3. Role authorization (`internal/auth`)
 

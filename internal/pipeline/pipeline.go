@@ -10,9 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/strelov1/freehire/internal/location"
-	"github.com/strelov1/freehire/internal/normalize"
-	"github.com/strelov1/freehire/internal/skilltag"
+	"github.com/strelov1/freehire/internal/jobderive"
 	"github.com/strelov1/freehire/internal/sources"
 )
 
@@ -178,30 +176,33 @@ func (r Runner) ingestBoard(ctx context.Context, e sources.CompanyEntry) (ingest
 func normalizeJob(e sources.CompanyEntry, j sources.Job) Job {
 	source := e.Provider
 	externalID := fmt.Sprintf("%s:%s", e.Board, j.ExternalID)
-	geo := location.Parse(j.Location)
-	// Work mode precedence: the adapter's structured signal (a workplace-type enum
-	// or explicit remote flag) beats the parser's free-text heuristic. The LLM,
-	// richer still, wins over both later at read time.
-	workMode := j.WorkMode
-	if workMode == "" {
-		workMode = geo.WorkMode
-	}
-	skills := skilltag.Parse(j.Description)
+	// The slugs and dictionary facets (geography/work-mode/skills) are derived by the
+	// shared jobderive helper, so ingest and the moderator write path produce identical
+	// facets. Work-mode precedence (structured signal over the parser hint) lives there.
+	d := jobderive.Derive(jobderive.Input{
+		Title:       j.Title,
+		Company:     j.Company,
+		Source:      source,
+		ExternalID:  externalID,
+		Location:    j.Location,
+		Description: j.Description,
+		WorkMode:    j.WorkMode,
+	})
 	return Job{
 		Source:      source,
 		ExternalID:  externalID,
 		URL:         j.URL,
 		Title:       j.Title,
 		Company:     j.Company,
-		CompanySlug: normalize.Slug(j.Company),
-		PublicSlug:  normalize.JobSlug(j.Title, j.Company, source, externalID),
+		CompanySlug: d.CompanySlug,
+		PublicSlug:  d.PublicSlug,
 		Location:    j.Location,
 		Remote:      j.Remote,
 		Description: j.Description,
 		PostedAt:    j.PostedAt,
-		Countries:   geo.Countries,
-		Regions:     geo.Regions,
-		WorkMode:    workMode,
-		Skills:      skills,
+		Countries:   d.Countries,
+		Regions:     d.Regions,
+		WorkMode:    d.WorkMode,
+		Skills:      d.Skills,
 	}
 }
