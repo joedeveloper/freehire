@@ -8,6 +8,7 @@ import (
 	"github.com/gofiber/fiber/v2/middleware/cors"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/strelov1/freehire/internal/accounts"
 	"github.com/strelov1/freehire/internal/auth"
 	"github.com/strelov1/freehire/internal/auth/oauth"
 	"github.com/strelov1/freehire/internal/db"
@@ -37,6 +38,9 @@ type Handler struct {
 	// tracking owns the per-user job-interaction use cases (view/apply/save/
 	// unsave/track); the handlers translate wire ↔ domain and delegate to it.
 	tracking *jobtracking.Service
+	// accounts resolves external OAuth identities into local user accounts
+	// (identity-first lookup, verified-email gate, link-or-create, race retry).
+	accounts *accounts.Service
 }
 
 // pageParams reads and clamps the shared limit/offset pagination query params.
@@ -80,6 +84,7 @@ func Register(app *fiber.App, pool *pgxpool.Pool, frontendOrigin, jwtSecret stri
 		oauth:          oauthProviders,
 		frontendOrigin: frontendOrigin,
 		tracking:       jobtracking.New(jobtracking.NewQueriesRepository(queries)),
+		accounts:       accounts.New(accounts.NewQueriesRepository(queries, pool)),
 	}
 	// Assign only when configured: a nil *search.Client wrapped in the searcher
 	// interface would be a non-nil interface and defeat the nil check.
