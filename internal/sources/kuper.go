@@ -82,7 +82,7 @@ func (k kuper) Fetch(ctx context.Context, e CompanyEntry) ([]Job, error) {
 				Company:     e.Company,
 				Location:    v.City,
 				Description: sanitizeHTML(v.Description),
-				Remote:      isRemote(normalizeNBSP(strings.Join(v.WF, " "))),
+				Remote:      isRemote(strings.Join(v.WF, " ")),
 				PostedAt:    nil, // source carries no date
 			})
 		}

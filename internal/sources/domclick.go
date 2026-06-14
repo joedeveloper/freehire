@@ -14,11 +14,10 @@ type domclick struct {
 }
 
 const (
-	domclickListURL       = "https://career.domclick.ru/api/v1/vacancy/"
-	domclickDetailURL     = "https://career.domclick.ru/api/v1/vacancy/detail/%s/"
-	domclickVacancyURL    = "https://career.domclick.ru/vacancy/%s"
-	domclickRemoteFormat  = "REMOTE"
-	domclickDetailWorkers = 8
+	domclickListURL      = "https://career.domclick.ru/api/v1/vacancy/"
+	domclickDetailURL    = "https://career.domclick.ru/api/v1/vacancy/detail/%s/"
+	domclickVacancyURL   = "https://career.domclick.ru/vacancy/%s"
+	domclickRemoteFormat = "REMOTE"
 )
 
 // NewDomclick builds the DomClick adapter over the given HTTP client.
@@ -50,7 +49,7 @@ func (d domclick) Fetch(ctx context.Context, e CompanyEntry) ([]Job, error) {
 		return nil, fmt.Errorf("domclick: list: %w", err)
 	}
 
-	return fetchDetails(resp.Result, domclickDetailWorkers, func(it dcItem) (Job, bool) {
+	return fetchDetails(resp.Result, defaultDetailWorkers, func(it dcItem) (Job, bool) {
 		return d.detail(ctx, e, it)
 	}), nil
 }
@@ -70,10 +69,7 @@ func (d domclick) detail(ctx context.Context, e CompanyEntry, it dcItem) (Job, b
 		return Job{}, false
 	}
 
-	body := resp.Result.VacancyContent.BrandedDescription
-	if body == "" {
-		body = resp.Result.VacancyContent.Description
-	}
+	body := firstNonEmpty(resp.Result.VacancyContent.BrandedDescription, resp.Result.VacancyContent.Description)
 
 	return Job{
 		ExternalID:  it.Slug,

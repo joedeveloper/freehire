@@ -18,12 +18,11 @@ type mts struct {
 }
 
 const (
-	mtsSiteURL       = "https://job.mts.ru/"
-	mtsListURL       = "https://api.job.mts.ru/v1/vacancies/filtered/career"
-	mtsDetailURL     = "https://api.job.mts.ru/v1/vacancy/%s"
-	mtsVacancyURL    = "https://job.mts.ru/vacancy/%s"
-	mtsPageLimit     = 200
-	mtsDetailWorkers = 8
+	mtsSiteURL    = "https://job.mts.ru/"
+	mtsListURL    = "https://api.job.mts.ru/v1/vacancies/filtered/career"
+	mtsDetailURL  = "https://api.job.mts.ru/v1/vacancy/%s"
+	mtsVacancyURL = "https://job.mts.ru/vacancy/%s"
+	mtsPageLimit  = 200
 )
 
 // NewMTS builds the MTS adapter over the given HTTP client.
@@ -62,7 +61,7 @@ func (m mts) Fetch(ctx context.Context, e CompanyEntry) ([]Job, error) {
 		return nil, err
 	}
 
-	return fetchDetails(items, mtsDetailWorkers, func(it mtsVacancyItem) (Job, bool) {
+	return fetchDetails(items, defaultDetailWorkers, func(it mtsVacancyItem) (Job, bool) {
 		return m.detail(ctx, e, key, it)
 	}), nil
 }
@@ -150,10 +149,7 @@ func (m mts) detail(ctx context.Context, e CompanyEntry, key string, it mtsVacan
 	}
 
 	dt := resp.Data.Vacancy.DetailText
-	company := it.Info.Brand
-	if company == "" {
-		company = e.Company
-	}
+	company := firstNonEmpty(it.Info.Brand, e.Company)
 
 	return Job{
 		ExternalID:  it.ID,
@@ -162,7 +158,7 @@ func (m mts) detail(ctx context.Context, e CompanyEntry, key string, it mtsVacan
 		Company:     company,
 		Location:    it.Info.City,
 		Description: sanitizeHTML(dt.DescriptionOfProject + dt.Description + dt.Requirements + dt.Conditions),
-		Remote:      isRemote(normalizeNBSP(it.Info.Worktype)),
+		Remote:      isRemote(it.Info.Worktype),
 		PostedAt:    nil,
 	}, true
 }

@@ -18,9 +18,8 @@ const (
 	aviasalesListURL = "https://vacancies-app.aviasales.ru/api/vacancies"
 	// The loader's (id) segment is literal text (Remix route id), not the numeric id;
 	// the parens are percent-encoded so http.NewRequest sends them unchanged.
-	aviasalesDetailURL     = "https://vacancies-app.aviasales.ru/about/vacancies/%d?__loader=about/vacancies/%%28id%%29/page&__ssrDirect=true"
-	aviasalesVacancyURL    = "https://www.aviasales.ru/about/vacancies/%d"
-	aviasalesDetailWorkers = 8
+	aviasalesDetailURL  = "https://vacancies-app.aviasales.ru/about/vacancies/%d?__loader=about/vacancies/%%28id%%29/page&__ssrDirect=true"
+	aviasalesVacancyURL = "https://www.aviasales.ru/about/vacancies/%d"
 )
 
 // NewAviasales builds the Aviasales adapter over the given HTTP client.
@@ -44,7 +43,7 @@ func (a aviasales) Fetch(ctx context.Context, e CompanyEntry) ([]Job, error) {
 		return nil, fmt.Errorf("aviasales: list: %w", err)
 	}
 
-	return fetchDetails(items, aviasalesDetailWorkers, func(it avItem) (Job, bool) {
+	return fetchDetails(items, defaultDetailWorkers, func(it avItem) (Job, bool) {
 		return a.detail(ctx, e, it)
 	}), nil
 }
@@ -73,7 +72,7 @@ func (a aviasales) detail(ctx context.Context, e CompanyEntry, it avItem) (Job, 
 		Company:     e.Company,
 		Location:    it.WorkPlace,
 		Description: sanitizeHTML(v.Description + v.Todo + v.Requirements + v.Conditions),
-		Remote:      isRemote(normalizeNBSP(it.WorkPlace)),
+		Remote:      isRemote(it.WorkPlace),
 		PostedAt:    nil, // the careers API carries no publish date
 	}, true
 }

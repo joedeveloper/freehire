@@ -5,11 +5,9 @@ import (
 	"fmt"
 )
 
-// ripplingBaseURL is the Rippling public ATS board API root; ripplingDetailWorkers caps
-// how many per-posting detail requests a single board issues concurrently.
+// ripplingBaseURL is the Rippling public ATS board API root.
 const (
-	ripplingBaseURL       = "https://api.rippling.com/platform/api/ats/v1/board"
-	ripplingDetailWorkers = 8
+	ripplingBaseURL = "https://api.rippling.com/platform/api/ats/v1/board"
 )
 
 // rippling adapts the Rippling public ATS board API. Its list endpoint carries no
@@ -42,7 +40,7 @@ func (r rippling) Fetch(ctx context.Context, e CompanyEntry) ([]Job, error) {
 
 	// Each posting's description comes from its own detail request, fanned out under a
 	// bounded worker pool.
-	return fetchDetails(postings, ripplingDetailWorkers, func(p ripplingPosting) (Job, bool) {
+	return fetchDetails(postings, defaultDetailWorkers, func(p ripplingPosting) (Job, bool) {
 		return r.detail(ctx, e, p)
 	}), nil
 }

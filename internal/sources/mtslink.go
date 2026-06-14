@@ -15,12 +15,11 @@ type mtslink struct {
 }
 
 const (
-	mtslinkListURL       = "https://mts-link.ru/api/huntflow/vacancies"
-	mtslinkDetailURL     = "https://mts-link.ru/api/huntflow/vacancy/%d"
-	mtslinkVacancyURL    = "https://mts-link.ru/vacancies/%d/"
-	mtslinkOpenState     = "OPEN"
-	mtslinkTimeLayout    = "2006-01-02 15:04:05.000000"
-	mtslinkDetailWorkers = 8
+	mtslinkListURL    = "https://mts-link.ru/api/huntflow/vacancies"
+	mtslinkDetailURL  = "https://mts-link.ru/api/huntflow/vacancy/%d"
+	mtslinkVacancyURL = "https://mts-link.ru/vacancies/%d/"
+	mtslinkOpenState  = "OPEN"
+	mtslinkTimeLayout = "2006-01-02 15:04:05.000000"
 )
 
 // NewMtslink builds the MTS Link adapter over the given HTTP client.
@@ -52,7 +51,7 @@ func (m mtslink) Fetch(ctx context.Context, e CompanyEntry) ([]Job, error) {
 		}
 	}
 
-	return fetchDetails(open, mtslinkDetailWorkers, func(it mtsItem) (Job, bool) {
+	return fetchDetails(open, defaultDetailWorkers, func(it mtsItem) (Job, bool) {
 		return m.detail(ctx, e, it)
 	}), nil
 }
@@ -80,7 +79,7 @@ func (m mtslink) detail(ctx context.Context, e CompanyEntry, it mtsItem) (Job, b
 		Company:     e.Company,
 		Location:    "", // the careers API carries no city field
 		Description: sanitizeHTML(d.Body + d.Requirements + d.Conditions),
-		Remote:      isRemote(normalizeNBSP(d.WorkFormat)),
+		Remote:      isRemote(d.WorkFormat),
 		PostedAt:    parseLayout(mtslinkTimeLayout, d.Created.Date),
 	}, true
 }

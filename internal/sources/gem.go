@@ -5,11 +5,9 @@ import (
 	"fmt"
 )
 
-// gemGraphQLURL is Gem's public (unauthenticated) GraphQL endpoint; gemDetailWorkers caps
-// how many per-posting detail requests a single board issues concurrently.
+// gemGraphQLURL is Gem's public (unauthenticated) GraphQL endpoint.
 const (
-	gemGraphQLURL    = "https://jobs.gem.com/api/public/graphql"
-	gemDetailWorkers = 8
+	gemGraphQLURL = "https://jobs.gem.com/api/public/graphql"
 )
 
 // The list operation carries no description, so each posting's body comes from its own
@@ -99,7 +97,7 @@ func (g gem) Fetch(ctx context.Context, e CompanyEntry) ([]Job, error) {
 
 	// Each posting's description comes from its own detail request, fanned out under a
 	// bounded worker pool.
-	return fetchDetails(resp.Data.Postings.JobPostings, gemDetailWorkers, func(p gemPosting) (Job, bool) {
+	return fetchDetails(resp.Data.Postings.JobPostings, defaultDetailWorkers, func(p gemPosting) (Job, bool) {
 		return g.detail(ctx, e, p)
 	}), nil
 }

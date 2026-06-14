@@ -15,11 +15,10 @@ type lamoda struct {
 }
 
 const (
-	lamodaListURL       = "https://job.lamoda.ru/api/hr/vacancies/compact"
-	lamodaDetailURL     = "https://job.lamoda.ru/api/hr/vacancies/%d"
-	lamodaVacancyURL    = "https://job.lamoda.ru/vacancies/%s"
-	lamodaPageSize      = 100
-	lamodaDetailWorkers = 8
+	lamodaListURL    = "https://job.lamoda.ru/api/hr/vacancies/compact"
+	lamodaDetailURL  = "https://job.lamoda.ru/api/hr/vacancies/%d"
+	lamodaVacancyURL = "https://job.lamoda.ru/vacancies/%s"
+	lamodaPageSize   = 100
 )
 
 // NewLamoda builds the Lamoda adapter over the given HTTP client.
@@ -47,7 +46,7 @@ func (l lamoda) Fetch(ctx context.Context, e CompanyEntry) ([]Job, error) {
 		return nil, err
 	}
 
-	return fetchDetails(items, lamodaDetailWorkers, func(it lamodaItem) (Job, bool) {
+	return fetchDetails(items, defaultDetailWorkers, func(it lamodaItem) (Job, bool) {
 		return l.detail(ctx, e, it)
 	}), nil
 }

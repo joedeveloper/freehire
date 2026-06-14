@@ -16,11 +16,10 @@ type tbank struct {
 }
 
 const (
-	tbankListURL       = "https://www.tbank.ru/pfpjobs/papi/getVacancies"
-	tbankDetailURL     = "https://www.tbank.ru/pfpjobs/papi/getVacancyDescription"
-	tbankSource        = "publisher"
-	tbankPageLimit     = 20
-	tbankDetailWorkers = 8
+	tbankListURL   = "https://www.tbank.ru/pfpjobs/papi/getVacancies"
+	tbankDetailURL = "https://www.tbank.ru/pfpjobs/papi/getVacancyDescription"
+	tbankSource    = "publisher"
+	tbankPageLimit = 20
 )
 
 // NewTBank builds the T-Bank adapter over the given HTTP client.
@@ -69,7 +68,7 @@ func (b tbank) Fetch(ctx context.Context, e CompanyEntry) ([]Job, error) {
 		return nil, err
 	}
 
-	return fetchDetails(items, tbankDetailWorkers, func(it tbankVacancyItem) (Job, bool) {
+	return fetchDetails(items, defaultDetailWorkers, func(it tbankVacancyItem) (Job, bool) {
 		return b.detail(ctx, e, it)
 	}), nil
 }
@@ -132,7 +131,7 @@ func (b tbank) detail(ctx context.Context, e CompanyEntry, it tbankVacancyItem) 
 		Company:     e.Company,
 		Location:    it.Subtitle,
 		Description: sanitizeHTML(tbankAssembleBlocks(resp.Payload.Description)),
-		Remote:      isRemote(normalizeNBSP(strings.Join(it.Tags, " "))),
+		Remote:      isRemote(strings.Join(it.Tags, " ")),
 		PostedAt:    nil,
 	}, true
 }

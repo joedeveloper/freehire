@@ -16,11 +16,10 @@ type rwb struct {
 }
 
 const (
-	rwbListURL       = "https://career.rwb.ru/crm-api/api/v1/pub/vacancies?limit=%d&offset=%d"
-	rwbDetailURL     = "https://career.rwb.ru/crm-api/api/v1/pub/vacancies/%d"
-	rwbVacancyURL    = "https://career.rwb.ru/vacancies/%d"
-	rwbPageSize      = 200
-	rwbDetailWorkers = 8
+	rwbListURL    = "https://career.rwb.ru/crm-api/api/v1/pub/vacancies?limit=%d&offset=%d"
+	rwbDetailURL  = "https://career.rwb.ru/crm-api/api/v1/pub/vacancies/%d"
+	rwbVacancyURL = "https://career.rwb.ru/vacancies/%d"
+	rwbPageSize   = 200
 )
 
 // NewRWB builds the Wildberries adapter over the given HTTP client.
@@ -48,7 +47,7 @@ func (r rwb) Fetch(ctx context.Context, e CompanyEntry) ([]Job, error) {
 		return nil, err
 	}
 
-	return fetchDetails(items, rwbDetailWorkers, func(it rwbItem) (Job, bool) {
+	return fetchDetails(items, defaultDetailWorkers, func(it rwbItem) (Job, bool) {
 		return r.detail(ctx, e, it)
 	}), nil
 }
