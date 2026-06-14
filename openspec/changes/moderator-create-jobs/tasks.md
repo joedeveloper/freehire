@@ -13,8 +13,8 @@
 
 ## 3. Role authorization (`internal/auth`)
 
-- [ ] 3.1 Add `RequireRole(q, role)` middleware: reads `userID` from Locals, loads role via `GetUserByID`, 403 on mismatch, 401 when unauthenticated (RED: middleware test for pass / 403 / 401)
-- [ ] 3.2 Define the `RoleLoader` interface (or reuse the queries dependency) so the middleware is unit-testable with a fake
+- [x] 3.1 Add `RequireRole(q, role)` middleware: reads `userID` from Locals, loads role via `GetUserRole`, 403 on mismatch, 401 when unauthenticated/load-error (RED: middleware test for pass / 403 / 401)
+- [x] 3.2 Define the `RoleLoader` interface (structurally satisfied by `*db.Queries`) so the middleware is unit-testable with a fake and `auth` stays DB-free
 
 ## 4. Moderation service (`internal/moderation`)
 
