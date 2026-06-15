@@ -11,12 +11,43 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const clearJobProgress = `-- name: ClearJobProgress :one
+UPDATE user_jobs
+SET stage = NULL, applied_at = NULL
+WHERE user_id = $1 AND job_id = $2
+RETURNING user_id, job_id, viewed_at, applied_at, saved_at, stage, notes
+`
+
+type ClearJobProgressParams struct {
+	UserID int64 `json:"user_id"`
+	JobID  int64 `json:"job_id"`
+}
+
+// Reset a tracked job to the wishlist: drop stage and applied state, keep saved/viewed/notes.
+func (q *Queries) ClearJobProgress(ctx context.Context, arg ClearJobProgressParams) (UserJob, error) {
+	row := q.db.QueryRow(ctx, clearJobProgress, arg.UserID, arg.JobID)
+	var i UserJob
+	err := row.Scan(
+		&i.UserID,
+		&i.JobID,
+		&i.ViewedAt,
+		&i.AppliedAt,
+		&i.SavedAt,
+		&i.Stage,
+		&i.Notes,
+	)
+	return i, err
+}
+
 const countUserJobs = `-- name: CountUserJobs :one
 SELECT count(*)                                        AS "all",
        count(*) FILTER (WHERE saved_at IS NULL
                           AND applied_at IS NULL)      AS viewed,
        count(*) FILTER (WHERE saved_at   IS NOT NULL) AS saved,
-       count(*) FILTER (WHERE applied_at IS NOT NULL) AS applied
+       count(*) FILTER (WHERE applied_at IS NOT NULL) AS applied,
+       count(*) FILTER (WHERE saved_at   IS NOT NULL
+                            OR applied_at IS NOT NULL
+                            OR stage      IS NOT NULL) AS board
 FROM user_jobs
 WHERE user_id = $1
 `
@@ -26,11 +57,13 @@ type CountUserJobsRow struct {
 	Viewed  int64 `json:"viewed"`
 	Saved   int64 `json:"saved"`
 	Applied int64 `json:"applied"`
+	Board   int64 `json:"board"`
 }
 
 // Per-filter row counts for the my-jobs tabs, in one aggregate pass. "all" is
 // every interaction row; "viewed" is the view-only subset (neither saved nor
-// applied), matching the ListUserJobs filter.
+// applied), matching the ListUserJobs filter. "board" counts jobs on the Kanban
+// board (saved, applied, or stage set), matching the ListUserJobs board filter.
 func (q *Queries) CountUserJobs(ctx context.Context, userID int64) (CountUserJobsRow, error) {
 	row := q.db.QueryRow(ctx, countUserJobs, userID)
 	var i CountUserJobsRow
@@ -39,6 +72,7 @@ func (q *Queries) CountUserJobs(ctx context.Context, userID int64) (CountUserJob
 		&i.Viewed,
 		&i.Saved,
 		&i.Applied,
+		&i.Board,
 	)
 	return i, err
 }
@@ -51,7 +85,9 @@ WHERE uj.user_id = $1
   AND ($4::text = 'all'
        OR ($4::text = 'viewed' AND uj.saved_at IS NULL AND uj.applied_at IS NULL)
        OR ($4::text = 'saved' AND uj.saved_at IS NOT NULL)
-       OR ($4::text = 'applied' AND uj.applied_at IS NOT NULL))
+       OR ($4::text = 'applied' AND uj.applied_at IS NOT NULL)
+       OR ($4::text = 'board'
+           AND (uj.saved_at IS NOT NULL OR uj.applied_at IS NOT NULL OR uj.stage IS NOT NULL)))
 ORDER BY GREATEST(uj.viewed_at, uj.saved_at, uj.applied_at) DESC, uj.job_id DESC
 LIMIT $2 OFFSET $3
 `
@@ -284,6 +320,35 @@ type UnsaveJobParams struct {
 // handler treats that as "already not saved", never as a failure.
 func (q *Queries) UnsaveJob(ctx context.Context, arg UnsaveJobParams) (UserJob, error) {
 	row := q.db.QueryRow(ctx, unsaveJob, arg.UserID, arg.JobID)
+	var i UserJob
+	err := row.Scan(
+		&i.UserID,
+		&i.JobID,
+		&i.ViewedAt,
+		&i.AppliedAt,
+		&i.SavedAt,
+		&i.Stage,
+		&i.Notes,
+	)
+	return i, err
+}
+
+const untrackJob = `-- name: UntrackJob :one
+UPDATE user_jobs
+SET saved_at = NULL, applied_at = NULL, stage = NULL, notes = NULL
+WHERE user_id = $1 AND job_id = $2
+RETURNING user_id, job_id, viewed_at, applied_at, saved_at, stage, notes
+`
+
+type UntrackJobParams struct {
+	UserID int64 `json:"user_id"`
+	JobID  int64 `json:"job_id"`
+}
+
+// Remove a job from the board: drop every pipeline mark, keep viewed_at so the
+// job remains in the user's view history.
+func (q *Queries) UntrackJob(ctx context.Context, arg UntrackJobParams) (UserJob, error) {
+	row := q.db.QueryRow(ctx, untrackJob, arg.UserID, arg.JobID)
 	var i UserJob
 	err := row.Scan(
 		&i.UserID,

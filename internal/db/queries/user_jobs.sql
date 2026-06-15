@@ -47,6 +47,21 @@ ON CONFLICT (user_id, job_id) DO UPDATE
       notes = COALESCE(EXCLUDED.notes, user_jobs.notes)
 RETURNING *;
 
+-- name: ClearJobProgress :one
+-- Reset a tracked job to the wishlist: drop stage and applied state, keep saved/viewed/notes.
+UPDATE user_jobs
+SET stage = NULL, applied_at = NULL
+WHERE user_id = $1 AND job_id = $2
+RETURNING *;
+
+-- name: UntrackJob :one
+-- Remove a job from the board: drop every pipeline mark, keep viewed_at so the
+-- job remains in the user's view history.
+UPDATE user_jobs
+SET saved_at = NULL, applied_at = NULL, stage = NULL, notes = NULL
+WHERE user_id = $1 AND job_id = $2
+RETURNING *;
+
 -- name: ListUserJobs :many
 -- A user's job interactions joined with the job rows, most recently touched
 -- first (GREATEST ignores NULLs; viewed_at is always set). filter narrows to
@@ -60,18 +75,24 @@ WHERE uj.user_id = $1
   AND (sqlc.arg(filter)::text = 'all'
        OR (sqlc.arg(filter)::text = 'viewed' AND uj.saved_at IS NULL AND uj.applied_at IS NULL)
        OR (sqlc.arg(filter)::text = 'saved' AND uj.saved_at IS NOT NULL)
-       OR (sqlc.arg(filter)::text = 'applied' AND uj.applied_at IS NOT NULL))
+       OR (sqlc.arg(filter)::text = 'applied' AND uj.applied_at IS NOT NULL)
+       OR (sqlc.arg(filter)::text = 'board'
+           AND (uj.saved_at IS NOT NULL OR uj.applied_at IS NOT NULL OR uj.stage IS NOT NULL)))
 ORDER BY GREATEST(uj.viewed_at, uj.saved_at, uj.applied_at) DESC, uj.job_id DESC
 LIMIT $2 OFFSET $3;
 
 -- name: CountUserJobs :one
 -- Per-filter row counts for the my-jobs tabs, in one aggregate pass. "all" is
 -- every interaction row; "viewed" is the view-only subset (neither saved nor
--- applied), matching the ListUserJobs filter.
+-- applied), matching the ListUserJobs filter. "board" counts jobs on the Kanban
+-- board (saved, applied, or stage set), matching the ListUserJobs board filter.
 SELECT count(*)                                        AS "all",
        count(*) FILTER (WHERE saved_at IS NULL
                           AND applied_at IS NULL)      AS viewed,
        count(*) FILTER (WHERE saved_at   IS NOT NULL) AS saved,
-       count(*) FILTER (WHERE applied_at IS NOT NULL) AS applied
+       count(*) FILTER (WHERE applied_at IS NOT NULL) AS applied,
+       count(*) FILTER (WHERE saved_at   IS NOT NULL
+                            OR applied_at IS NOT NULL
+                            OR stage      IS NOT NULL) AS board
 FROM user_jobs
 WHERE user_id = $1;

@@ -15,16 +15,20 @@ type fakeRepo struct {
 	slugs map[string]int64
 
 	// per-method canned return (first call wins; subsequent calls return the same)
-	viewResult    jobtracking.Interaction
-	viewErr       error
-	appliedResult jobtracking.Interaction
-	appliedErr    error
-	saveResult    jobtracking.Interaction
-	saveErr       error
-	unsaveResult  jobtracking.Interaction
-	unsaveErr     error
-	trackResult   jobtracking.Interaction
-	trackErr      error
+	viewResult          jobtracking.Interaction
+	viewErr             error
+	appliedResult       jobtracking.Interaction
+	appliedErr          error
+	saveResult          jobtracking.Interaction
+	saveErr             error
+	unsaveResult        jobtracking.Interaction
+	unsaveErr           error
+	trackResult         jobtracking.Interaction
+	trackErr            error
+	clearProgressResult jobtracking.Interaction
+	clearProgressErr    error
+	untrackResult       jobtracking.Interaction
+	untrackErr          error
 
 	// recorded calls
 	slugCalls  int
@@ -61,6 +65,14 @@ func (f *fakeRepo) TrackJob(_ context.Context, _, _ int64, stage, notes *string)
 	f.trackStage = stage
 	f.trackNotes = notes
 	return f.trackResult, f.trackErr
+}
+
+func (f *fakeRepo) ClearJobProgress(_ context.Context, _, _ int64) (jobtracking.Interaction, error) {
+	return f.clearProgressResult, f.clearProgressErr
+}
+
+func (f *fakeRepo) UntrackJob(_ context.Context, _, _ int64) (jobtracking.Interaction, error) {
+	return f.untrackResult, f.untrackErr
 }
 
 // helpers
@@ -310,5 +322,90 @@ func TestTrack_UnknownSlug(t *testing.T) {
 	_, err := svc.Track(ctx(), userID, "missing", strPtr("applied"), nil)
 	if !errors.Is(err, jobtracking.ErrJobNotFound) {
 		t.Errorf("err = %v, want ErrJobNotFound", err)
+	}
+}
+
+// ---
+// 4. ClearProgress
+// ---
+
+func TestClearProgress_HappyPath(t *testing.T) {
+	now := time.Now()
+	repo := newRepo()
+	repo.clearProgressResult = jobtracking.Interaction{
+		JobID:   jobID,
+		SavedAt: tPtr(now),
+		Notes:   strPtr("keep me"),
+	}
+	svc := jobtracking.New(repo)
+
+	got, err := svc.ClearProgress(ctx(), userID, slug)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.JobID != jobID {
+		t.Errorf("JobID = %d, want %d", got.JobID, jobID)
+	}
+	if got.SavedAt == nil {
+		t.Error("SavedAt should be kept after ClearProgress")
+	}
+	if got.Notes == nil || *got.Notes != "keep me" {
+		t.Errorf("Notes = %v, want %q", got.Notes, "keep me")
+	}
+}
+
+func TestClearProgress_UnknownSlug(t *testing.T) {
+	repo := newRepo()
+	svc := jobtracking.New(repo)
+
+	_, err := svc.ClearProgress(ctx(), userID, "missing")
+	if !errors.Is(err, jobtracking.ErrJobNotFound) {
+		t.Errorf("err = %v, want ErrJobNotFound", err)
+	}
+	// The clear repo method must not be called when slug resolution fails.
+	if repo.clearProgressErr != nil {
+		t.Error("clearProgressErr should not be set (repo clear must not be called)")
+	}
+}
+
+// ---
+// 5. Untrack
+// ---
+
+func TestUntrack_HappyPath(t *testing.T) {
+	now := time.Now()
+	repo := newRepo()
+	repo.untrackResult = jobtracking.Interaction{
+		JobID:    jobID,
+		ViewedAt: tPtr(now),
+	}
+	svc := jobtracking.New(repo)
+
+	got, err := svc.Untrack(ctx(), userID, slug)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.JobID != jobID {
+		t.Errorf("JobID = %d, want %d", got.JobID, jobID)
+	}
+	if got.ViewedAt == nil {
+		t.Error("ViewedAt should be kept after Untrack")
+	}
+	if got.SavedAt != nil || got.AppliedAt != nil || got.Stage != nil || got.Notes != nil {
+		t.Error("board marks (saved/applied/stage/notes) should be nil after Untrack")
+	}
+}
+
+func TestUntrack_UnknownSlug(t *testing.T) {
+	repo := newRepo()
+	svc := jobtracking.New(repo)
+
+	_, err := svc.Untrack(ctx(), userID, "missing")
+	if !errors.Is(err, jobtracking.ErrJobNotFound) {
+		t.Errorf("err = %v, want ErrJobNotFound", err)
+	}
+	// The untrack repo method must not be called when slug resolution fails.
+	if repo.untrackErr != nil {
+		t.Error("untrackErr should not be set (repo untrack must not be called)")
 	}
 }
