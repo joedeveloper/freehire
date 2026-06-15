@@ -49,6 +49,26 @@ type CreateInput struct {
 	PostedAt    *time.Time
 }
 
+// validate enforces the required fields and that the URL is an absolute http(s) link
+// (the URL is the dedup key, so it must be well-formed and stable).
+func (in CreateInput) validate() error {
+	if strings.TrimSpace(in.URL) == "" {
+		return fmt.Errorf("%w: url is required", ErrInvalid)
+	}
+	if strings.TrimSpace(in.Title) == "" {
+		return fmt.Errorf("%w: title is required", ErrInvalid)
+	}
+	if strings.TrimSpace(in.Company) == "" {
+		return fmt.Errorf("%w: company is required", ErrInvalid)
+	}
+	u, err := url.Parse(in.URL)
+	// err is checked first so u is non-nil before the scheme/host checks (short-circuit).
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+		return fmt.Errorf("%w: url must be an absolute http(s) URL", ErrInvalid)
+	}
+	return nil
+}
+
 // UpdatePatch is a partial edit: a nil field is left unchanged. The source identity is
 // not editable, so URL is absent here.
 type UpdatePatch struct {
@@ -58,6 +78,19 @@ type UpdatePatch struct {
 	Remote      *bool
 	Description *string
 	PostedAt    *time.Time
+}
+
+// validate rejects an edit that would blank a required field: a supplied (non-nil)
+// title or company must not be empty, mirroring Create's required-field guard. URL is
+// the immutable identity and is not editable here, so it is not checked.
+func (p UpdatePatch) validate() error {
+	if p.Title != nil && strings.TrimSpace(*p.Title) == "" {
+		return fmt.Errorf("%w: title must not be empty", ErrInvalid)
+	}
+	if p.Company != nil && strings.TrimSpace(*p.Company) == "" {
+		return fmt.Errorf("%w: company must not be empty", ErrInvalid)
+	}
+	return nil
 }
 
 // Repository is the persistence contract. Create runs the upsert and enrichment enqueue
@@ -178,38 +211,6 @@ func (s *Service) Update(ctx context.Context, actorID int64, slug string, p Upda
 		Category:    d.Category,
 		UpdatedBy:   actorID,
 	})
-}
-
-// validate enforces the required fields and that the URL is an absolute http(s) link
-// (the URL is the dedup key, so it must be well-formed and stable).
-func (in CreateInput) validate() error {
-	if strings.TrimSpace(in.URL) == "" {
-		return fmt.Errorf("%w: url is required", ErrInvalid)
-	}
-	if strings.TrimSpace(in.Title) == "" {
-		return fmt.Errorf("%w: title is required", ErrInvalid)
-	}
-	if strings.TrimSpace(in.Company) == "" {
-		return fmt.Errorf("%w: company is required", ErrInvalid)
-	}
-	u, err := url.Parse(in.URL)
-	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
-		return fmt.Errorf("%w: url must be an absolute http(s) URL", ErrInvalid)
-	}
-	return nil
-}
-
-// validate rejects an edit that would blank a required field: a supplied (non-nil)
-// title or company must not be empty, mirroring Create's required-field guard. URL is
-// the immutable identity and is not editable here, so it is not checked.
-func (p UpdatePatch) validate() error {
-	if p.Title != nil && strings.TrimSpace(*p.Title) == "" {
-		return fmt.Errorf("%w: title must not be empty", ErrInvalid)
-	}
-	if p.Company != nil && strings.TrimSpace(*p.Company) == "" {
-		return fmt.Errorf("%w: company must not be empty", ErrInvalid)
-	}
-	return nil
 }
 
 // remoteWorkMode maps the moderator's structured remote flag onto a work-mode signal

@@ -91,7 +91,7 @@ func reindexAll(ctx context.Context, q *db.Queries, client *search.Client) (inde
 // the index (the index contains only open jobs — see the job-search spec).
 func splitJobs(jobs []db.Job) ([]search.JobDocument, []int64, error) {
 	docs := make([]search.JobDocument, 0, len(jobs))
-	var deleteIDs []int64
+	deleteIDs := make([]int64, 0, len(jobs))
 	for _, j := range jobs {
 		if j.ClosedAt.Valid {
 			deleteIDs = append(deleteIDs, j.ID)

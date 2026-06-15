@@ -48,7 +48,10 @@ func (r *QueriesRepository) UserIDByIdentity(ctx context.Context, provider, prov
 // supplied (already-lowercased) email, creating a passwordless account when
 // none exists. The operation runs in a single transaction. It returns
 // ErrIdentityConflict on a unique-violation (concurrent callback race).
-func (r *QueriesRepository) LinkOrCreateByEmail(ctx context.Context, provider, providerUserID, email string) (int64, error) {
+func (r *QueriesRepository) LinkOrCreateByEmail(
+	ctx context.Context,
+	provider, providerUserID, email string,
+) (int64, error) {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
 		return 0, err

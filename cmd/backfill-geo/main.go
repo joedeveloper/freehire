@@ -69,9 +69,10 @@ func backfillAll(ctx context.Context, q *db.Queries) (scanned, updated int, err 
 			if workMode == "" {
 				workMode = geo.WorkMode
 			}
-			if slices.Equal(geo.Countries, j.Countries) &&
+			unchanged := slices.Equal(geo.Countries, j.Countries) &&
 				slices.Equal(geo.Regions, j.Regions) &&
-				workMode == j.WorkMode {
+				workMode == j.WorkMode
+			if unchanged {
 				continue
 			}
 			if err := q.SetJobLocation(ctx, db.SetJobLocationParams{

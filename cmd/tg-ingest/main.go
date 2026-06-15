@@ -73,11 +73,11 @@ func (s *postStore) Insert(ctx context.Context, channel string, p telegram.Post,
 	}
 	links := []byte("[]")
 	if len(p.Links) > 0 {
-		if b, err := json.Marshal(p.Links); err == nil {
-			links = b
-		} else {
+		b, err := json.Marshal(p.Links)
+		if err != nil {
 			return false, err
 		}
+		links = b
 	}
 	rows, err := s.q.InsertTelegramPost(ctx, db.InsertTelegramPostParams{
 		Channel:     channel,

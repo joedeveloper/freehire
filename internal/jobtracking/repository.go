@@ -28,7 +28,10 @@ func (r *QueriesRepository) JobIDBySlug(ctx context.Context, slug string) (int64
 	if errors.Is(err, pgx.ErrNoRows) {
 		return 0, ErrJobNotFound
 	}
-	return id, err
+	if err != nil {
+		return 0, err
+	}
+	return id, nil
 }
 
 // RecordView records (or refreshes) a user's view of a job.
@@ -72,7 +75,11 @@ func (r *QueriesRepository) UnsaveJob(ctx context.Context, userID, jobID int64) 
 
 // TrackJob upserts stage and/or notes for the interaction. A nil pointer means
 // "leave unchanged".
-func (r *QueriesRepository) TrackJob(ctx context.Context, userID, jobID int64, stage, notes *string) (Interaction, error) {
+func (r *QueriesRepository) TrackJob(
+	ctx context.Context,
+	userID, jobID int64,
+	stage, notes *string,
+) (Interaction, error) {
 	row, err := r.q.TrackJob(ctx, db.TrackJobParams{
 		UserID: userID,
 		JobID:  jobID,

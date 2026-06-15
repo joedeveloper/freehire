@@ -24,7 +24,7 @@ type Resolved struct {
 // (nil, nil) so the caller can fall back to its own extraction.
 func ResolveLinks(ctx context.Context, reg []Source, urls []string) ([]Resolved, error) {
 	var out []Resolved
-	matched, failed := 0, 0
+	var matched, failed int
 	var firstErr error
 
 	for _, raw := range urls {

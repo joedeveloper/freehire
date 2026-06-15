@@ -127,14 +127,8 @@ func (s workday) detail(ctx context.Context, e CompanyEntry, b workdayBoard, p w
 	}
 	info := d.JobPostingInfo
 
-	title := strings.TrimSpace(info.Title)
-	if title == "" {
-		title = strings.TrimSpace(p.Title)
-	}
-	location := info.Location
-	if location == "" {
-		location = p.LocationsText
-	}
+	title := firstNonEmpty(strings.TrimSpace(info.Title), strings.TrimSpace(p.Title))
+	location := firstNonEmpty(info.Location, p.LocationsText)
 	jobURL := info.ExternalURL
 	if jobURL == "" {
 		jobURL = fmt.Sprintf("https://%s/%s%s", b.host, b.site, p.ExternalPath)

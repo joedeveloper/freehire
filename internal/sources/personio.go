@@ -3,6 +3,7 @@ package sources
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"golang.org/x/net/html"
 )
@@ -39,11 +40,11 @@ type personioPosition struct {
 }
 
 func (pos personioPosition) body() string {
-	var b string
+	var b strings.Builder
 	for _, d := range pos.Descriptions {
-		b += d.Value
+		b.WriteString(d.Value)
 	}
-	return b
+	return b.String()
 }
 
 func (p personio) Fetch(ctx context.Context, e CompanyEntry) ([]Job, error) {

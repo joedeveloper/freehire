@@ -84,19 +84,13 @@ func New(repo Repository, hasher PasswordHasher) *Service {
 	return &Service{repo: repo, hasher: hasher}
 }
 
-// normalizeEmail validates and lowercases an email address. It uses the same
-// logic as the HTTP layer so the Go layer is the single normalizer.
-func normalizeEmail(raw string) (string, error) {
-	addr, err := mail.ParseAddress(strings.TrimSpace(raw))
-	if err != nil {
-		return "", err
-	}
-	return strings.ToLower(addr.Address), nil
-}
-
 // ResolveOAuthAccount maps a provider identity to a local user id, following
 // the identity-first, verified-email-gate, link-or-create, race-retry policy.
-func (s *Service) ResolveOAuthAccount(ctx context.Context, provider, providerUserID, email string, emailVerified bool) (int64, error) {
+func (s *Service) ResolveOAuthAccount(
+	ctx context.Context,
+	provider, providerUserID, email string,
+	emailVerified bool,
+) (int64, error) {
 	// 1. identity-first: cheapest and safest path.
 	id, err := s.repo.UserIDByIdentity(ctx, provider, providerUserID)
 	if err == nil {
@@ -150,7 +144,10 @@ func (s *Service) Login(ctx context.Context, email, password string) (User, erro
 		return User{}, ErrInvalidCredentials
 	}
 	user, hash, hasPassword, err := s.repo.UserByEmail(ctx, addr)
-	if err != nil || !hasPassword || s.hasher.Check(hash, password) != nil {
+	if err != nil || !hasPassword {
+		return User{}, ErrInvalidCredentials
+	}
+	if s.hasher.Check(hash, password) != nil {
 		return User{}, ErrInvalidCredentials
 	}
 	return user, nil
@@ -160,4 +157,14 @@ func (s *Service) Login(ctx context.Context, email, password string) (User, erro
 // repository. Returns ErrUserNotFound when absent.
 func (s *Service) UserByID(ctx context.Context, id int64) (User, error) {
 	return s.repo.UserByID(ctx, id)
+}
+
+// normalizeEmail validates and lowercases an email address. It uses the same
+// logic as the HTTP layer so the Go layer is the single normalizer.
+func normalizeEmail(raw string) (string, error) {
+	addr, err := mail.ParseAddress(strings.TrimSpace(raw))
+	if err != nil {
+		return "", err
+	}
+	return strings.ToLower(addr.Address), nil
 }

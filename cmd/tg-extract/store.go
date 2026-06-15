@@ -126,7 +126,11 @@ func (s *extractStore) Complete(ctx context.Context, post telegram.PendingPost, 
 // source identity — through the canonical UpsertJob + enrichment enqueue, and marks the
 // post extracted, all in one transaction. Same shape as Complete; the identity (source,
 // external_id, url) comes from the resolved job rather than the Telegram post.
-func (s *extractStore) CompleteLinks(ctx context.Context, post telegram.PendingPost, jobs []telegram.ResolvedJob) error {
+func (s *extractStore) CompleteLinks(
+	ctx context.Context,
+	post telegram.PendingPost,
+	jobs []telegram.ResolvedJob,
+) error {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return err

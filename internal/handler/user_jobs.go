@@ -22,6 +22,13 @@ type interactionResponse struct {
 	Notes     *string    `json:"notes"`
 }
 
+// trackRequest is the track body: an optional stage and/or notes. A nil field is
+// left unchanged by the upsert; at least one must be present.
+type trackRequest struct {
+	Stage *string `json:"stage"`
+	Notes *string `json:"notes"`
+}
+
 // toResponse maps the domain Interaction onto the public wire shape.
 func toResponse(i jobtracking.Interaction) interactionResponse {
 	return interactionResponse{
@@ -131,13 +138,6 @@ func (a *API) Untrack(c *fiber.Ctx) error {
 		return trackingError(err)
 	}
 	return c.JSON(fiber.Map{"data": toResponse(interaction)})
-}
-
-// trackRequest is the track body: an optional stage and/or notes. A nil field is
-// left unchanged by the upsert; at least one must be present.
-type trackRequest struct {
-	Stage *string `json:"stage"`
-	Notes *string `json:"notes"`
 }
 
 // TrackJob sets the application stage and/or notes for the authenticated user's

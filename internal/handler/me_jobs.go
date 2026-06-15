@@ -36,7 +36,9 @@ func (a *API) ListMyJobs(c *fiber.Ctx) error {
 	}
 
 	filter := c.Query("filter", "all")
-	if filter != "all" && filter != "viewed" && filter != "saved" && filter != "applied" && filter != "board" {
+	switch filter {
+	case "all", "viewed", "saved", "applied", "board":
+	default:
 		return fiber.NewError(fiber.StatusBadRequest, "filter must be one of: all, viewed, saved, applied, board")
 	}
 	limit, offset := pageParams(c)

@@ -96,16 +96,27 @@ func (c *Client) GetJSON(ctx context.Context, url string, v any) error {
 // GetJSONWithHeaders fetches url with extra request headers and decodes its JSON body
 // into v.
 func (c *Client) GetJSONWithHeaders(ctx context.Context, url string, headers map[string]string, v any) error {
-	return c.do(ctx, http.MethodGet, url, nil, "application/json", headers, func(resp *http.Response) error {
-		return json.NewDecoder(resp.Body).Decode(v)
+	return c.do(ctx, request{
+		method:  http.MethodGet,
+		url:     url,
+		accept:  "application/json",
+		headers: headers,
+		decode: func(resp *http.Response) error {
+			return json.NewDecoder(resp.Body).Decode(v)
+		},
 	})
 }
 
 // GetXML fetches url and decodes its XML body into v (used by adapters whose platform
 // publishes an XML feed, e.g. Personio).
 func (c *Client) GetXML(ctx context.Context, url string, v any) error {
-	return c.do(ctx, http.MethodGet, url, nil, "application/xml", nil, func(resp *http.Response) error {
-		return xml.NewDecoder(resp.Body).Decode(v)
+	return c.do(ctx, request{
+		method: http.MethodGet,
+		url:    url,
+		accept: "application/xml",
+		decode: func(resp *http.Response) error {
+			return xml.NewDecoder(resp.Body).Decode(v)
+		},
 	})
 }
 
@@ -127,14 +138,19 @@ func (c *Client) GetHTMLResolved(ctx context.Context, url string) (*html.Node, s
 func (c *Client) getHTML(ctx context.Context, url string) (*html.Node, string, error) {
 	var node *html.Node
 	var final string
-	err := c.do(ctx, http.MethodGet, url, nil, "text/html", nil, func(resp *http.Response) error {
-		final = resp.Request.URL.String()
-		n, err := html.Parse(resp.Body)
-		if err != nil {
-			return err
-		}
-		node = n
-		return nil
+	err := c.do(ctx, request{
+		method: http.MethodGet,
+		url:    url,
+		accept: "text/html",
+		decode: func(resp *http.Response) error {
+			final = resp.Request.URL.String()
+			n, err := html.Parse(resp.Body)
+			if err != nil {
+				return err
+			}
+			node = n
+			return nil
+		},
 	})
 	return node, final, err
 }
@@ -151,18 +167,35 @@ func (c *Client) PostJSONWithHeaders(ctx context.Context, url string, headers ma
 	if err != nil {
 		return fmt.Errorf("sources: marshal request %s: %w", url, err)
 	}
-	return c.do(ctx, http.MethodPost, url, payload, "application/json", headers, func(resp *http.Response) error {
-		return json.NewDecoder(resp.Body).Decode(v)
+	return c.do(ctx, request{
+		method:  http.MethodPost,
+		url:     url,
+		body:    payload,
+		accept:  "application/json",
+		headers: headers,
+		decode: func(resp *http.Response) error {
+			return json.NewDecoder(resp.Body).Decode(v)
+		},
 	})
 }
 
-// do issues an HTTP request (optionally with a JSON body) and applies decode to a
+// request is the parameters of a single HTTP exchange issued by do. A non-nil body is
+// re-sent on each retry; the standard User-Agent/Accept headers always win over headers.
+type request struct {
+	method  string
+	url     string
+	body    []byte
+	accept  string
+	headers map[string]string
+	decode  func(*http.Response) error
+}
+
+// do issues an HTTP request (optionally with a JSON body) and applies r.decode to a
 // successful response body, retrying transient failures (5xx / network / 429 rate
 // limit) up to maxRetries times. The backoff is a fixed delay, except a 429 honors
 // the server's Retry-After hint — busy ATS APIs (SmartRecruiters) throttle by IP
 // under the concurrent crawl and recover on a brief wait. Other 4xx are not retried.
-// A non-nil body is re-sent on each attempt.
-func (c *Client) do(ctx context.Context, method, url string, body []byte, accept string, headers map[string]string, decode func(*http.Response) error) error {
+func (c *Client) do(ctx context.Context, r request) error {
 	var lastErr error
 	delay := c.retryDelay
 	for attempt := 0; attempt <= c.maxRetries; attempt++ {
@@ -176,23 +209,23 @@ func (c *Client) do(ctx context.Context, method, url string, body []byte, accept
 		delay = c.retryDelay
 
 		var reqBody io.Reader
-		if body != nil {
-			reqBody = bytes.NewReader(body)
+		if r.body != nil {
+			reqBody = bytes.NewReader(r.body)
 		}
-		req, err := http.NewRequestWithContext(ctx, method, url, reqBody)
+		req, err := http.NewRequestWithContext(ctx, r.method, r.url, reqBody)
 		if err != nil {
-			return fmt.Errorf("sources: build request %s: %w", url, err)
+			return fmt.Errorf("sources: build request %s: %w", r.url, err)
 		}
 		// Custom headers go first; the standard headers below always win, so a caller
 		// can never accidentally override User-Agent/Accept.
-		for k, val := range headers {
+		for k, val := range r.headers {
 			req.Header.Set(k, val)
 		}
 		if c.userAgent != "" {
 			req.Header.Set("User-Agent", c.userAgent)
 		}
-		req.Header.Set("Accept", accept)
-		if body != nil {
+		req.Header.Set("Accept", r.accept)
+		if r.body != nil {
 			req.Header.Set("Content-Type", "application/json")
 		}
 
@@ -204,27 +237,27 @@ func (c *Client) do(ctx context.Context, method, url string, body []byte, accept
 
 		switch {
 		case resp.StatusCode >= 200 && resp.StatusCode < 300:
-			err := decode(resp)
+			err := r.decode(resp)
 			resp.Body.Close()
 			if err != nil {
-				return fmt.Errorf("sources: decode %s: %w", url, err)
+				return fmt.Errorf("sources: decode %s: %w", r.url, err)
 			}
 			return nil
 		case resp.StatusCode == http.StatusTooManyRequests:
 			delay = retryAfter(resp, c.retryDelay) // honor the rate-limit hint
 			resp.Body.Close()
-			lastErr = fmt.Errorf("sources: GET %s: status %d", url, resp.StatusCode)
+			lastErr = fmt.Errorf("sources: GET %s: status %d", r.url, resp.StatusCode)
 			continue // rate limited — transient
 		case resp.StatusCode >= 500:
 			resp.Body.Close()
-			lastErr = fmt.Errorf("sources: GET %s: status %d", url, resp.StatusCode)
+			lastErr = fmt.Errorf("sources: GET %s: status %d", r.url, resp.StatusCode)
 			continue // server error — transient
 		default:
 			resp.Body.Close()
-			return fmt.Errorf("sources: GET %s: status %d", url, resp.StatusCode)
+			return fmt.Errorf("sources: GET %s: status %d", r.url, resp.StatusCode)
 		}
 	}
-	return fmt.Errorf("sources: GET %s failed after %d attempts: %w", url, c.maxRetries+1, lastErr)
+	return fmt.Errorf("sources: GET %s failed after %d attempts: %w", r.url, c.maxRetries+1, lastErr)
 }
 
 // retryAfter is how long to wait before retrying a 429, honoring the response's

@@ -25,6 +25,11 @@ import (
 	"github.com/strelov1/freehire/internal/sources"
 )
 
+// staleAfter is the grace window before an unseen job is closed: many crawl cycles
+// at the hourly per-provider cadence, so a board failing several runs in a row keeps
+// its jobs open.
+const staleAfter = 48 * time.Hour
+
 func main() {
 	cfg := config.Load()
 
@@ -95,7 +100,7 @@ func main() {
 // job — the only ones safe to sweep (a zero-ingest provider proves only that its crawl
 // failed). Sorting gives a deterministic sweep order across runs and tests.
 func sweepableProviders(rs pipeline.RunStats) []string {
-	var providers []string
+	providers := make([]string, 0, len(rs))
 	for provider, s := range rs {
 		if shouldSweep(s) {
 			providers = append(providers, provider)
@@ -104,11 +109,6 @@ func sweepableProviders(rs pipeline.RunStats) []string {
 	sort.Strings(providers)
 	return providers
 }
-
-// staleAfter is the grace window before an unseen job is closed: many crawl cycles
-// at the hourly per-provider cadence, so a board failing several runs in a row keeps
-// its jobs open.
-const staleAfter = 48 * time.Hour
 
 // shouldSweep reports whether the run saw enough of the world to justify closing
 // jobs: a run that ingested nothing proves only that the crawl failed.
