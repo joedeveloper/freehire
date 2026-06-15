@@ -135,10 +135,11 @@ func skipPreamble(lines []string) int {
 }
 
 // genVocab emits every closed vocabulary. Source = non-boardless providers plus the
-// literal "telegram" set by the tg-extract worker. Stages from userjob; the rest from
-// the enrich controlled vocabularies.
+// non-adapter sources set by other writers: "telegram" (the tg-extract worker) and
+// "workatastartup" (the moderator/bulk import). Stages from userjob; the rest from the
+// enrich controlled vocabularies.
 func genVocab() string {
-	source := append([]string{"telegram"}, sources.FilterableProviders()...)
+	source := append([]string{"telegram", "workatastartup"}, sources.FilterableProviders()...)
 
 	var b strings.Builder
 	b.WriteString(emitVocab("Source", "SOURCE_VALUES", source))
