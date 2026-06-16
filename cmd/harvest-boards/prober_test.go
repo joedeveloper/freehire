@@ -18,6 +18,16 @@ func (f fakeGetter) GetJSON(_ context.Context, url string, v any) error {
 	return json.Unmarshal([]byte(body), v)
 }
 
+// PostJSON ignores the request body and returns the canned response for url, standing in
+// for Workday's POST-only CXS listing.
+func (f fakeGetter) PostJSON(_ context.Context, url string, _ any, v any) error {
+	body, ok := f[url]
+	if !ok {
+		return errMissing
+	}
+	return json.Unmarshal([]byte(body), v)
+}
+
 func TestGreenhouseProbe(t *testing.T) {
 	g := greenhouseProber{}
 	getter := fakeGetter{
@@ -47,6 +57,30 @@ func TestGreenhouseProbe(t *testing.T) {
 		if name != tc.wantName || n != tc.wantN {
 			t.Errorf("%s: got (%q,%d), want (%q,%d)", tc.slug, name, n, tc.wantName, tc.wantN)
 		}
+	}
+}
+
+func TestWorkdayProbe(t *testing.T) {
+	p := workdayProber{}
+	getter := fakeGetter{
+		"https://aig.wd1.myworkdayjobs.com/wday/cxs/aig/early_careers/jobs": `{"total":9,"jobPostings":[{"title":"x"}]}`,
+		"https://acme.wd5.myworkdayjobs.com/wday/cxs/acme/empty/jobs":       `{"total":0,"jobPostings":[]}`,
+	}
+	// live: name falls back to tenant, count = total
+	if name, n, err := p.probe(context.Background(), getter, "aig.wd1.myworkdayjobs.com/early_careers"); err != nil || name != "aig" || n != 9 {
+		t.Errorf("live: got (%q,%d,%v), want (aig,9,nil)", name, n, err)
+	}
+	// empty board => skip
+	if name, n, err := p.probe(context.Background(), getter, "acme.wd5.myworkdayjobs.com/empty"); err != nil || name != "" || n != 0 {
+		t.Errorf("empty: got (%q,%d,%v), want (\"\",0,nil)", name, n, err)
+	}
+	// absent (getter error) => skip
+	if name, n, err := p.probe(context.Background(), getter, "gone.wd1.myworkdayjobs.com/site"); err != nil || name != "" || n != 0 {
+		t.Errorf("gone: got (%q,%d,%v), want (\"\",0,nil)", name, n, err)
+	}
+	// malformed board id => skip
+	if _, n, err := p.probe(context.Background(), getter, "no-slash"); err != nil || n != 0 {
+		t.Errorf("malformed: got (%d,%v), want (0,nil)", n, err)
 	}
 }
 

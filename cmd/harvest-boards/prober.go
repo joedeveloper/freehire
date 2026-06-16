@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/strelov1/freehire/internal/sources"
 )
@@ -16,13 +17,20 @@ var errMissing = errors.New("not found")
 // which is unexported; this tool lives outside the sources package).
 const greenhouseBoardsAPI = "https://boards-api.greenhouse.io/v1/boards"
 
+// httpClient is the transport a prober needs: most platforms list over GetJSON, but
+// Workday's CXS listing is POST-only. The real *sources.Client implements both.
+type httpClient interface {
+	sources.JSONGetter
+	sources.JSONPoster
+}
+
 // prober checks one candidate board on its ATS platform, returning the company name the
 // platform reports and the number of open jobs. A board that is absent, closed, or
 // unreachable yields ("", 0, nil) — a skip, never a fatal error — so one dead candidate
 // cannot abort the harvest. A non-nil error is reserved for failures a prober genuinely
 // wants surfaced (the caller logs and skips those too).
 type prober interface {
-	probe(ctx context.Context, c sources.JSONGetter, slug string) (company string, openJobs int, err error)
+	probe(ctx context.Context, c httpClient, slug string) (company string, openJobs int, err error)
 }
 
 // greenhouseProber probes the Greenhouse public boards API. The jobs endpoint lists only
@@ -30,7 +38,7 @@ type prober interface {
 // board-metadata endpoint, fetched only once a board is known to have jobs.
 type greenhouseProber struct{}
 
-func (greenhouseProber) probe(ctx context.Context, c sources.JSONGetter, slug string) (string, int, error) {
+func (greenhouseProber) probe(ctx context.Context, c httpClient, slug string) (string, int, error) {
 	var jr struct {
 		Jobs []struct {
 			ID int64 `json:"id"`
@@ -60,7 +68,7 @@ func (greenhouseProber) probe(ctx context.Context, c sources.JSONGetter, slug st
 // the name falls back to the slug.
 type leverProber struct{}
 
-func (leverProber) probe(ctx context.Context, c sources.JSONGetter, slug string) (string, int, error) {
+func (leverProber) probe(ctx context.Context, c httpClient, slug string) (string, int, error) {
 	var postings []struct {
 		ID string `json:"id"`
 	}
@@ -78,7 +86,7 @@ func (leverProber) probe(ctx context.Context, c sources.JSONGetter, slug string)
 // slug, which Ashby itself uses as the board identity.
 type ashbyProber struct{}
 
-func (ashbyProber) probe(ctx context.Context, c sources.JSONGetter, slug string) (string, int, error) {
+func (ashbyProber) probe(ctx context.Context, c httpClient, slug string) (string, int, error) {
 	var resp struct {
 		Jobs []struct {
 			ID string `json:"id"`
@@ -97,7 +105,7 @@ func (ashbyProber) probe(ctx context.Context, c sources.JSONGetter, slug string)
 // live board; the name falls back to the slug (the subdomain), as the list carries none.
 type bamboohrProber struct{}
 
-func (bamboohrProber) probe(ctx context.Context, c sources.JSONGetter, slug string) (string, int, error) {
+func (bamboohrProber) probe(ctx context.Context, c httpClient, slug string) (string, int, error) {
 	var list struct {
 		Result []struct {
 			ID string `json:"id"`
@@ -112,6 +120,71 @@ func (bamboohrProber) probe(ctx context.Context, c sources.JSONGetter, slug stri
 	return slug, len(list.Result), nil
 }
 
+// workdayProber probes Workday's public CXS listing (POST-only). The board id is
+// "<host>/<site>" (e.g. "aig.wd1.myworkdayjobs.com/early_careers"); the tenant is the
+// host's first dot-label. The listing carries no company name, so it falls back to the
+// tenant (slug-fallback doctrine). The CXS site path is case-insensitive, so the seed's
+// lowercased sites work unchanged.
+type workdayProber struct{}
+
+func (workdayProber) probe(ctx context.Context, c httpClient, boardID string) (string, int, error) {
+	host, site, ok := strings.Cut(boardID, "/")
+	if !ok || host == "" || site == "" {
+		return "", 0, nil
+	}
+	tenant, _, ok := strings.Cut(host, ".")
+	if !ok || tenant == "" {
+		return "", 0, nil
+	}
+	url := fmt.Sprintf("https://%s/wday/cxs/%s/%s/jobs", host, tenant, site)
+	body := map[string]any{"appliedFacets": map[string]any{}, "limit": 1, "offset": 0, "searchText": ""}
+	var resp struct {
+		Total       int `json:"total"`
+		JobPostings []struct {
+			Title string `json:"title"`
+		} `json:"jobPostings"`
+	}
+	if err := c.PostJSON(ctx, url, body, &resp); err != nil {
+		return "", 0, nil
+	}
+	n := resp.Total
+	if n == 0 {
+		n = len(resp.JobPostings)
+	}
+	if n == 0 {
+		return "", 0, nil
+	}
+	return tenant, n, nil
+}
+
+// seedMapper converts a provider's raw seed token into its canonical board id. Providers
+// whose seed token already IS the board id (greenhouse/lever/ashby/bamboohr) do not
+// implement it. Mirrors the optional-marker idiom of sources.boardless.
+type seedMapper interface {
+	boardID(seedToken string) string
+}
+
+// dedupKeyer folds a board id into the key used for dedup against existing boards. A
+// provider whose board ids are case-insensitive (Workday) implements it to fold case; the
+// rest dedup case-sensitively (Ashby slugs differ by case), so they do not implement it.
+type dedupKeyer interface {
+	dedupKey(boardID string) string
+}
+
+// dedupKey folds a Workday board id to lower case: Workday's CXS API is case-insensitive,
+// so "acme.wd1.myworkdayjobs.com/Careers" and ".../careers" are the same board.
+func (workdayProber) dedupKey(boardID string) string { return strings.ToLower(boardID) }
+
+// boardID turns a "tenant|dc|site" seed token into "<tenant>.<dc>.myworkdayjobs.com/<site>".
+// A token that is not exactly three non-empty parts is returned unchanged (probe drops it).
+func (workdayProber) boardID(seedToken string) string {
+	parts := strings.Split(seedToken, "|")
+	if len(parts) != 3 || parts[0] == "" || parts[1] == "" || parts[2] == "" {
+		return seedToken
+	}
+	return fmt.Sprintf("%s.%s.myworkdayjobs.com/%s", parts[0], parts[1], parts[2])
+}
+
 // probers maps a provider key to its prober. Adding an ATS is one entry here plus the
 // prober type — the same shape as sources.All.
 var probers = map[string]prober{
@@ -119,4 +192,5 @@ var probers = map[string]prober{
 	"lever":      leverProber{},
 	"ashby":      ashbyProber{},
 	"bamboohr":   bamboohrProber{},
+	"workday":    workdayProber{},
 }
