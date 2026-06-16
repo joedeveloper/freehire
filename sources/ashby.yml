@@ -1055,6 +1055,8 @@
   board: ShiftKey
 - company: Sierra
   board: sierra
+- company: Sierra Studio
+  board: sierra-studio
 - company: Sieve
   board: sieve
 - company: SIFT
