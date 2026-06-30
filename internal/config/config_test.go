@@ -16,8 +16,8 @@ func TestLoad_JWTSecretFromEnv(t *testing.T) {
 func TestLoad_JWTTTLDefaultsWhenUnset(t *testing.T) {
 	t.Setenv("JWT_TTL", "")
 
-	if got := Load().JWTTTL; got != 24*time.Hour {
-		t.Errorf("JWTTTL = %v, want 24h", got)
+	if got := Load().JWTTTL; got != 30*24*time.Hour {
+		t.Errorf("JWTTTL = %v, want 30d", got)
 	}
 }
 
@@ -32,8 +32,8 @@ func TestLoad_JWTTTLParsesDuration(t *testing.T) {
 func TestLoad_JWTTTLFallsBackOnGarbage(t *testing.T) {
 	t.Setenv("JWT_TTL", "not-a-duration")
 
-	if got := Load().JWTTTL; got != 24*time.Hour {
-		t.Errorf("JWTTTL = %v, want 24h fallback", got)
+	if got := Load().JWTTTL; got != 30*24*time.Hour {
+		t.Errorf("JWTTTL = %v, want 30d fallback", got)
 	}
 }
 

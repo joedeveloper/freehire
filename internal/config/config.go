@@ -66,7 +66,7 @@ func Load() Settings {
 		DatabaseURL:    env("DATABASE_URL", "postgres://hire:hire@localhost:5432/hire?sslmode=disable"),
 		FrontendOrigin: env("FRONTEND_ORIGIN", "http://localhost:5173"),
 		JWTSecret:      os.Getenv("JWT_SECRET"),
-		JWTTTL:         envDuration("JWT_TTL", 24*time.Hour),
+		JWTTTL:         envDuration("JWT_TTL", 30*24*time.Hour),
 		CookieSecure:   envBool("COOKIE_SECURE", false),
 		OAuth:          loadOAuth(),
 		MeiliURL:       env("MEILI_URL", "http://localhost:7700"),

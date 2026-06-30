@@ -37,14 +37,23 @@
   // singleton (see auth-dialog.svelte), so deep components — like a job's Save
   // button — can prompt sign-in through the same dialog this header renders.
 
-  // Surface a failed OAuth callback (?auth_error) once on the client, then clean
-  // the URL. In onMount so it never runs during SSR.
+  // Surface auth prompts carried in the URL once on the client, then clean it.
+  // ?auth_error: a failed OAuth callback. ?auth=required: a guarded page (e.g.
+  // /my/jobs) bounced a signed-out visitor here to sign in. In onMount so it
+  // never runs during SSR.
   onMount(() => {
-    if (page.url.searchParams.has('auth_error')) {
+    const params = page.url.searchParams;
+    if (params.has('auth_error')) {
+      // A real failure: seed the dialog's error banner.
       openAuthDialog('login', 'Sign-in failed. Please try again.');
-      // eslint-disable-next-line svelte/no-navigation-without-resolve -- shallow same-page URL clean-up to the current pathname; nothing to resolve
-      replaceState(page.url.pathname, {});
+    } else if (params.get('auth') === 'required') {
+      // Just a sign-in gate, not an error — open the dialog with no error banner.
+      openAuthDialog('login');
+    } else {
+      return;
     }
+    // eslint-disable-next-line svelte/no-navigation-without-resolve -- shallow same-page URL clean-up to the current pathname; nothing to resolve
+    replaceState(page.url.pathname, {});
   });
 </script>
 
