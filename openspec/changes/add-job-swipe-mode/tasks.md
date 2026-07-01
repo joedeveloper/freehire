@@ -28,17 +28,17 @@
 
 ## 5. Frontend: API client + route shell
 
-- [ ] 5.1 Add `swipeDeck(params, limit, offset)`, `dismissJob(slug)`, `undismissJob(slug)` to `web/src/lib/api.ts`, mirroring `saveJob`/`unsaveJob`
-- [ ] 5.2 Create the `/jobs/swipe` route (`+page.svelte` + `+page.server.ts` noindex) reading the same URL params as `/jobs`; render the auth-gate prompt for signed-out users
-- [ ] 5.3 Add the swipe-mode entry button to `JobsView.svelte` toolbar → `goto('/jobs/swipe?' + filtersToParams(applied))`
+- [x] 5.1 Add `swipeDeck(params, limit, offset)`, `dismissJob(slug)`, `undismissJob(slug)` to `web/src/lib/api.ts`, mirroring `saveJob`/`unsaveJob`
+- [x] 5.2 Create the `/jobs/swipe` route (`+page.svelte` + `+page.server.ts` noindex) reading the same URL params as `/jobs`; render the auth-gate prompt for signed-out users
+- [x] 5.3 Add the swipe-mode entry button to `JobsView.svelte` toolbar → `goto('/jobs/swipe?' + filtersToParams(applied))`
 
 ## 6. Frontend: SwipeDeck component
 
-- [ ] 6.1 Create `SwipeDeck.svelte`: fetch the first batch via `swipeDeck`, render the active card (rich layout: logo, title, company+location, salary, facet chips, description excerpt) plus a peeking next card
-- [ ] 6.2 Desktop input: ✗/♥ buttons and `←`/`→` keys → dismiss/save + advance; `↑`/click opens detail; `U`/button triggers undo
-- [ ] 6.3 Mobile input: touch drag with commit threshold + exit animation — right = save, left = dismiss
-- [ ] 6.4 Save/dismiss call `saveJob`/`dismissJob` and advance; undo calls `unsaveJob`/`undismissJob` and restores the last card (single-step)
-- [ ] 6.5 Prefetch the next `offset` batch below a remaining-cards threshold; render the exhausted-deck empty state with a link back to `/jobs`
+- [x] 6.1 Create `SwipeDeck.svelte`: fetch the first batch via `swipeDeck`, render the active card (rich layout: logo, title, company+location, salary, facet chips, description excerpt) plus a peeking next card
+- [x] 6.2 Desktop input: ✗/♥ buttons and `←`/`→` keys → dismiss/save + advance; `↑`/click opens detail; `U`/button triggers undo
+- [x] 6.3 Mobile input: touch drag with commit threshold + exit animation — right = save, left = dismiss
+- [x] 6.4 Save/dismiss call `saveJob`/`dismissJob` and advance; undo calls `unsaveJob`/`undismissJob` and restores the last card (single-step)
+- [x] 6.5 Prefetch the next `offset` batch below a remaining-cards threshold; render the exhausted-deck empty state with a link back to `/jobs`
 
 ## 7. Verification
 

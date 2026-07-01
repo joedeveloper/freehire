@@ -150,6 +150,16 @@ export function createApi(
     return toSlice(await request<Page<Job>>(`/api/v1/jobs/search?${params}`), offset);
   }
 
+  /** The swipe-deck batch: open jobs matching the same facets/query as
+   *  `searchJobs`, minus the caller's already-judged (saved or dismissed) jobs,
+   *  excluded server-side. Authenticated; batched via limit/offset for prefetch. */
+  async function swipeDeck(facets: URLSearchParams, limit: number, offset: number): Promise<Slice<Job>> {
+    const params = new URLSearchParams(facets);
+    params.set('limit', String(limit));
+    params.set('offset', String(offset));
+    return toSlice(await request<Page<Job>>(`/api/v1/me/jobs/swipe?${params}`), offset);
+  }
+
   /** Facet-distribution counts for the analytics page. `params` carries the same
    *  query text and facet filters as `searchJobs` (built by the caller, e.g. via
    *  `filtersToParams`); the endpoint returns counts instead of a page of jobs.
@@ -233,7 +243,7 @@ export function createApi(
   /** Call a job-interaction endpoint and return the resulting record. */
   async function jobInteraction(
     slug: string,
-    action: 'view' | 'apply' | 'save' | 'stage' | 'track',
+    action: 'view' | 'apply' | 'save' | 'stage' | 'track' | 'dismiss',
     method: 'POST' | 'DELETE' = 'POST',
   ): Promise<UserJob> {
     const res = await request<{ data: UserJob }>(`/api/v1/jobs/${slug}/${action}`, { method });
@@ -270,6 +280,18 @@ export function createApi(
   /** Clear a job's saved mark. Idempotent: "already not saved" is success. */
   function unsaveJob(slug: string): Promise<UserJob> {
     return jobInteraction(slug, 'save', 'DELETE');
+  }
+
+  /** Dismiss (swipe away) a job in the swipe deck. Keeps it out of the deck only;
+   *  the job stays visible in the normal list and search. */
+  function dismissJob(slug: string): Promise<UserJob> {
+    return jobInteraction(slug, 'dismiss');
+  }
+
+  /** Clear a job's dismissed mark (swipe-mode undo). Idempotent: "already not
+   *  dismissed" is success. */
+  function undismissJob(slug: string): Promise<UserJob> {
+    return jobInteraction(slug, 'dismiss', 'DELETE');
   }
 
   /** Drop a job's pipeline progress (stage + applied), keeping its saved mark —
@@ -548,6 +570,7 @@ export function createApi(
     getJob,
     getSimilarJobs,
     searchJobs,
+    swipeDeck,
     facetCounts,
     listCompanies,
     getCompany,
@@ -560,6 +583,8 @@ export function createApi(
     markJobApplied,
     saveJob,
     unsaveJob,
+    dismissJob,
+    undismissJob,
     clearJobStage,
     untrackJob,
     trackJob,
@@ -611,6 +636,7 @@ export const {
   getJob,
   getSimilarJobs,
   searchJobs,
+  swipeDeck,
   facetCounts,
   listCompanies,
   getCompany,
@@ -623,6 +649,8 @@ export const {
   markJobApplied,
   saveJob,
   unsaveJob,
+  dismissJob,
+  undismissJob,
   clearJobStage,
   untrackJob,
   trackJob,

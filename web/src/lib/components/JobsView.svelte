@@ -1,6 +1,8 @@
 <script lang="ts">
   import { onMount, untrack } from 'svelte';
   import { browser } from '$app/environment';
+  import { goto } from '$app/navigation';
+  import { resolve } from '$app/paths';
   import { page } from '$app/state';
   import { api, type Slice } from '$lib/api';
   import { isAuthenticated } from '$lib/auth.svelte';
@@ -95,6 +97,15 @@
     jobs = next;
   }
 
+  // Enter swipe mode carrying the current filters + query (same param shape the
+  // list uses), so the deck reflects exactly what's on screen. `scope` params are
+  // fixed context (e.g. company_slug) and go along too.
+  function openSwipe() {
+    const params = scopedParams();
+    const qs = params.toString();
+    goto(resolve('/jobs/swipe') + (qs ? `?${qs}` : ''));
+  }
+
   // Reload list + counts whenever the debounced filters change — a settled
   // keystroke, an immediate facet toggle, or a back/forward re-seed. Skip the
   // first run for the list (the SSR `initial` already seeded page one); still
@@ -135,6 +146,13 @@
         aria-label="Search jobs"
         class="min-w-0 flex-1"
       />
+      <button
+        type="button"
+        class="h-9 shrink-0 rounded-lg border border-border bg-secondary px-3 text-sm font-medium text-secondary-foreground transition-colors hover:bg-accent"
+        onclick={openSwipe}
+      >
+        Swipe
+      </button>
       <button
         type="button"
         class="h-9 shrink-0 rounded-lg border border-border bg-secondary px-3 text-sm font-medium text-secondary-foreground transition-colors hover:bg-accent md:hidden"

@@ -119,6 +119,8 @@ export interface UserJob {
   viewed_at: string;
   saved_at: string | null;
   applied_at: string | null;
+  // Swipe-mode triage mark; null until the job is dismissed (swipe left).
+  dismissed_at: string | null;
   // Application pipeline stage + free-text notes; null until set via `track`.
   stage: string | null;
   notes: string | null;
