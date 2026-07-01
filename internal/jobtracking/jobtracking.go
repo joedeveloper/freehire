@@ -15,12 +15,13 @@ import (
 
 // Interaction is the storage-agnostic result of a per-user job interaction.
 type Interaction struct {
-	JobID     int64
-	ViewedAt  *time.Time
-	SavedAt   *time.Time
-	AppliedAt *time.Time
-	Stage     *string
-	Notes     *string
+	JobID       int64
+	ViewedAt    *time.Time
+	SavedAt     *time.Time
+	AppliedAt   *time.Time
+	DismissedAt *time.Time
+	Stage       *string
+	Notes       *string
 }
 
 // Filter selects which interactions a listing returns. It is a controlled
@@ -124,6 +125,14 @@ type Repository interface {
 	// exists at all (the Service turns that into a zero-interaction success).
 	UnsaveJob(ctx context.Context, userID, jobID int64) (Interaction, error)
 
+	// DismissJob sets the dismissed mark, idempotently, keeping the job out of the
+	// swipe deck without affecting the public list/search.
+	DismissJob(ctx context.Context, userID, jobID int64) (Interaction, error)
+
+	// UndismissJob clears the dismissed mark. It returns ErrNoInteraction when no
+	// row exists at all (the Service turns that into a zero-interaction success).
+	UndismissJob(ctx context.Context, userID, jobID int64) (Interaction, error)
+
 	// TrackJob upserts the stage and/or notes for the interaction. A nil pointer
 	// means "leave unchanged".
 	TrackJob(ctx context.Context, userID, jobID int64, stage, notes *string) (Interaction, error)
@@ -148,7 +157,16 @@ type Repository interface {
 
 	// ViewedSlugs returns every public job slug the caller has interacted with.
 	ViewedSlugs(ctx context.Context, userID int64) ([]string, error)
+
+	// ExcludedJobIDs returns up to limit job ids the caller has already judged
+	// (saved or dismissed), most-recently-judged first.
+	ExcludedJobIDs(ctx context.Context, userID int64, limit int32) ([]int64, error)
 }
+
+// excludedJobsCap bounds the swipe deck's exclusion set so the search
+// `id NOT IN (...)` filter stays small; a heavy triager past this cap may
+// occasionally re-see a long-ago-judged job, which is acceptable.
+const excludedJobsCap int32 = 1000
 
 // Service implements the per-user job-tracking use cases.
 type Service struct {
@@ -183,6 +201,12 @@ func (s *Service) ListTracked(ctx context.Context, userID int64, filter string, 
 // ViewedSlugs returns every public job slug the caller has interacted with.
 func (s *Service) ViewedSlugs(ctx context.Context, userID int64) ([]string, error) {
 	return s.repo.ViewedSlugs(ctx, userID)
+}
+
+// ExcludedJobIDs returns the job ids the caller has already judged (saved or
+// dismissed) — the swipe deck's exclusion set, capped at excludedJobsCap.
+func (s *Service) ExcludedJobIDs(ctx context.Context, userID int64) ([]int64, error) {
+	return s.repo.ExcludedJobIDs(ctx, userID, excludedJobsCap)
 }
 
 // Pipeline returns the caller's application-pipeline snapshot: the per-stage
@@ -232,6 +256,31 @@ func (s *Service) Unsave(ctx context.Context, userID int64, slug string) (Intera
 		return Interaction{}, err
 	}
 	row, err := s.repo.UnsaveJob(ctx, userID, jobID)
+	if errors.Is(err, ErrNoInteraction) {
+		return Interaction{JobID: jobID}, nil
+	}
+	return row, err
+}
+
+// Dismiss resolves slug → jobID then delegates to the repository, marking the
+// job dismissed in the swipe deck.
+func (s *Service) Dismiss(ctx context.Context, userID int64, slug string) (Interaction, error) {
+	jobID, err := s.repo.JobIDBySlug(ctx, slug)
+	if err != nil {
+		return Interaction{}, err
+	}
+	return s.repo.DismissJob(ctx, userID, jobID)
+}
+
+// Undismiss resolves slug → jobID then clears the dismissed mark. If the
+// repository returns ErrNoInteraction (no row to clear), the method returns a
+// zero Interaction with only JobID set — undismissing is idempotent.
+func (s *Service) Undismiss(ctx context.Context, userID int64, slug string) (Interaction, error) {
+	jobID, err := s.repo.JobIDBySlug(ctx, slug)
+	if err != nil {
+		return Interaction{}, err
+	}
+	row, err := s.repo.UndismissJob(ctx, userID, jobID)
 	if errors.Is(err, ErrNoInteraction) {
 		return Interaction{JobID: jobID}, nil
 	}

@@ -24,6 +24,10 @@ type fakeRepo struct {
 	saveErr             error
 	unsaveResult        jobtracking.Interaction
 	unsaveErr           error
+	dismissResult       jobtracking.Interaction
+	dismissErr          error
+	undismissResult     jobtracking.Interaction
+	undismissErr        error
 	trackResult         jobtracking.Interaction
 	trackErr            error
 	clearProgressResult jobtracking.Interaction
@@ -36,6 +40,9 @@ type fakeRepo struct {
 	countErr            error
 	viewedResult        []string
 	viewedErr           error
+	excludedResult      []int64
+	excludedErr         error
+	excludedLimit       int32
 	pipelineResult      []userjob.StageCount
 	pipelineErr         error
 
@@ -72,6 +79,14 @@ func (f *fakeRepo) UnsaveJob(_ context.Context, _, _ int64) (jobtracking.Interac
 	return f.unsaveResult, f.unsaveErr
 }
 
+func (f *fakeRepo) DismissJob(_ context.Context, _, _ int64) (jobtracking.Interaction, error) {
+	return f.dismissResult, f.dismissErr
+}
+
+func (f *fakeRepo) UndismissJob(_ context.Context, _, _ int64) (jobtracking.Interaction, error) {
+	return f.undismissResult, f.undismissErr
+}
+
 func (f *fakeRepo) TrackJob(_ context.Context, _, _ int64, stage, notes *string) (jobtracking.Interaction, error) {
 	f.trackStage = stage
 	f.trackNotes = notes
@@ -98,6 +113,11 @@ func (f *fakeRepo) CountInteractions(_ context.Context, _ int64) (jobtracking.Co
 
 func (f *fakeRepo) ViewedSlugs(_ context.Context, _ int64) ([]string, error) {
 	return f.viewedResult, f.viewedErr
+}
+
+func (f *fakeRepo) ExcludedJobIDs(_ context.Context, _ int64, limit int32) ([]int64, error) {
+	f.excludedLimit = limit
+	return f.excludedResult, f.excludedErr
 }
 
 func (f *fakeRepo) PipelineCounts(_ context.Context, _ int64) ([]userjob.StageCount, error) {
@@ -245,6 +265,78 @@ func TestUnsave_UnknownSlug(t *testing.T) {
 	svc := jobtracking.New(repo)
 
 	_, err := svc.Unsave(ctx(), userID, "missing")
+	if !errors.Is(err, jobtracking.ErrJobNotFound) {
+		t.Errorf("err = %v, want ErrJobNotFound", err)
+	}
+}
+
+// ---
+// 2b. Dismiss / Undismiss (mirrors Save / Unsave)
+// ---
+
+func TestDismiss_HappyPath(t *testing.T) {
+	now := time.Now()
+	repo := newRepo()
+	repo.dismissResult = jobtracking.Interaction{JobID: jobID, DismissedAt: tPtr(now)}
+	svc := jobtracking.New(repo)
+
+	got, err := svc.Dismiss(ctx(), userID, slug)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.DismissedAt == nil {
+		t.Error("DismissedAt should be set")
+	}
+}
+
+func TestDismiss_UnknownSlug(t *testing.T) {
+	repo := newRepo()
+	svc := jobtracking.New(repo)
+
+	_, err := svc.Dismiss(ctx(), userID, "missing")
+	if !errors.Is(err, jobtracking.ErrJobNotFound) {
+		t.Errorf("err = %v, want ErrJobNotFound", err)
+	}
+}
+
+func TestUndismiss_NoInteraction_ReturnsZero(t *testing.T) {
+	repo := newRepo()
+	repo.undismissErr = jobtracking.ErrNoInteraction
+	svc := jobtracking.New(repo)
+
+	got, err := svc.Undismiss(ctx(), userID, slug)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.JobID != jobID {
+		t.Errorf("JobID = %d, want %d", got.JobID, jobID)
+	}
+	if got.ViewedAt != nil || got.SavedAt != nil || got.AppliedAt != nil ||
+		got.DismissedAt != nil || got.Stage != nil || got.Notes != nil {
+		t.Error("zero interaction should have all nil fields except JobID")
+	}
+}
+
+func TestUndismiss_ExistingRow_Passthrough(t *testing.T) {
+	now := time.Now()
+	repo := newRepo()
+	repo.undismissResult = jobtracking.Interaction{JobID: jobID, ViewedAt: tPtr(now)}
+	svc := jobtracking.New(repo)
+
+	got, err := svc.Undismiss(ctx(), userID, slug)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.ViewedAt == nil || !got.ViewedAt.Equal(now) {
+		t.Errorf("ViewedAt = %v, want %v", got.ViewedAt, now)
+	}
+}
+
+func TestUndismiss_UnknownSlug(t *testing.T) {
+	repo := newRepo()
+	svc := jobtracking.New(repo)
+
+	_, err := svc.Undismiss(ctx(), userID, "missing")
 	if !errors.Is(err, jobtracking.ErrJobNotFound) {
 		t.Errorf("err = %v, want ErrJobNotFound", err)
 	}
@@ -509,6 +601,23 @@ func TestViewedSlugs_Passthrough(t *testing.T) {
 	}
 	if len(slugs) != 2 || slugs[0] != "job-a" {
 		t.Errorf("slugs = %v, want [job-a job-b]", slugs)
+	}
+}
+
+func TestExcludedJobIDs_PassthroughWithCap(t *testing.T) {
+	repo := newRepo()
+	repo.excludedResult = []int64{3, 1, 2}
+	svc := jobtracking.New(repo)
+
+	ids, err := svc.ExcludedJobIDs(ctx(), userID)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(ids) != 3 || ids[0] != 3 {
+		t.Errorf("ids = %v, want [3 1 2]", ids)
+	}
+	if repo.excludedLimit != 1000 {
+		t.Errorf("repo received limit %d, want 1000 (excludedJobsCap)", repo.excludedLimit)
 	}
 }
 

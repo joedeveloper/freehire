@@ -6,15 +6,15 @@
 
 ## 1. Persistence: the dismissed interaction
 
-- [ ] 1.1 Add migration `ALTER TABLE user_jobs ADD COLUMN IF NOT EXISTS dismissed_at TIMESTAMPTZ` (new migration file, mirroring the `saved_at` add)
-- [ ] 1.2 Add sqlc queries `DismissJob` (idempotent upsert `dismissed_at = now()`), `UndismissJob` (set `dismissed_at = NULL`), and `ExcludedJobIDs` (job ids where `dismissed_at IS NOT NULL OR saved_at IS NOT NULL`, capped/ordered most-recent) in `queries/user_jobs.sql`; run `make sqlc`
-- [ ] 1.3 Extend the `jobtracking` service with `Dismiss`/`Undismiss` use cases delegating to the new queries, mirroring save/unsave
+- [x] 1.1 Add migration `ALTER TABLE user_jobs ADD COLUMN IF NOT EXISTS dismissed_at TIMESTAMPTZ` (new migration file, mirroring the `saved_at` add)
+- [x] 1.2 Add sqlc queries `DismissJob` (idempotent upsert `dismissed_at = now()`), `UndismissJob` (set `dismissed_at = NULL`), and `ExcludedJobIDs` (job ids where `dismissed_at IS NOT NULL OR saved_at IS NOT NULL`, capped/ordered most-recent) in `queries/user_jobs.sql`; run `make sqlc`
+- [x] 1.3 Extend the `jobtracking` service with `Dismiss`/`Undismiss` use cases delegating to the new queries, mirroring save/unsave
 
 ## 2. Dismiss endpoints
 
-- [ ] 2.1 Add `DismissJob` handler `POST /jobs/:slug/dismiss` (resolve slug→id, idempotent, returns updated interaction) behind `RequireAuthOrKey`; wire the route
-- [ ] 2.2 Add `UndismissJob` handler `DELETE /jobs/:slug/dismiss` (no-op when not dismissed) behind `RequireAuthOrKey`; wire the route
-- [ ] 2.3 Integration tests (`integration` build tag): dismiss sets `dismissed_at`, is idempotent, works via API key, 401 unauth, 404 on missing job; undismiss clears and is a no-op when absent
+- [x] 2.1 Add `DismissJob` handler `POST /jobs/:slug/dismiss` (resolve slug→id, idempotent, returns updated interaction) behind `RequireAuthOrKey`; wire the route
+- [x] 2.2 Add `UndismissJob` handler `DELETE /jobs/:slug/dismiss` (no-op when not dismissed) behind `RequireAuthOrKey`; wire the route
+- [x] 2.3 Integration tests (`integration` build tag): dismiss sets `dismissed_at`, is idempotent, works via API key, 401 unauth, 404 on missing job; undismiss clears and is a no-op when absent
 
 ## 3. Search: filterable id + exclusion helper
 

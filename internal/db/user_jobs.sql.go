@@ -15,7 +15,7 @@ const clearJobProgress = `-- name: ClearJobProgress :one
 UPDATE user_jobs
 SET stage = NULL, applied_at = NULL
 WHERE user_id = $1 AND job_id = $2
-RETURNING user_id, job_id, viewed_at, applied_at, saved_at, stage, notes
+RETURNING user_id, job_id, viewed_at, applied_at, saved_at, stage, notes, dismissed_at
 `
 
 type ClearJobProgressParams struct {
@@ -35,6 +35,7 @@ func (q *Queries) ClearJobProgress(ctx context.Context, arg ClearJobProgressPara
 		&i.SavedAt,
 		&i.Stage,
 		&i.Notes,
+		&i.DismissedAt,
 	)
 	return i, err
 }
@@ -112,6 +113,75 @@ func (q *Queries) CountUserJobs(ctx context.Context, userID int64) (CountUserJob
 		&i.Board,
 	)
 	return i, err
+}
+
+const dismissJob = `-- name: DismissJob :one
+INSERT INTO user_jobs (user_id, job_id, dismissed_at)
+VALUES ($1, $2, now())
+ON CONFLICT (user_id, job_id) DO UPDATE SET dismissed_at = now()
+RETURNING user_id, job_id, viewed_at, applied_at, saved_at, stage, notes, dismissed_at
+`
+
+type DismissJobParams struct {
+	UserID int64 `json:"user_id"`
+	JobID  int64 `json:"job_id"`
+}
+
+// Dismiss (swipe away) a job for a user in the swipe deck. Idempotent and
+// independent of a prior view: it inserts the row (viewed_at defaults) or
+// refreshes dismissed_at in place.
+func (q *Queries) DismissJob(ctx context.Context, arg DismissJobParams) (UserJob, error) {
+	row := q.db.QueryRow(ctx, dismissJob, arg.UserID, arg.JobID)
+	var i UserJob
+	err := row.Scan(
+		&i.UserID,
+		&i.JobID,
+		&i.ViewedAt,
+		&i.AppliedAt,
+		&i.SavedAt,
+		&i.Stage,
+		&i.Notes,
+		&i.DismissedAt,
+	)
+	return i, err
+}
+
+const excludedJobIDs = `-- name: ExcludedJobIDs :many
+SELECT job_id
+FROM user_jobs
+WHERE user_id = $1
+  AND (saved_at IS NOT NULL OR dismissed_at IS NOT NULL)
+ORDER BY GREATEST(saved_at, dismissed_at) DESC
+LIMIT $2
+`
+
+type ExcludedJobIDsParams struct {
+	UserID int64 `json:"user_id"`
+	Limit  int32 `json:"limit"`
+}
+
+// Job ids the user has already judged (saved or dismissed) — the swipe deck's
+// exclusion set. Ordered most-recently-judged first and capped ($2) so the deck's
+// `id NOT IN (...)` search filter stays bounded; the overflow risk is only an
+// occasional re-shown long-ago-judged job, never a correctness problem.
+func (q *Queries) ExcludedJobIDs(ctx context.Context, arg ExcludedJobIDsParams) ([]int64, error) {
+	rows, err := q.db.Query(ctx, excludedJobIDs, arg.UserID, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []int64{}
+	for rows.Next() {
+		var job_id int64
+		if err := rows.Scan(&job_id); err != nil {
+			return nil, err
+		}
+		items = append(items, job_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listUserJobs = `-- name: ListUserJobs :many
@@ -253,7 +323,7 @@ INSERT INTO user_jobs (user_id, job_id, applied_at, stage)
 VALUES ($1, $2, now(), 'applied')
 ON CONFLICT (user_id, job_id) DO UPDATE
   SET applied_at = now(), stage = COALESCE(user_jobs.stage, 'applied')
-RETURNING user_id, job_id, viewed_at, applied_at, saved_at, stage, notes
+RETURNING user_id, job_id, viewed_at, applied_at, saved_at, stage, notes, dismissed_at
 `
 
 type MarkJobAppliedParams struct {
@@ -276,6 +346,7 @@ func (q *Queries) MarkJobApplied(ctx context.Context, arg MarkJobAppliedParams) 
 		&i.SavedAt,
 		&i.Stage,
 		&i.Notes,
+		&i.DismissedAt,
 	)
 	return i, err
 }
@@ -284,7 +355,7 @@ const recordJobView = `-- name: RecordJobView :one
 INSERT INTO user_jobs (user_id, job_id)
 VALUES ($1, $2)
 ON CONFLICT (user_id, job_id) DO UPDATE SET viewed_at = now()
-RETURNING user_id, job_id, viewed_at, applied_at, saved_at, stage, notes
+RETURNING user_id, job_id, viewed_at, applied_at, saved_at, stage, notes, dismissed_at
 `
 
 type RecordJobViewParams struct {
@@ -306,6 +377,7 @@ func (q *Queries) RecordJobView(ctx context.Context, arg RecordJobViewParams) (U
 		&i.SavedAt,
 		&i.Stage,
 		&i.Notes,
+		&i.DismissedAt,
 	)
 	return i, err
 }
@@ -314,7 +386,7 @@ const saveJob = `-- name: SaveJob :one
 INSERT INTO user_jobs (user_id, job_id, saved_at)
 VALUES ($1, $2, now())
 ON CONFLICT (user_id, job_id) DO UPDATE SET saved_at = now()
-RETURNING user_id, job_id, viewed_at, applied_at, saved_at, stage, notes
+RETURNING user_id, job_id, viewed_at, applied_at, saved_at, stage, notes, dismissed_at
 `
 
 type SaveJobParams struct {
@@ -335,6 +407,7 @@ func (q *Queries) SaveJob(ctx context.Context, arg SaveJobParams) (UserJob, erro
 		&i.SavedAt,
 		&i.Stage,
 		&i.Notes,
+		&i.DismissedAt,
 	)
 	return i, err
 }
@@ -345,7 +418,7 @@ VALUES ($1, $2, $3, $4)
 ON CONFLICT (user_id, job_id) DO UPDATE
   SET stage = COALESCE(EXCLUDED.stage, user_jobs.stage),
       notes = COALESCE(EXCLUDED.notes, user_jobs.notes)
-RETURNING user_id, job_id, viewed_at, applied_at, saved_at, stage, notes
+RETURNING user_id, job_id, viewed_at, applied_at, saved_at, stage, notes, dismissed_at
 `
 
 type TrackJobParams struct {
@@ -375,6 +448,39 @@ func (q *Queries) TrackJob(ctx context.Context, arg TrackJobParams) (UserJob, er
 		&i.SavedAt,
 		&i.Stage,
 		&i.Notes,
+		&i.DismissedAt,
+	)
+	return i, err
+}
+
+const undismissJob = `-- name: UndismissJob :one
+UPDATE user_jobs
+SET dismissed_at = NULL
+WHERE user_id = $1 AND job_id = $2
+RETURNING user_id, job_id, viewed_at, applied_at, saved_at, stage, notes, dismissed_at
+`
+
+type UndismissJobParams struct {
+	UserID int64 `json:"user_id"`
+	JobID  int64 `json:"job_id"`
+}
+
+// Clear a job's dismissed mark without deleting the interaction row, so view/
+// apply/save history survives. No interaction row -> pgx.ErrNoRows; the handler
+// treats that as "already not dismissed", never as a failure. This is the undo
+// path for a swipe-left decision.
+func (q *Queries) UndismissJob(ctx context.Context, arg UndismissJobParams) (UserJob, error) {
+	row := q.db.QueryRow(ctx, undismissJob, arg.UserID, arg.JobID)
+	var i UserJob
+	err := row.Scan(
+		&i.UserID,
+		&i.JobID,
+		&i.ViewedAt,
+		&i.AppliedAt,
+		&i.SavedAt,
+		&i.Stage,
+		&i.Notes,
+		&i.DismissedAt,
 	)
 	return i, err
 }
@@ -383,7 +489,7 @@ const unsaveJob = `-- name: UnsaveJob :one
 UPDATE user_jobs
 SET saved_at = NULL
 WHERE user_id = $1 AND job_id = $2
-RETURNING user_id, job_id, viewed_at, applied_at, saved_at, stage, notes
+RETURNING user_id, job_id, viewed_at, applied_at, saved_at, stage, notes, dismissed_at
 `
 
 type UnsaveJobParams struct {
@@ -405,6 +511,7 @@ func (q *Queries) UnsaveJob(ctx context.Context, arg UnsaveJobParams) (UserJob, 
 		&i.SavedAt,
 		&i.Stage,
 		&i.Notes,
+		&i.DismissedAt,
 	)
 	return i, err
 }
@@ -413,7 +520,7 @@ const untrackJob = `-- name: UntrackJob :one
 UPDATE user_jobs
 SET saved_at = NULL, applied_at = NULL, stage = NULL, notes = NULL
 WHERE user_id = $1 AND job_id = $2
-RETURNING user_id, job_id, viewed_at, applied_at, saved_at, stage, notes
+RETURNING user_id, job_id, viewed_at, applied_at, saved_at, stage, notes, dismissed_at
 `
 
 type UntrackJobParams struct {
@@ -434,6 +541,7 @@ func (q *Queries) UntrackJob(ctx context.Context, arg UntrackJobParams) (UserJob
 		&i.SavedAt,
 		&i.Stage,
 		&i.Notes,
+		&i.DismissedAt,
 	)
 	return i, err
 }

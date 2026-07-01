@@ -200,6 +200,8 @@ func Register(app *fiber.App, cfg Config) {
 	api.Post("/jobs/:slug/apply", keyAuth, a.MarkApplied)
 	api.Post("/jobs/:slug/save", keyAuth, a.SaveJob)
 	api.Delete("/jobs/:slug/save", keyAuth, a.UnsaveJob)
+	api.Post("/jobs/:slug/dismiss", keyAuth, a.DismissJob)
+	api.Delete("/jobs/:slug/dismiss", keyAuth, a.UndismissJob)
 	api.Patch("/jobs/:slug/track", keyAuth, a.TrackJob)
 	api.Delete("/jobs/:slug/stage", keyAuth, a.ClearStage)
 	api.Delete("/jobs/:slug/track", keyAuth, a.Untrack)

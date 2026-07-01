@@ -35,6 +35,37 @@ SET saved_at = NULL
 WHERE user_id = $1 AND job_id = $2
 RETURNING *;
 
+-- name: DismissJob :one
+-- Dismiss (swipe away) a job for a user in the swipe deck. Idempotent and
+-- independent of a prior view: it inserts the row (viewed_at defaults) or
+-- refreshes dismissed_at in place.
+INSERT INTO user_jobs (user_id, job_id, dismissed_at)
+VALUES ($1, $2, now())
+ON CONFLICT (user_id, job_id) DO UPDATE SET dismissed_at = now()
+RETURNING *;
+
+-- name: UndismissJob :one
+-- Clear a job's dismissed mark without deleting the interaction row, so view/
+-- apply/save history survives. No interaction row -> pgx.ErrNoRows; the handler
+-- treats that as "already not dismissed", never as a failure. This is the undo
+-- path for a swipe-left decision.
+UPDATE user_jobs
+SET dismissed_at = NULL
+WHERE user_id = $1 AND job_id = $2
+RETURNING *;
+
+-- name: ExcludedJobIDs :many
+-- Job ids the user has already judged (saved or dismissed) — the swipe deck's
+-- exclusion set. Ordered most-recently-judged first and capped ($2) so the deck's
+-- `id NOT IN (...)` search filter stays bounded; the overflow risk is only an
+-- occasional re-shown long-ago-judged job, never a correctness problem.
+SELECT job_id
+FROM user_jobs
+WHERE user_id = $1
+  AND (saved_at IS NOT NULL OR dismissed_at IS NOT NULL)
+ORDER BY GREATEST(saved_at, dismissed_at) DESC
+LIMIT $2;
+
 -- name: TrackJob :one
 -- Set an application's stage and/or notes for a user, idempotently. Upserts the
 -- (user, job) row (viewed_at defaults). Partial update: a NULL param leaves that

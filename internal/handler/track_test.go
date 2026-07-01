@@ -34,6 +34,12 @@ func (stubTrackingRepo) SaveJob(context.Context, int64, int64) (jobtracking.Inte
 func (stubTrackingRepo) UnsaveJob(context.Context, int64, int64) (jobtracking.Interaction, error) {
 	return jobtracking.Interaction{JobID: 1}, nil
 }
+func (stubTrackingRepo) DismissJob(context.Context, int64, int64) (jobtracking.Interaction, error) {
+	return jobtracking.Interaction{JobID: 1}, nil
+}
+func (stubTrackingRepo) UndismissJob(context.Context, int64, int64) (jobtracking.Interaction, error) {
+	return jobtracking.Interaction{JobID: 1}, nil
+}
 func (stubTrackingRepo) TrackJob(context.Context, int64, int64, *string, *string) (jobtracking.Interaction, error) {
 	return jobtracking.Interaction{JobID: 1}, nil
 }
@@ -50,6 +56,9 @@ func (stubTrackingRepo) CountInteractions(context.Context, int64) (jobtracking.C
 	return jobtracking.Counts{}, nil
 }
 func (stubTrackingRepo) ViewedSlugs(context.Context, int64) ([]string, error) { return nil, nil }
+func (stubTrackingRepo) ExcludedJobIDs(context.Context, int64, int32) ([]int64, error) {
+	return nil, nil
+}
 func (stubTrackingRepo) PipelineCounts(context.Context, int64) ([]userjob.StageCount, error) {
 	return nil, nil
 }

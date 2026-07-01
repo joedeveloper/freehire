@@ -134,6 +134,10 @@ type Querier interface {
 	DeleteSubscription(ctx context.Context, arg DeleteSubscriptionParams) (int64, error)
 	// Unlink Telegram. Returns the affected row count: 0 means there was no link.
 	DeleteTelegramLink(ctx context.Context, userID int64) (int64, error)
+	// Dismiss (swipe away) a job for a user in the swipe deck. Idempotent and
+	// independent of a prior view: it inserts the row (viewed_at defaults) or
+	// refreshes dismissed_at in place.
+	DismissJob(ctx context.Context, arg DismissJobParams) (UserJob, error)
 	// Transactional-outbox enqueue for the ingest write path: queue this one job for
 	// enrichment, gated on the same condition the backfill uses (unenriched or below the
 	// target schema version), so an already-enriched job is not re-queued. Idempotent via
@@ -146,6 +150,11 @@ type Querier interface {
 	// (job_id, target_version), so running this every command invocation never duplicates
 	// work.
 	EnqueuePendingJobs(ctx context.Context, targetVersion int32) (int64, error)
+	// Job ids the user has already judged (saved or dismissed) — the swipe deck's
+	// exclusion set. Ordered most-recently-judged first and capped ($2) so the deck's
+	// `id NOT IN (...)` search filter stays bounded; the overflow risk is only an
+	// occasional re-shown long-ago-judged job, never a correctness problem.
+	ExcludedJobIDs(ctx context.Context, arg ExcludedJobIDsParams) ([]int64, error)
 	// SELECT * (not an explicit column list) so the generated row stays db.Company as
 	// the table grows columns (e.g. collections); an explicit subset makes sqlc emit a
 	// distinct row type and breaks the company-detail handler on every new column.
@@ -361,6 +370,11 @@ type Querier interface {
 	// column unchanged (COALESCE keeps the existing value), so the caller can set the
 	// stage, the notes, or both in one call. Returns the row.
 	TrackJob(ctx context.Context, arg TrackJobParams) (UserJob, error)
+	// Clear a job's dismissed mark without deleting the interaction row, so view/
+	// apply/save history survives. No interaction row -> pgx.ErrNoRows; the handler
+	// treats that as "already not dismissed", never as a failure. This is the undo
+	// path for a swipe-left decision.
+	UndismissJob(ctx context.Context, arg UndismissJobParams) (UserJob, error)
 	// Clear a job's saved mark without deleting the interaction row, so view and
 	// apply history survive unsaving. No interaction row -> pgx.ErrNoRows; the
 	// handler treats that as "already not saved", never as a failure.

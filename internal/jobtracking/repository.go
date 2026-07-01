@@ -75,6 +75,27 @@ func (r *QueriesRepository) UnsaveJob(ctx context.Context, userID, jobID int64) 
 	return toInteraction(row), nil
 }
 
+// DismissJob marks a job dismissed (swiped away) for a user.
+func (r *QueriesRepository) DismissJob(ctx context.Context, userID, jobID int64) (Interaction, error) {
+	row, err := r.q.DismissJob(ctx, db.DismissJobParams{UserID: userID, JobID: jobID})
+	if err != nil {
+		return Interaction{}, err
+	}
+	return toInteraction(row), nil
+}
+
+// UndismissJob clears the dismissed mark. Returns ErrNoInteraction when no row exists.
+func (r *QueriesRepository) UndismissJob(ctx context.Context, userID, jobID int64) (Interaction, error) {
+	row, err := r.q.UndismissJob(ctx, db.UndismissJobParams{UserID: userID, JobID: jobID})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Interaction{}, ErrNoInteraction
+	}
+	if err != nil {
+		return Interaction{}, err
+	}
+	return toInteraction(row), nil
+}
+
 // TrackJob upserts stage and/or notes for the interaction. A nil pointer means
 // "leave unchanged".
 func (r *QueriesRepository) TrackJob(
@@ -170,6 +191,11 @@ func (r *QueriesRepository) ViewedSlugs(ctx context.Context, userID int64) ([]st
 	return r.q.ListViewedJobSlugs(ctx, userID)
 }
 
+// ExcludedJobIDs returns up to limit job ids the caller has saved or dismissed.
+func (r *QueriesRepository) ExcludedJobIDs(ctx context.Context, userID int64, limit int32) ([]int64, error) {
+	return r.q.ExcludedJobIDs(ctx, db.ExcludedJobIDsParams{UserID: userID, Limit: limit})
+}
+
 // PipelineCounts returns the caller's per-stage application counts. A NULL stage
 // (an applied row with no explicit stage) becomes an empty Stage, which
 // userjob.Aggregate folds into the no_answer bucket.
@@ -188,12 +214,13 @@ func (r *QueriesRepository) PipelineCounts(ctx context.Context, userID int64) ([
 // toInteraction converts a db.UserJob row to the domain Interaction type.
 func toInteraction(r db.UserJob) Interaction {
 	return Interaction{
-		JobID:     r.JobID,
-		ViewedAt:  timePtr(r.ViewedAt),
-		AppliedAt: timePtr(r.AppliedAt),
-		SavedAt:   timePtr(r.SavedAt),
-		Stage:     textPtr(r.Stage),
-		Notes:     textPtr(r.Notes),
+		JobID:       r.JobID,
+		ViewedAt:    timePtr(r.ViewedAt),
+		AppliedAt:   timePtr(r.AppliedAt),
+		SavedAt:     timePtr(r.SavedAt),
+		DismissedAt: timePtr(r.DismissedAt),
+		Stage:       textPtr(r.Stage),
+		Notes:       textPtr(r.Notes),
 	}
 }
 

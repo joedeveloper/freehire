@@ -13,12 +13,13 @@ import (
 // omits user_id (the caller is the user) and carries saved_at/applied_at/stage/
 // notes as null until the job is saved, applied to, or tracked.
 type interactionResponse struct {
-	JobID     int64      `json:"job_id"`
-	ViewedAt  *time.Time `json:"viewed_at"`
-	SavedAt   *time.Time `json:"saved_at"`
-	AppliedAt *time.Time `json:"applied_at"`
-	Stage     *string    `json:"stage"`
-	Notes     *string    `json:"notes"`
+	JobID       int64      `json:"job_id"`
+	ViewedAt    *time.Time `json:"viewed_at"`
+	SavedAt     *time.Time `json:"saved_at"`
+	AppliedAt   *time.Time `json:"applied_at"`
+	DismissedAt *time.Time `json:"dismissed_at"`
+	Stage       *string    `json:"stage"`
+	Notes       *string    `json:"notes"`
 }
 
 // trackRequest is the track body: an optional stage and/or notes. A nil field is
@@ -32,7 +33,7 @@ type trackRequest struct {
 func toResponse(i jobtracking.Interaction) interactionResponse {
 	return interactionResponse{
 		JobID: i.JobID, ViewedAt: i.ViewedAt, SavedAt: i.SavedAt,
-		AppliedAt: i.AppliedAt, Stage: i.Stage, Notes: i.Notes,
+		AppliedAt: i.AppliedAt, DismissedAt: i.DismissedAt, Stage: i.Stage, Notes: i.Notes,
 	}
 }
 
@@ -105,6 +106,37 @@ func (a *API) UnsaveJob(c *fiber.Ctx) error {
 		return err
 	}
 	interaction, err := a.tracking.Unsave(c.Context(), userID, c.Params("slug"))
+	if err != nil {
+		return trackingError(err)
+	}
+	return c.JSON(fiber.Map{"data": toResponse(interaction)})
+}
+
+// DismissJob marks a job dismissed (swiped away) for the authenticated user and
+// returns the updated interaction. Dismissal only keeps the job out of the swipe
+// deck; it stays visible in the public /jobs list and search.
+func (a *API) DismissJob(c *fiber.Ctx) error {
+	userID, err := requireUserID(c)
+	if err != nil {
+		return err
+	}
+	interaction, err := a.tracking.Dismiss(c.Context(), userID, c.Params("slug"))
+	if err != nil {
+		return trackingError(err)
+	}
+	return c.JSON(fiber.Map{"data": toResponse(interaction)})
+}
+
+// UndismissJob clears a job's dismissed mark for the authenticated user. The
+// interaction row survives; if no row exists at all, undismissing is a no-op that
+// answers with the zero interaction state — DELETE is idempotent, so "already not
+// dismissed" is success, not an error (the service resolves that case).
+func (a *API) UndismissJob(c *fiber.Ctx) error {
+	userID, err := requireUserID(c)
+	if err != nil {
+		return err
+	}
+	interaction, err := a.tracking.Undismiss(c.Context(), userID, c.Params("slug"))
 	if err != nil {
 		return trackingError(err)
 	}
