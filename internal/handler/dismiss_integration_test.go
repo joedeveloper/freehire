@@ -169,3 +169,56 @@ func TestDismissUndismissEndpoints(t *testing.T) {
 		}
 	})
 }
+
+// TestExcludedJobIDs covers the swipe deck's exclusion query: it returns the
+// user's saved and dismissed job ids (not merely-viewed ones), and respects the
+// cap. The deck feeds these into an `id NOT IN [...]` search filter.
+func TestExcludedJobIDs(t *testing.T) {
+	pool := startPostgres(t)
+	ctx := context.Background()
+	queries := db.New(pool)
+
+	var userID int64
+	if err := pool.QueryRow(ctx,
+		`INSERT INTO users (email) VALUES ('excl@example.test') RETURNING id`).Scan(&userID); err != nil {
+		t.Fatalf("seed user: %v", err)
+	}
+	seedJob := func(ext string) int64 {
+		var id int64
+		if err := pool.QueryRow(ctx,
+			`INSERT INTO jobs (source, external_id, url, title, public_slug)
+			 VALUES ('test', $1, 'http://example.test', 'Job', $1) RETURNING id`, ext).Scan(&id); err != nil {
+			t.Fatalf("seed job %s: %v", ext, err)
+		}
+		return id
+	}
+	savedID, dismissedID, viewedID := seedJob("saved"), seedJob("dismissed"), seedJob("viewed")
+
+	if _, err := queries.SaveJob(ctx, db.SaveJobParams{UserID: userID, JobID: savedID}); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+	if _, err := queries.DismissJob(ctx, db.DismissJobParams{UserID: userID, JobID: dismissedID}); err != nil {
+		t.Fatalf("dismiss: %v", err)
+	}
+	if _, err := queries.RecordJobView(ctx, db.RecordJobViewParams{UserID: userID, JobID: viewedID}); err != nil {
+		t.Fatalf("view: %v", err)
+	}
+
+	ids, err := queries.ExcludedJobIDs(ctx, db.ExcludedJobIDsParams{UserID: userID, Limit: 1000})
+	if err != nil {
+		t.Fatalf("ExcludedJobIDs: %v", err)
+	}
+	got := map[int64]bool{}
+	for _, id := range ids {
+		got[id] = true
+	}
+	if !got[savedID] || !got[dismissedID] {
+		t.Errorf("excluded = %v, want it to contain saved (%d) and dismissed (%d)", ids, savedID, dismissedID)
+	}
+	if got[viewedID] {
+		t.Errorf("excluded = %v, must NOT contain the merely-viewed job (%d)", ids, viewedID)
+	}
+	if len(ids) != 2 {
+		t.Errorf("len(excluded) = %d, want 2", len(ids))
+	}
+}

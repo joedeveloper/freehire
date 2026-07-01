@@ -23,8 +23,8 @@
 
 ## 4. Swipe deck endpoint
 
-- [ ] 4.1 Add `GET /me/jobs/swipe` handler behind `RequireAuth`: reuse the search param parsing, add the `NotIn("id", ExcludedJobIDs(user))` filter group, return the standard list envelope of `jobview` items with `limit`/`offset`
-- [ ] 4.2 Wire the route; integration test: deck excludes the caller's saved+dismissed jobs, honors filters/`q`, pages via offset without repeats, 401 unauth
+- [x] 4.1 Add `GET /me/jobs/swipe` handler behind `RequireAuth`: reuse the search param parsing, add the `NotIn("id", ExcludedJobIDs(user))` filter group, return the standard list envelope of `jobview` items with `limit`/`offset`
+- [x] 4.2 Wire the route; integration test: deck excludes the caller's saved+dismissed jobs, honors filters/`q`, pages via offset without repeats, 401 unauth
 
 ## 5. Frontend: API client + route shell
 
