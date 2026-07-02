@@ -14,7 +14,6 @@ package main
 import (
 	"context"
 	"log"
-	"os"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -45,7 +44,7 @@ const (
 )
 
 func main() {
-	os.Exit(run())
+	worker.Main(run)
 }
 
 func run() int {

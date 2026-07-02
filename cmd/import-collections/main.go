@@ -32,7 +32,7 @@ import (
 const fetchTimeout = 60 * time.Second
 
 func main() {
-	os.Exit(run())
+	worker.Main(run)
 }
 
 func run() int {

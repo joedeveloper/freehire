@@ -65,6 +65,13 @@ type Settings struct {
 	S3AccessKey string
 	S3SecretKey string
 
+	// Sentry backs optional error reporting for the server and every cron worker
+	// (internal/observability). Optional: an empty SentryDSN disables the integration
+	// entirely (no init, no delivery) — enforced at the observability call site, not
+	// here. SentryEnvironment tags every event (defaults to "development" for local runs).
+	SentryDSN         string
+	SentryEnvironment string
+
 	// Telegram bot for outbound notifications (filter subscriptions). Optional:
 	// an empty TelegramBotToken disables the feature — the linking endpoints and
 	// webhook are inert and the notify worker has nothing to deliver through.
@@ -111,6 +118,9 @@ func Load() Settings {
 		S3Bucket:    os.Getenv("S3_BUCKET"),
 		S3AccessKey: os.Getenv("S3_ACCESS_KEY"),
 		S3SecretKey: os.Getenv("S3_SECRET_KEY"),
+
+		SentryDSN:         os.Getenv("SENTRY_DSN"),
+		SentryEnvironment: env("SENTRY_ENVIRONMENT", "development"),
 
 		TelegramBotToken:      os.Getenv("TELEGRAM_BOT_TOKEN"),
 		TelegramBotUsername:   os.Getenv("TELEGRAM_BOT_USERNAME"),

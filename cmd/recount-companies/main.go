@@ -12,14 +12,13 @@ package main
 import (
 	"context"
 	"log"
-	"os"
 
 	"github.com/strelov1/freehire/internal/db"
 	"github.com/strelov1/freehire/internal/worker"
 )
 
 func main() {
-	os.Exit(run())
+	worker.Main(run)
 }
 
 func run() int {

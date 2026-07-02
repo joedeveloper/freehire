@@ -10,7 +10,6 @@ import (
 	"context"
 	"encoding/json"
 	"log"
-	"os"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
@@ -23,7 +22,7 @@ import (
 )
 
 func main() {
-	os.Exit(run())
+	worker.Main(run)
 }
 
 func run() int {

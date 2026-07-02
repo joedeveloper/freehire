@@ -24,7 +24,6 @@ package main
 import (
 	"context"
 	"log"
-	"os"
 	"slices"
 
 	"github.com/jackc/pgx/v5/pgtype"
@@ -55,7 +54,7 @@ type facetStore interface {
 }
 
 func main() {
-	os.Exit(run())
+	worker.Main(run)
 }
 
 func run() int {

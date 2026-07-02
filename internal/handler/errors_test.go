@@ -49,6 +49,34 @@ func TestErrorHandler_DefaultsTo500(t *testing.T) {
 	}
 }
 
+// classify decides both the HTTP mapping and whether an error is an unexpected
+// fault worth reporting to Sentry. Only the fall-through 500 must be reported;
+// routine 4xx and mapped 404s must not, so the error inbox stays signal, not noise.
+func TestClassify_ReportsOnlyUnexpected500(t *testing.T) {
+	tests := []struct {
+		name       string
+		err        error
+		wantStatus int
+		wantReport bool
+	}{
+		{"generic error is an unexpected 500", errString("boom"), fiber.StatusInternalServerError, true},
+		{"fiber 4xx is routine", fiber.NewError(fiber.StatusBadRequest, "bad"), fiber.StatusBadRequest, false},
+		{"no rows maps to 404", pgx.ErrNoRows, fiber.StatusNotFound, false},
+		{"foreign-key violation maps to 404", &pgconn.PgError{Code: "23503"}, fiber.StatusNotFound, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			status, _, report := classify(tt.err)
+			if status != tt.wantStatus {
+				t.Errorf("status = %d, want %d", status, tt.wantStatus)
+			}
+			if report != tt.wantReport {
+				t.Errorf("report = %v, want %v", report, tt.wantReport)
+			}
+		})
+	}
+}
+
 type errString string
 
 func (e errString) Error() string { return string(e) }

@@ -37,7 +37,7 @@ import (
 const staleAfter = 48 * time.Hour
 
 func main() {
-	os.Exit(run())
+	worker.Main(run)
 }
 
 func run() int {

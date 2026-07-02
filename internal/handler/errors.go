@@ -3,6 +3,7 @@ package handler
 import (
 	"errors"
 
+	sentryfiber "github.com/getsentry/sentry-go/fiber"
 	"github.com/gofiber/fiber/v2"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -22,19 +23,37 @@ import (
 //     resource doesn't exist;
 //   - anything else is an unexpected failure: 500 with a generic message, never
 //     leaking internals.
+//
+// Only that last, unexpected case is reported to Sentry (via the request-scoped
+// hub the sentryfiber middleware installs). Routine 4xx and mapped 404s are
+// deliberately not reported, so the error inbox reflects genuine faults rather
+// than normal client traffic. When Sentry is disabled the hub is absent and the
+// capture is skipped — panics are handled separately by the middleware itself.
 func RenderError(c *fiber.Ctx, err error) error {
-	status := fiber.StatusInternalServerError
-	msg := "internal server error"
+	status, msg, report := classify(err)
 
-	var fe *fiber.Error
-	switch {
-	case errors.As(err, &fe):
-		status, msg = fe.Code, fe.Message
-	case errors.Is(err, pgx.ErrNoRows), isForeignKeyViolation(err):
-		status, msg = fiber.StatusNotFound, "not found"
+	if report {
+		if hub := sentryfiber.GetHubFromContext(c); hub != nil {
+			hub.CaptureException(err)
+		}
 	}
 
 	return c.Status(status).JSON(fiber.Map{"error": msg})
+}
+
+// classify maps an error to its HTTP status and message and reports whether it is
+// an unexpected fault worth sending to Sentry. Only the fall-through 500 is
+// unexpected; a *fiber.Error and the 404-mapped DB errors are routine.
+func classify(err error) (status int, msg string, report bool) {
+	var fe *fiber.Error
+	switch {
+	case errors.As(err, &fe):
+		return fe.Code, fe.Message, false
+	case errors.Is(err, pgx.ErrNoRows), isForeignKeyViolation(err):
+		return fiber.StatusNotFound, "not found", false
+	default:
+		return fiber.StatusInternalServerError, "internal server error", true
+	}
 }
 
 // isForeignKeyViolation reports whether err is a Postgres foreign-key violation

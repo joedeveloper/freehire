@@ -63,7 +63,7 @@ func semanticOps(c *search.Client) indexOps {
 const progressInterval = 60 * time.Second
 
 func main() {
-	os.Exit(run())
+	worker.Main(run)
 }
 
 func run() int {
