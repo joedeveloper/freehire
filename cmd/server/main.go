@@ -72,7 +72,14 @@ func main() {
 		TrustedProxies:          []string{"10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "127.0.0.1/32"},
 	})
 
-	app.Use(recover.New())
+	// The recover middleware marks each unwound panic via c.Locals so RenderError
+	// won't double-report it: the sentryfiber middleware below already captures the
+	// panic (with a stack) before Fiber re-delivers the recovered error to the
+	// ErrorHandler. The silent handler keeps the previous no-stderr-stack behavior.
+	app.Use(recover.New(recover.Config{
+		EnableStackTrace:  true,
+		StackTraceHandler: func(c *fiber.Ctx, _ any) { c.Locals(handler.LocalPanicReported, true) },
+	}))
 	app.Use(logger.New())
 
 	// Sentry request middleware, wired only when error reporting is configured. It

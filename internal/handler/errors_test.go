@@ -1,13 +1,97 @@
 package handler
 
 import (
+	"context"
 	"net/http/httptest"
+	"sync"
 	"testing"
+	"time"
 
+	"github.com/getsentry/sentry-go"
+	sentryfiber "github.com/getsentry/sentry-go/fiber"
 	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/middleware/recover"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 )
+
+// recordingTransport captures the events a Sentry hub would deliver, so a test can
+// count them without any network. Guarded by a mutex: SendEvent runs on Fiber's
+// request goroutine while the test reads from its own.
+type recordingTransport struct {
+	mu     sync.Mutex
+	events []*sentry.Event
+}
+
+func (t *recordingTransport) Configure(sentry.ClientOptions) {}
+func (t *recordingTransport) SendEvent(e *sentry.Event) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.events = append(t.events, e)
+}
+func (t *recordingTransport) Flush(time.Duration) bool              { return true }
+func (t *recordingTransport) FlushWithContext(context.Context) bool { return true }
+func (t *recordingTransport) Close()                                {}
+
+func (t *recordingTransport) count() int {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return len(t.events)
+}
+
+// sentryApp mirrors the server's middleware wiring (recover.New marking panics,
+// then the sentryfiber request middleware, RenderError as the ErrorHandler) so a
+// test can assert how many events reach Sentry for a given failure.
+func sentryApp(t *testing.T, errFn fiber.Handler) (*fiber.App, *recordingTransport) {
+	t.Helper()
+	tr := &recordingTransport{}
+	if err := sentry.Init(sentry.ClientOptions{
+		Dsn:       "https://public@o0.ingest.sentry.io/0",
+		Transport: tr,
+	}); err != nil {
+		t.Fatalf("sentry.Init: %v", err)
+	}
+	app := fiber.New(fiber.Config{ErrorHandler: RenderError})
+	app.Use(recover.New(recover.Config{
+		EnableStackTrace:  true,
+		StackTraceHandler: func(c *fiber.Ctx, _ any) { c.Locals(LocalPanicReported, true) },
+	}))
+	app.Use(sentryfiber.New(sentryfiber.Options{Repanic: true, WaitForDelivery: true}))
+	app.Get("/x", errFn)
+	return app, tr
+}
+
+// A recovered panic is captured once by the request middleware (with a stack); the
+// error Fiber re-delivers to RenderError must NOT be reported again.
+func TestRenderError_PanicReportedExactlyOnce(t *testing.T) {
+	app, tr := sentryApp(t, func(*fiber.Ctx) error { panic("boom") })
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/x", nil))
+	if err != nil {
+		t.Fatalf("Test: %v", err)
+	}
+	if resp.StatusCode != fiber.StatusInternalServerError {
+		t.Errorf("status = %d, want 500", resp.StatusCode)
+	}
+	if got := tr.count(); got != 1 {
+		t.Errorf("sentry events = %d, want exactly 1", got)
+	}
+}
+
+// A genuine (non-panic) 500 returned by a handler must still be reported once, so
+// the dedup guard doesn't suppress real faults.
+func TestRenderError_ReturnedErrorReportedOnce(t *testing.T) {
+	app, tr := sentryApp(t, func(*fiber.Ctx) error { return errString("db exploded") })
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/x", nil))
+	if err != nil {
+		t.Fatalf("Test: %v", err)
+	}
+	if resp.StatusCode != fiber.StatusInternalServerError {
+		t.Errorf("status = %d, want 500", resp.StatusCode)
+	}
+	if got := tr.count(); got != 1 {
+		t.Errorf("sentry events = %d, want exactly 1", got)
+	}
+}
 
 // errorApp mounts a route that returns errFn's error through RenderError, so the
 // status mapping can be asserted end to end.

@@ -9,6 +9,13 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
+// LocalPanicReported is a c.Locals key set by the server's recover middleware when
+// it unwinds a panic. The sentryfiber middleware has already captured that panic
+// (with a stack) before re-raising it, and Fiber then re-delivers the recovered
+// error to the ErrorHandler — so RenderError checks this marker to avoid reporting
+// the same panic a second time (as a stackless 500).
+const LocalPanicReported = "sentry_panic_reported"
+
 // RenderError is the single place every error returned by a handler becomes an
 // HTTP response. It is wired into fiber.New so the error envelope (`{"error":
 // ...}`, mirroring the `{"data": ...}` success shape) and the status mapping
@@ -32,7 +39,10 @@ import (
 func RenderError(c *fiber.Ctx, err error) error {
 	status, msg, report := classify(err)
 
-	if report {
+	// Report only genuine, not-yet-reported faults. A recovered panic is already
+	// captured (with a stack) by the sentryfiber middleware, which flags it via
+	// LocalPanicReported; reporting the re-delivered error again would duplicate it.
+	if report && c.Locals(LocalPanicReported) == nil {
 		if hub := sentryfiber.GetHubFromContext(c); hub != nil {
 			hub.CaptureException(err)
 		}
