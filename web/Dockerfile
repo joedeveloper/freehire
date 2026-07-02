@@ -15,6 +15,17 @@ WORKDIR /src
 COPY package.json package-lock.json ./
 RUN npm ci
 COPY . .
+# Sentry source-map upload (optional). When SENTRY_AUTH_TOKEN is passed as a build
+# arg, the sentrySvelteKit() Vite plugin uploads source maps (matched by debug-id,
+# so no release coordination is needed) and production frontend stack traces are
+# un-minified. Build-stage only — these do NOT persist into the runtime image below.
+# Absent token ⇒ upload is skipped and the build still succeeds.
+ARG SENTRY_AUTH_TOKEN=""
+ARG SENTRY_ORG=""
+ARG SENTRY_PROJECT=""
+ENV SENTRY_AUTH_TOKEN=$SENTRY_AUTH_TOKEN
+ENV SENTRY_ORG=$SENTRY_ORG
+ENV SENTRY_PROJECT=$SENTRY_PROJECT
 RUN npm run build
 # Keep only production deps for the runtime image (the build tools are no longer
 # needed; adapter-node has already bundled the app).
