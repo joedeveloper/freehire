@@ -1,11 +1,27 @@
 import { defineConfig } from 'vite';
 import { sveltekit } from '@sveltejs/kit/vite';
+import { sentrySvelteKit } from '@sentry/sveltekit';
 import tailwindcss from '@tailwindcss/vite';
 
 export default defineConfig({
   // SvelteKit owns routing/SSR; it provides the $lib alias, so the manual alias
-  // is gone. tailwindcss() must precede sveltekit().
-  plugins: [tailwindcss(), sveltekit()],
+  // is gone. sentrySvelteKit() must precede sveltekit(); tailwindcss() too.
+  //
+  // Source-map upload is inert without SENTRY_AUTH_TOKEN — the build still
+  // succeeds, only readable minified stack traces in Sentry are skipped. When
+  // enabled in ops, org/project/token come from the environment (freehire-ops),
+  // never from code.
+  plugins: [
+    sentrySvelteKit({
+      sourceMapsUploadOptions: {
+        org: process.env.SENTRY_ORG,
+        project: process.env.SENTRY_PROJECT,
+        authToken: process.env.SENTRY_AUTH_TOKEN,
+      },
+    }),
+    tailwindcss(),
+    sveltekit(),
+  ],
   server: {
     port: 5173,
     strictPort: false,

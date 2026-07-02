@@ -42,6 +42,7 @@
   },
   "dependencies": {
     "@resvg/resvg-js": "^2.6.2",
+    "@sentry/sveltekit": "^10.63.0",
     "clsx": "^2.1.1",
     "satori": "^0.26.0",
     "satori-html": "^0.3.2",

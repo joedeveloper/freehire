@@ -39,6 +39,12 @@ export default {
         // forbid legacy plugin/embed vectors.
         'base-uri': ['self'],
         'object-src': ['none'],
+        // Sentry: NO connect-src is set here on purpose. With no default-src, the
+        // browser does not restrict fetch/beacon, so the Sentry SDK reaches its
+        // ingest host (https://*.ingest.de.sentry.io — EU region) unblocked. The
+        // client SDK ships in the same-origin bundle and injects no external script,
+        // so script-src needs nothing either. If a connect-src is ever introduced,
+        // it MUST include the Sentry ingest host above (and GA's collect host).
       },
     },
   },
