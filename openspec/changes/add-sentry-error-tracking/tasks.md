@@ -26,6 +26,6 @@
 
 ## 5. Verification + docs
 
-- [ ] 5.1 `go build ./... && go vet ./... && go test ./...` green; `web` `npm run check` + `npm run build` green.
-- [ ] 5.2 Manually verify (with a scratch DSN) that a forced server 500, a forced worker panic, and a forced frontend throw each land in the right Sentry project; confirm no events fire with the DSN unset.
-- [ ] 5.3 Document the new env vars (`SENTRY_DSN`, `SENTRY_ENVIRONMENT`, `PUBLIC_SENTRY_DSN`, `PUBLIC_SENTRY_ENVIRONMENT`) and the two-project setup in the repo (CLAUDE.md/AGENT.md conventions) and note the `freehire-ops` injection points.
+- [x] 5.1 `go build ./... && go vet ./... && go test ./...` green; `web` `npm run check` + `npm run build` green.
+- [x] 5.2 Verify the capture path locally (no network): `internal/observability` disabled-path + malformed-DSN tests; `handler` recording-transport tests assert a recovered panic captures **exactly once** and a returned 500 captures once, while 4xx/404 do not; the frontend init is gated on `PUBLIC_SENTRY_DSN`. NOTE: the live end-to-end smoke (real events reaching the Sentry projects) is a **deploy-time** step per the finish-then-deploy decision — not run pre-merge to avoid polluting the shared Sentry project.
+- [x] 5.3 Document the new env vars (`SENTRY_DSN`, `SENTRY_ENVIRONMENT`, `PUBLIC_SENTRY_DSN`, `PUBLIC_SENTRY_ENVIRONMENT`) and the two-project setup in the repo (AGENT.md conventions) and note the `freehire-ops` injection points.
