@@ -15,6 +15,7 @@ import (
 	"github.com/gzuidhof/tygo/tygo"
 
 	"github.com/strelov1/freehire/internal/enrich"
+	"github.com/strelov1/freehire/internal/location"
 	"github.com/strelov1/freehire/internal/sources"
 	"github.com/strelov1/freehire/internal/userjob"
 )
@@ -181,6 +182,9 @@ func genVocab() string {
 	b.WriteString(emitVocab("EnglishLevel", "ENGLISH_LEVEL_VALUES", enrich.EnglishLevelValues))
 	b.WriteString(emitVocab("CompanyType", "COMPANY_TYPE_VALUES", enrich.CompanyTypeValues))
 	b.WriteString(emitVocab("Domain", "DOMAIN_VALUES", enrich.DomainValues))
+	// Country→region grouping for the hierarchical location filter, derived from the
+	// location dictionary.
+	b.WriteString(emitMap("CountryRegionMap", "COUNTRY_REGION_MAP", location.CountryToRegion()))
 	return b.String()
 }
 
