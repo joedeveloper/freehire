@@ -1,10 +1,4 @@
-# search-profiles Specification
-
-## Purpose
-
-A user profile is the user's single professional self — a non-empty set of specializations (job categories) and a non-empty set of skills. One per user (keyed by the session, no id, no name); the foundation for finding relevant work. This capability covers only the profile entity and its management (fetch/save/clear); how a profile is consumed (match scoring, ranked feeds, notifications) is out of scope here.
-
-## Requirements
+## ADDED Requirements
 
 ### Requirement: Retrieve the profile
 
@@ -73,6 +67,8 @@ the session user is the key.
 #### Scenario: One profile per user
 - **WHEN** an authenticated user who already has a profile saves again
 - **THEN** the system still holds exactly one profile for that user (the saved values replace the previous ones)
+
+## MODIFIED Requirements
 
 ### Requirement: Specializations validation
 A profile's `specializations` SHALL be a non-empty set of values drawn from the controlled category vocabulary (`enrich.CategoryValues`), each trimmed, with duplicates removed, and the set capped at 5 entries.
@@ -176,3 +172,33 @@ shown as "missing" chips. The gap computation SHALL be a pure function
 
 - **WHEN** the profile already contains all top-20 expected skills
 - **THEN** the view shows coverage `20/20` and lists no missing skills
+
+## REMOVED Requirements
+
+### Requirement: Create a search profile
+**Reason**: Replaced by the singleton upsert "Save the profile" (`PUT /api/v1/me/profile`); creating named profiles by `POST` no longer exists.
+**Migration**: Use `PUT /api/v1/me/profile` with `specializations` and `skills` (no `name`).
+
+### Requirement: Name validation
+**Reason**: A single per-user profile has no name.
+**Migration**: The `name` field is dropped from the API and DB; clients stop sending it.
+
+### Requirement: Per-user cap
+**Reason**: Exactly one profile per user is enforced structurally (`user_profiles.user_id` is unique), so a 50-cap is meaningless.
+**Migration**: None — the singleton is the cap.
+
+### Requirement: List search profiles
+**Reason**: There is nothing to list; a user has at most one profile fetched via `GET /api/v1/me/profile`.
+**Migration**: Use `GET /api/v1/me/profile` (returns the profile or `null`).
+
+### Requirement: Update a search profile
+**Reason**: Replaced by the whole-profile upsert `PUT /api/v1/me/profile`; there is no id-addressed partial `PATCH`.
+**Migration**: Send the full profile via `PUT /api/v1/me/profile`.
+
+### Requirement: Delete a search profile
+**Reason**: Replaced by the id-less `DELETE /api/v1/me/profile` (see "Clear the profile").
+**Migration**: Use `DELETE /api/v1/me/profile`.
+
+### Requirement: User-scoped access
+**Reason**: Superseded by "Session-scoped single profile"; with no profile id there is no cross-user id to guard.
+**Migration**: Ownership is implicit in the session; no id is accepted.
