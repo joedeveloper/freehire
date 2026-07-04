@@ -44,44 +44,7 @@
 
 <footer class="border-t border-border">
   <div class="mx-auto max-w-6xl px-4 py-8 sm:py-12">
-    <div class="grid grid-cols-2 gap-x-6 gap-y-7 sm:grid-cols-4 sm:gap-6">
-      <!-- Brand block: full width on mobile, one column on wide viewports. -->
-      <div class="col-span-2 sm:col-span-1 sm:pr-4">
-        <a
-          href={resolve('/')}
-          class="flex items-center gap-2 text-sm font-semibold tracking-tight"
-        >
-          <!-- Same mark as the header; tracks the theme via currentColor. -->
-          <svg
-            viewBox="0 0 512 512"
-            class="size-5 shrink-0"
-            fill="currentColor"
-            aria-hidden="true"
-            xmlns="http://www.w3.org/2000/svg"
-          >
-            <path
-              fill-rule="evenodd"
-              clip-rule="evenodd"
-              d="M256 56C366.457 56 456 145.543 456 256C456 366.457 366.457 456 256 456C145.543 456 56 366.457 56 256C56 145.543 145.543 56 256 56ZM256 166L346 256L256 346L166 256L256 166Z"
-            />
-          </svg>
-          <span>FreeHire</span>
-        </a>
-        <div class="mt-4 flex items-center gap-3">
-          {#each socials as social (social.provider)}
-            <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- external profile URL opened in a new tab; not an internal route -->
-            <a href={social.href}
-              target="_blank"
-              rel="noopener noreferrer"
-              aria-label={social.label}
-              class="text-muted-foreground transition-colors hover:text-foreground"
-            >
-              <ProviderIcon provider={social.provider} />
-            </a>
-          {/each}
-        </div>
-      </div>
-
+    <div class="grid grid-cols-3 gap-x-6 gap-y-7 sm:gap-6">
       <!-- Navigation groups. Each is a named landmark (aria-label) so screen readers
            get a title without adding headings to the page outline. -->
       {#each groups as group (group.title)}
@@ -106,12 +69,28 @@
     </div>
   </div>
 
-  <!-- Bottom bar: copyright + open-source note, split off by a thin border. -->
+  <!-- Bottom bar: copyright + social links on the left, open-source note on the
+       right, split off by a thin border. -->
   <div class="border-t border-border">
     <div
-      class="mx-auto flex max-w-6xl flex-col gap-1 px-4 py-4 text-xs text-muted-foreground sm:flex-row sm:items-center sm:justify-between"
+      class="mx-auto flex max-w-6xl flex-col gap-3 px-4 py-4 text-xs text-muted-foreground sm:flex-row sm:items-center sm:justify-between sm:gap-1"
     >
-      <p>© {year} FreeHire</p>
+      <div class="flex items-center gap-4">
+        <p>© {year}</p>
+        <div class="flex items-center gap-3">
+          {#each socials as social (social.provider)}
+            <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- external profile URL opened in a new tab; not an internal route -->
+            <a href={social.href}
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label={social.label}
+              class="text-muted-foreground transition-colors hover:text-foreground"
+            >
+              <ProviderIcon provider={social.provider} />
+            </a>
+          {/each}
+        </div>
+      </div>
       <p>
         Free &amp; open-source.
         <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- external repository URL opened in a new tab; not an internal route -->

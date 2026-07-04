@@ -61,6 +61,8 @@
   const CITY_LIMIT = 18;
 
   const q = $derived(query.trim().toLowerCase());
+  const regionLabel = (code: string) => REGION_LABELS[code] ?? code;
+  const matchRegion = (code: string) => !q || regionLabel(code).toLowerCase().includes(q);
   const matchCountry = (code: string) => !q || countryLabel(code).toLowerCase().includes(q);
   const matchCity = (city: string) => !q || city.toLowerCase().includes(q);
 
@@ -68,6 +70,34 @@
 
   const cityMatches = $derived(allCities.filter(matchCity));
   const citiesShown = $derived(q ? cityMatches : cityMatches.slice(0, CITY_LIMIT));
+
+  // Regions to render, each with its matching countries. While searching, a region is
+  // dropped unless its own name matches or it still has a matching country (its "All
+  // region" pill then hides — see nameMatch); with no query every region stays.
+  const visibleRegions = $derived(
+    regions
+      .map((region) => ({ region, countryCodes: (countriesByRegion[region] ?? []).filter(matchCountry), nameMatch: matchRegion(region) }))
+      .filter((r) => r.nameMatch || r.countryCodes.length),
+  );
+
+  // Selected-location chips, shown above the tree: included first, then excluded,
+  // across regions → countries → cities. Each chip removes its value outright (not a
+  // cycle) so the X is a one-click clear. Same shape/style as the sidebar summary.
+  type GeoChip = { key: string; label: string; exclude: boolean; remove: () => void };
+  const selectedChips = $derived.by((): GeoChip[] => {
+    const out: GeoChip[] = [];
+    const push = (param: string, values: string[], label: (v: string) => string, exclude: boolean) => {
+      for (const v of values) out.push({ key: `${param}:${v}`, label: label(v), exclude, remove: () => store.remove(param, v) });
+    };
+    const cityText = (city: string) => city;
+    push('regions', regionF.include, regionLabel, false);
+    push('countries', countryF.include, countryLabel, false);
+    push('cities', cityF.include, cityText, false);
+    push('regions', regionF.exclude, regionLabel, true);
+    push('countries', countryF.exclude, countryLabel, true);
+    push('cities', cityF.exclude, cityText, true);
+    return out;
+  });
 
   const hasGeo = $derived(regionSel.length + countrySel.length + citySel.length > 0);
   function clearGeo() {
@@ -101,8 +131,25 @@
   />
 </div>
 
-{#each regions as region (region)}
-  {@const countryCodes = (countriesByRegion[region] ?? []).filter(matchCountry)}
+{#if selectedChips.length}
+  <div class="mb-4 flex flex-wrap gap-1.5">
+    {#each selectedChips as chip (chip.key)}
+      <span
+        class={[
+          'inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium',
+          chip.exclude ? 'border-destructive/30 bg-destructive/15 text-destructive line-through' : 'border-border bg-secondary text-secondary-foreground',
+        ]}
+      >
+        {chip.label}
+        <button type="button" aria-label="Remove {chip.label}" onclick={chip.remove} class="text-muted-foreground transition-colors hover:text-foreground">
+          <X class="size-3" />
+        </button>
+      </span>
+    {/each}
+  </div>
+{/if}
+
+{#each visibleRegions as { region, countryCodes, nameMatch } (region)}
   {@const isOpen = expandedRegions.has(region) || !!q}
   <div class="border-t border-border first:border-t-0">
     <button
@@ -119,14 +166,16 @@
       {@const rExc = regionF.exclude.includes(region)}
       {@const rInc = regionF.include.includes(region)}
       <div class="flex flex-wrap gap-2 pb-3">
-        <button
-          type="button"
-          onclick={() => store.cycle('regions', region)}
-          title={pillTitle(rInc, rExc, true)}
-          class={pillClass(rInc || rExc, rExc, 'px-3 py-1.5 text-sm')}
-        >
-          All {REGION_LABELS[region] ?? region}
-        </button>
+        {#if nameMatch}
+          <button
+            type="button"
+            onclick={() => store.cycle('regions', region)}
+            title={pillTitle(rInc, rExc, true)}
+            class={pillClass(rInc || rExc, rExc, 'px-3 py-1.5 text-sm')}
+          >
+            All {REGION_LABELS[region] ?? region}
+          </button>
+        {/if}
         {#each countryCodes as code (code)}
           {@const cExc = countryF.exclude.includes(code)}
           {@const cInc = countryF.include.includes(code)}

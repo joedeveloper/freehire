@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Bell } from '@lucide/svelte';
+  import { Bell, Pencil, Plus, Trash2 } from '@lucide/svelte';
   import { ApiError } from '$lib/api';
   import { isAuthenticated } from '$lib/auth.svelte';
   import { openAuthDialog } from '$lib/auth-dialog.svelte';
@@ -7,14 +7,21 @@
   import type { StagedFilters } from '$lib/stagedFilters.svelte';
   import { savedSearches } from '$lib/savedSearches.svelte';
   import { notifications } from '$lib/notifications.svelte';
+  import type { SavedSearch } from '$lib/types';
   import { Button, Input } from '$lib/ui';
 
-  // The "My filters" control: select a saved set (seeds the filters), save the current
-  // filters under a name, overwrite the selected set, or delete it. It is the first tab
-  // of the filter modal and drives the modal's *staged* copy — selecting/saving act on
-  // the staged edits and reach the live list only on the modal's Show-results action.
-  // Board sharing lives on the /my/searches account page, not here. Signed-out users
-  // see a sign-in prompt instead.
+  // Focus the text input a save/rename row reveals, so the caret is ready without a
+  // second click — the row only mounts inside the {#if}, so the attachment runs
+  // exactly when it appears.
+  const focusInput = (node: Element) => void (node.querySelector('input') as HTMLInputElement | null)?.focus();
+
+  // The "My filters" control: a list of saved sets. Click a name to apply it (seeds the
+  // filters), rename it inline, or delete it; a save bar on top saves the current
+  // filters under a name (and offers "Update <name>" once they drift from an applied
+  // set). It is the first tab of the filter modal and drives the modal's *staged* copy —
+  // applying/saving act on the staged edits and reach the live list only on the modal's
+  // Show-results action. Board sharing lives on the /my/searches account page, not here.
+  // Signed-out users see a sign-in prompt instead.
   let { store }: { store: StagedFilters } = $props();
 
   // The set the user is working from (selected or just saved). Distinct from the
@@ -23,6 +30,9 @@
   let baseId = $state<number | null>(null);
   let naming = $state(false);
   let name = $state('');
+  // The set whose name is being edited inline (null = none), and its working value.
+  let renamingId = $state<number | null>(null);
+  let renameValue = $state('');
   let busy = $state(false);
   let error = $state<string | null>(null);
 
@@ -103,26 +113,62 @@
     }
   }
 
-  function onSelect(e: Event) {
+  // Apply a saved set: seed the staged filters from it and remember it as the base
+  // (so later edits surface an "Update <name>").
+  function apply(set: SavedSearch) {
     error = null;
     naming = false;
-    const value = (e.currentTarget as HTMLSelectElement).value;
-    if (value === '') {
-      store.clear();
-      baseId = null;
-      return;
-    }
-    const set = items.find((s) => s.id === Number(value));
-    if (set) {
-      store.apply(set.query);
-      baseId = set.id;
-    }
+    renamingId = null;
+    store.apply(set.query);
+    baseId = set.id;
   }
 
   function startSave() {
     error = null;
+    renamingId = null;
     name = '';
     naming = true;
+  }
+
+  function onNameKey(e: KeyboardEvent) {
+    if (e.key === 'Enter') void save();
+    else if (e.key === 'Escape') naming = false;
+  }
+
+  function startRename(set: SavedSearch) {
+    error = null;
+    naming = false;
+    renamingId = set.id;
+    renameValue = set.name;
+  }
+
+  function cancelRename() {
+    renamingId = null;
+  }
+
+  function onRenameKey(e: KeyboardEvent) {
+    if (e.key === 'Enter') void commitRename();
+    else if (e.key === 'Escape') cancelRename();
+  }
+
+  async function commitRename() {
+    const set = items.find((s) => s.id === renamingId);
+    const trimmed = renameValue.trim();
+    if (!set || !trimmed || busy) return;
+    if (trimmed === set.name) {
+      renamingId = null;
+      return;
+    }
+    busy = true;
+    error = null;
+    try {
+      await savedSearches.update(set.id, { name: trimmed });
+      renamingId = null;
+    } catch (e) {
+      error = e instanceof ApiError ? e.message : 'Could not rename. Please try again.';
+    } finally {
+      busy = false;
+    }
   }
 
   async function save() {
@@ -155,24 +201,20 @@
     }
   }
 
-  async function remove() {
-    if (activeId == null || busy) return;
-    const set = items.find((s) => s.id === activeId);
-    if (!set || !window.confirm(`Delete the saved filter “${set.name}”?`)) return;
+  async function remove(set: SavedSearch) {
+    if (busy || !window.confirm(`Delete the saved filter “${set.name}”?`)) return;
     busy = true;
     error = null;
     try {
       await savedSearches.remove(set.id);
       if (baseId === set.id) baseId = null;
+      if (renamingId === set.id) renamingId = null;
     } catch (e) {
       error = e instanceof ApiError ? e.message : 'Could not delete. Please try again.';
     } finally {
       busy = false;
     }
   }
-
-  const selectClass =
-    'h-9 w-full rounded-lg border border-input bg-transparent px-3 text-sm transition-colors focus-visible:border-ring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 dark:bg-input/30';
 </script>
 
 <div class="flex flex-col gap-2">
@@ -187,41 +229,75 @@
       Sign in to save filters
     </button>
   {:else}
-    {#if items.length > 0}
-      <select aria-label="Select a saved filter" class={selectClass} value={activeId ?? ''} onchange={onSelect}>
-        <option value="">Select a saved filter…</option>
-        {#each items as set (set.id)}
-          <option value={set.id}>{set.name}</option>
-        {/each}
-      </select>
-    {/if}
-
+    <!-- Save bar: the primary action. It becomes an Update/Save-as-new pair once the
+         filters drift from an applied set, and an inline name input while naming. -->
     {#if naming}
-      <div class="flex items-center gap-2">
-        <Input
-          bind:value={name}
-          placeholder="Filter name"
-          maxlength={100}
-          class="min-w-0 flex-1"
-          onkeydown={(e: KeyboardEvent) => e.key === 'Enter' && save()}
-        />
+      <div class="flex items-center gap-2" {@attach focusInput}>
+        <Input bind:value={name} placeholder="Filter name" maxlength={100} class="min-w-0 flex-1" onkeydown={onNameKey} />
         <Button variant="primary" size="sm" onclick={save} disabled={!name.trim() || busy}>
           {busy ? 'Saving…' : 'Save'}
         </Button>
         <Button variant="ghost" size="sm" onclick={() => (naming = false)}>Cancel</Button>
       </div>
-    {:else}
+    {:else if dirty}
       <div class="flex flex-wrap items-center gap-2">
-        {#if dirty}
-          <Button variant="secondary" size="sm" onclick={update} disabled={busy}>
-            Update “{base?.name}”
-          </Button>
-        {/if}
+        <Button variant="primary" size="sm" onclick={update} disabled={busy}>Update “{base?.name}”</Button>
         <Button variant="secondary" size="sm" onclick={startSave} disabled={busy}>Save as new</Button>
-        {#if activeId != null}
-          <Button variant="ghost" size="sm" onclick={remove} disabled={busy}>Delete</Button>
-        {/if}
       </div>
+    {:else}
+      <Button variant="secondary" size="sm" onclick={startSave} disabled={busy} class="w-full justify-center gap-1.5">
+        <Plus class="size-4" aria-hidden="true" />
+        Save current filters
+      </Button>
+    {/if}
+
+    <!-- The saved sets as a list: click a name to apply, pencil to rename inline,
+         trash to delete. The set matching the current filters is dotted + highlighted;
+         a set you applied and then edited keeps a muted dot as the "base". -->
+    {#if items.length > 0}
+      <ul class="mt-1 flex flex-col gap-0.5">
+        {#each items as set (set.id)}
+          {#if renamingId === set.id}
+            <li class="flex items-center gap-2 py-0.5" {@attach focusInput}>
+              <Input bind:value={renameValue} maxlength={100} class="min-w-0 flex-1" onkeydown={onRenameKey} />
+              <Button variant="primary" size="sm" onclick={commitRename} disabled={!renameValue.trim() || busy}>Save</Button>
+              <Button variant="ghost" size="sm" onclick={cancelRename}>Cancel</Button>
+            </li>
+          {:else}
+            {@const active = set.id === activeId}
+            {@const isBase = dirty && set.id === baseId}
+            <li class="group flex items-center gap-0.5">
+              <button
+                type="button"
+                onclick={() => apply(set)}
+                title="Apply this filter"
+                class={['flex min-w-0 flex-1 items-center gap-2 rounded-lg px-2 py-2 text-left transition-colors hover:bg-accent', active && 'bg-accent']}
+              >
+                <span class={['size-1.5 shrink-0 rounded-full transition-colors', active ? 'bg-primary' : isBase ? 'bg-muted-foreground/50' : 'bg-transparent']}></span>
+                <span class={['truncate text-sm', active && 'font-medium']}>{set.name}</span>
+              </button>
+              <button
+                type="button"
+                aria-label="Rename “{set.name}”"
+                title="Rename"
+                onclick={() => startRename(set)}
+                class="flex size-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+              >
+                <Pencil class="size-4" />
+              </button>
+              <button
+                type="button"
+                aria-label="Delete “{set.name}”"
+                title="Delete"
+                onclick={() => remove(set)}
+                class="flex size-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+              >
+                <Trash2 class="size-4" />
+              </button>
+            </li>
+          {/if}
+        {/each}
+      </ul>
     {/if}
 
     {#if error}
