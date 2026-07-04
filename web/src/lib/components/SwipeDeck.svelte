@@ -1,12 +1,16 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { page } from '$app/state';
+  import { goto } from '$app/navigation';
   import { resolve } from '$app/paths';
+  import { Heart, RotateCcw, SlidersHorizontal, X } from '@lucide/svelte';
   import { api } from '$lib/api';
   import { cardTags, formatSalary } from '$lib/enrichment';
-  import type { Job } from '$lib/types';
+  import { FilterStore, filtersToParams } from '$lib/filters';
+  import type { Job, FacetCounts } from '$lib/types';
   import { Badge } from '$lib/ui';
   import CompanyLogo from './CompanyLogo.svelte';
+  import FilterModal from './filters/FilterModal.svelte';
   import States from './States.svelte';
 
   type Judgement = 'save' | 'dismiss';
@@ -19,10 +23,12 @@
   // How long the judged card takes to fly off-screen before it's dropped.
   const FLY_MS = 300;
 
-  // The deck honors the /jobs filters carried in the URL; unknown params (there
-  // are none here beyond facets) are ignored by the endpoint. Captured once —
-  // the filters are fixed for a swipe session.
-  const facets = new URLSearchParams(page.url.search);
+  // The deck honors the /jobs filters carried in the URL. Unlike the old fixed
+  // snapshot, the filters are now editable in-session: a FilterStore mirrors them
+  // to the URL and the deck reloads whenever the (debounced) filters change, so the
+  // top-left "Filters" button can refine the deck without leaving the page.
+  const filters = new FilterStore(page.url.searchParams);
+  const deckParams = () => filtersToParams(filters.applied);
 
   // queue holds only UNJUDGED cards; the active one is queue[0]. seen dedups by
   // slug so a prefetch that races a just-sent save/dismiss can't re-add a card.
@@ -35,12 +41,34 @@
   let error = $state(false);
   let exhausted = $state(false);
 
+  // Monotonic reload id. A filter change bumps it so an in-flight fetch started
+  // under the old filters is discarded instead of appending stale cards.
+  let gen = 0;
+
   // Live drag offset of the active card (px); 0 when settled.
   let dragX = $state(0);
   let dragging = $state(false);
   let startX = 0;
   // The active card is mid fly-off: guards re-entry and drives the fade-out.
   let exiting = $state(false);
+
+  // The filter drawer (reuses the shared job FilterModal).
+  let modalOpen = $state(false);
+
+  // Live facet distribution feeding the modal's dynamic selects + "Show N jobs"
+  // preview. A stale-response guard (countsGen) mirrors JobsView.
+  let counts = $state<FacetCounts | null>(null);
+  let countsGen = 0;
+  function refreshCounts() {
+    const g = ++countsGen;
+    api
+      .facetCounts(deckParams())
+      .then((c) => {
+        if (g === countsGen) counts = c;
+      })
+      .catch(() => {});
+  }
+  const previewCount = (params: URLSearchParams) => api.facetCounts(params).then((c) => c.total);
 
   // The card transitions (springs back or flies off) whenever it isn't tracking
   // the finger. The grow-in intro is a CSS keyframe on mount, not a transition —
@@ -50,6 +78,8 @@
   // card fades out as it leaves.
   const rotation = $derived(Math.max(-18, Math.min(18, dragX / 24)));
   const cardOpacity = $derived(exiting ? 0 : 1);
+  // Decision stamps fade in with drag distance, reaching full at the commit point.
+  const stampOpacity = $derived(Math.min(1, Math.abs(dragX) / COMMIT_PX));
 
   const current = $derived(queue[0] ?? null);
   const next = $derived(queue[1] ?? null);
@@ -58,24 +88,43 @@
     if (loading || exhausted) return;
     loading = true;
     error = false;
+    const myGen = gen;
     try {
       // offset = held-unjudged count: judged cards are already excluded
       // server-side, so this returns the page right after what we hold.
-      const slice = await api.swipeDeck(facets, LIMIT, queue.length);
+      const slice = await api.swipeDeck(deckParams(), LIMIT, queue.length);
+      if (myGen !== gen) return; // filters changed mid-flight — discard this page
       const fresh = slice.items.filter((j) => !seen.has(j.public_slug));
       for (const j of fresh) seen.add(j.public_slug);
       queue = [...queue, ...fresh];
       // A page with no rows at all means the undecided set is drained.
       if (slice.items.length === 0) exhausted = true;
     } catch {
-      error = true;
+      if (myGen === gen) error = true;
     } finally {
-      loading = false;
+      if (myGen === gen) loading = false;
     }
   }
 
   function prefetchIfLow() {
     if (queue.length <= PREFETCH_AT && !exhausted && !loading) void loadBatch();
+  }
+
+  // Reset the deck to an empty state and refetch under the current filters. Bumps
+  // `gen` first so any in-flight loadBatch discards its result and its finally
+  // can't clear our fresh `loading`.
+  function resetDeck() {
+    gen++;
+    queue = [];
+    seen.clear();
+    last = null;
+    loading = false;
+    error = false;
+    exhausted = false;
+    dragX = 0;
+    dragging = false;
+    exiting = false;
+    void loadBatch();
   }
 
   // Judge the active card: fly it off toward its side, then drop it from the queue
@@ -128,9 +177,11 @@
     void (kind === 'save' ? api.unsaveJob(job.public_slug) : api.undismissJob(job.public_slug));
   }
 
-  function openDetail() {
-    if (!current) return;
-    window.open(resolve('/jobs/[slug]', { slug: current.public_slug }), '_blank', 'noopener');
+  // Leave the deck. Carry the (possibly refined) filters back to the list so it
+  // reflects what the swipe session ended on.
+  function close() {
+    const qs = deckParams().toString();
+    goto(resolve('/jobs') + (qs ? `?${qs}` : ''));
   }
 
   // --- Pointer drag on the active card (touch + mouse) ---------------------
@@ -161,6 +212,7 @@
   function onKeydown(e: KeyboardEvent) {
     const t = e.target as HTMLElement | null;
     if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) return;
+    if (modalOpen) return; // let the filter drawer own the keyboard while it's open
     switch (e.key) {
       case 'ArrowRight':
         e.preventDefault();
@@ -178,10 +230,29 @@
       case 'U':
         undo();
         break;
+      case 'Escape':
+        close();
+        break;
     }
   }
 
-  onMount(loadBatch);
+  function openDetail() {
+    if (!current) return;
+    window.open(resolve('/jobs/[slug]', { slug: current.public_slug }), '_blank', 'noopener');
+  }
+
+  // Load the deck + counts, and reload both whenever the (debounced) filters change
+  // — the top-left Filters drawer commits to the store, which mirrors the URL and
+  // lands here. The first run IS the initial load: resetDeck() on the already-empty
+  // deck is just a plain load, so one path serves mount and every later change.
+  $effect(() => {
+    void filters.applied; // track the debounced snapshot
+    refreshCounts();
+    resetDeck();
+  });
+
+  // Cancel the store's pending debounce when the deck unmounts.
+  onMount(() => () => filters.dispose());
 
   const salary = $derived(current?.enrichment ? formatSalary(current.enrichment) : null);
   const tags = $derived(current ? cardTags(current) : []);
@@ -193,144 +264,226 @@
 
 <svelte:window onkeydown={onKeydown} />
 
-<div class="flex flex-col items-center gap-4">
-  <p class="text-sm text-muted-foreground">Swipe to triage — right to save, left to skip.</p>
+<!-- Full-screen overlay: covers the app chrome like a modal. Safe-area padding
+     keeps the top bar clear of the notch and the actions clear of the home bar. -->
+<div class="swipe-overlay fixed inset-0 z-50 flex flex-col bg-background text-foreground">
+  <!-- Top bar: Filters (left) · Close (right). Safe-area top padding clears the notch. -->
+  <header
+    class="flex shrink-0 items-center justify-between gap-3 px-4 pb-2 pt-[max(0.75rem,env(safe-area-inset-top))]"
+  >
+    <button
+      type="button"
+      onclick={() => (modalOpen = true)}
+      aria-label="Filters"
+      title="Filters"
+      class="relative flex h-11 w-11 items-center justify-center rounded-full border border-border bg-card text-foreground shadow-sm transition hover:bg-accent"
+    >
+      <SlidersHorizontal class="size-5" />
+      {#if filters.active > 0}
+        <span
+          class="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1 text-[11px] font-semibold leading-none text-primary-foreground"
+        >
+          {filters.active}
+        </span>
+      {/if}
+    </button>
+
+    <span class="text-sm font-medium text-muted-foreground">Swipe to triage</span>
+
+    <button
+      type="button"
+      onclick={close}
+      aria-label="Close swipe mode"
+      title="Close"
+      class="flex h-11 w-11 items-center justify-center rounded-full border border-border bg-card text-foreground shadow-sm transition hover:bg-accent"
+    >
+      <X class="size-5" />
+    </button>
+  </header>
 
   {#if current}
-    <!-- Card stack: the next card peeks behind for depth. -->
-    <div class="relative h-[26rem] w-full select-none">
-      {#if next}
-        <div
-          class="absolute inset-0 scale-95 rounded-2xl border border-border bg-card opacity-60"
-          aria-hidden="true"
-        ></div>
-      {/if}
-
-      {#key current.public_slug}
-        <div
-          role="group"
-          aria-label={`Job: ${current.title} at ${current.company || 'unknown company'}`}
-          class="swipe-card absolute inset-0 flex touch-none flex-col gap-3 rounded-2xl border border-border bg-card p-5 shadow-lg duration-300 ease-out"
-          class:transition={animate}
-          style={`transform: translateX(${dragX}px) rotate(${rotation}deg); opacity: ${cardOpacity};`}
-          onpointerdown={onPointerDown}
-          onpointermove={onPointerMove}
-          onpointerup={onPointerUp}
-          onpointercancel={onPointerUp}
-        >
-        <!-- Swipe-direction cues. -->
-        {#if dragX > 20}
-          <span class="absolute right-4 top-4 rounded-md border-2 border-emerald-500 px-2 py-0.5 text-sm font-bold text-emerald-500">SAVE</span>
-        {:else if dragX < -20}
-          <span class="absolute right-4 top-4 rounded-md border-2 border-rose-500 px-2 py-0.5 text-sm font-bold text-rose-500">SKIP</span>
+    <!-- Card stage: the card fills the available height, Tinder-style. -->
+    <main class="relative min-h-0 flex-1 px-4 py-3">
+      <div class="relative mx-auto h-full w-full max-w-md select-none">
+        {#if next}
+          <div
+            class="absolute inset-0 scale-95 rounded-3xl border border-border bg-card opacity-60"
+            aria-hidden="true"
+          ></div>
         {/if}
 
-        <div class="flex items-center gap-3">
-          <CompanyLogo name={current.company} />
-          <div class="min-w-0">
-            <div class="truncate font-semibold">{current.company || 'Unknown company'}</div>
-            {#if current.location}
-              <div class="truncate text-sm text-muted-foreground">{current.location}</div>
+        {#key current.public_slug}
+          <div
+            role="group"
+            aria-label={`Job: ${current.title} at ${current.company || 'unknown company'}`}
+            class="swipe-card absolute inset-0 flex touch-none flex-col gap-3 overflow-hidden rounded-3xl border border-border bg-card p-5 shadow-xl duration-300 ease-out"
+            class:transition={animate}
+            style={`transform: translate3d(${dragX}px, 0, 0) rotate(${rotation}deg); opacity: ${cardOpacity};`}
+            onpointerdown={onPointerDown}
+            onpointermove={onPointerMove}
+            onpointerup={onPointerUp}
+            onpointercancel={onPointerUp}
+          >
+            <!-- Swipe-direction stamps (Tinder-style), fading in with drag distance. -->
+            {#if dragX > 20}
+              <span
+                class="pointer-events-none absolute left-5 top-5 z-10 rotate-[-12deg] rounded-lg border-4 border-emerald-500 px-3 py-1 text-2xl font-extrabold uppercase tracking-wider text-emerald-500"
+                style={`opacity: ${stampOpacity}`}
+              >
+                Save
+              </span>
+            {:else if dragX < -20}
+              <span
+                class="pointer-events-none absolute right-5 top-5 z-10 rotate-[12deg] rounded-lg border-4 border-rose-500 px-3 py-1 text-2xl font-extrabold uppercase tracking-wider text-rose-500"
+                style={`opacity: ${stampOpacity}`}
+              >
+                Skip
+              </span>
             {/if}
+
+            <div class="flex items-center gap-3">
+              <CompanyLogo name={current.company} />
+              <div class="min-w-0">
+                <div class="truncate font-semibold">{current.company || 'Unknown company'}</div>
+                {#if current.location}
+                  <div class="truncate text-sm text-muted-foreground">{current.location}</div>
+                {/if}
+              </div>
+            </div>
+
+            <h2 class="line-clamp-3 text-2xl font-bold tracking-tight">{current.title}</h2>
+
+            {#if salary}
+              <div class="text-lg font-bold tracking-tight text-emerald-600 dark:text-emerald-400">
+                {salary}
+              </div>
+            {/if}
+
+            <div class="flex flex-wrap gap-1.5">
+              {#each tags as tag (tag)}
+                <Badge variant="secondary">{tag}</Badge>
+              {/each}
+              {#each skills as skill (skill)}
+                <Badge variant="secondary">{skill}</Badge>
+              {/each}
+            </div>
+
+            {#if summary}
+              <!-- Model-written synopsis: the card's lead. Short (≤400 chars), plain text. -->
+              <p class="text-sm leading-relaxed text-foreground">{summary}</p>
+            {/if}
+
+            {#if current.description}
+              <!-- Description is server-sanitized HTML (see internal/sources), safe to render.
+                   Fills the leftover space above the link and clips, with a fade cueing more. -->
+              <div
+                class="job-teaser relative min-h-0 flex-1 overflow-hidden text-sm leading-relaxed text-muted-foreground"
+              >
+                <!-- eslint-disable-next-line svelte/no-at-html-tags -- server-sanitized; the rule flags every {@html} regardless -->
+                {@html current.description}
+                <div
+                  class="pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-card to-transparent"
+                ></div>
+              </div>
+            {/if}
+
+            <!-- Opens in a new tab so the deck (and your place in it) is preserved —
+                 return by closing/switching back to this tab. -->
+            <a
+              href={resolve('/jobs/[slug]', { slug: current.public_slug })}
+              target="_blank"
+              rel="noopener"
+              class="mt-auto text-left text-sm font-medium text-foreground underline-offset-4 hover:underline"
+            >
+              Open full details →
+            </a>
           </div>
-        </div>
-
-        <h2 class="line-clamp-2 text-xl font-semibold tracking-tight">{current.title}</h2>
-
-        {#if salary}
-          <div class="text-lg font-bold tracking-tight text-emerald-600 dark:text-emerald-400">{salary}</div>
-        {/if}
-
-        <div class="flex flex-wrap gap-1.5">
-          {#each tags as tag (tag)}
-            <Badge variant="secondary">{tag}</Badge>
-          {/each}
-          {#each skills as skill (skill)}
-            <Badge variant="secondary">{skill}</Badge>
-          {/each}
-        </div>
-
-        {#if summary}
-          <!-- Model-written synopsis: the card's lead. Short (≤400 chars), plain text. -->
-          <p class="text-sm leading-relaxed text-foreground">{summary}</p>
-        {/if}
-
-        {#if current.description}
-          <!-- Description is server-sanitized HTML (see internal/sources), safe to render.
-               Fills the leftover space above the link and clips, with a fade cueing more. -->
-          <div class="job-teaser relative min-h-0 flex-1 overflow-hidden text-sm leading-relaxed text-muted-foreground">
-            <!-- eslint-disable-next-line svelte/no-at-html-tags -- server-sanitized; the rule flags every {@html} regardless -->
-            {@html current.description}
-            <div class="pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-card to-transparent"></div>
-          </div>
-        {/if}
-
-        <!-- Opens in a new tab so the deck (and your place in it) is preserved —
-             return by closing/switching back to this tab. -->
-        <a
-          href={resolve('/jobs/[slug]', { slug: current.public_slug })}
-          target="_blank"
-          rel="noopener"
-          class="mt-auto text-left text-sm font-medium text-foreground underline-offset-4 hover:underline"
-        >
-          Open full details →
-        </a>
+        {/key}
       </div>
-      {/key}
-    </div>
+    </main>
 
-    <!-- Action buttons (desktop + a tap alternative to swiping). -->
-    <div class="flex items-center gap-5">
+    <!-- Action buttons (a tap alternative to swiping, and the desktop path). -->
+    <footer
+      class="flex shrink-0 items-center justify-center gap-6 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-2"
+    >
       <button
         type="button"
         aria-label="Skip (dismiss)"
-        class="flex h-14 w-14 items-center justify-center rounded-full border border-border bg-card text-2xl text-rose-500 transition hover:bg-accent"
+        class="flex h-16 w-16 items-center justify-center rounded-full border border-border bg-card text-rose-500 shadow-md transition hover:bg-accent active:scale-95"
         onclick={() => judge('dismiss')}
       >
-        ✗
+        <X class="size-7" />
       </button>
       <button
         type="button"
         aria-label="Undo last"
-        class="flex h-10 w-10 items-center justify-center rounded-full border border-border bg-card text-base text-muted-foreground transition hover:bg-accent disabled:opacity-40"
+        class="flex h-12 w-12 items-center justify-center rounded-full border border-border bg-card text-muted-foreground shadow-md transition hover:bg-accent active:scale-95 disabled:opacity-40"
         disabled={!last}
         onclick={undo}
       >
-        ↩
+        <RotateCcw class="size-5" />
       </button>
       <button
         type="button"
         aria-label="Save"
-        class="flex h-14 w-14 items-center justify-center rounded-full border border-border bg-card text-2xl text-emerald-500 transition hover:bg-accent"
+        class="flex h-16 w-16 items-center justify-center rounded-full border border-border bg-card text-emerald-500 shadow-md transition hover:bg-accent active:scale-95"
         onclick={() => judge('save')}
       >
-        ♥
+        <Heart class="size-7" />
       </button>
-    </div>
+    </footer>
 
-    <p class="text-xs text-muted-foreground">
+    <p
+      class="hidden shrink-0 pb-3 text-center text-xs text-muted-foreground md:block"
+    >
       <kbd class="rounded border border-border px-1">←</kbd> skip ·
       <kbd class="rounded border border-border px-1">→</kbd> save ·
       <kbd class="rounded border border-border px-1">↑</kbd> open ·
-      <kbd class="rounded border border-border px-1">U</kbd> undo
+      <kbd class="rounded border border-border px-1">U</kbd> undo ·
+      <kbd class="rounded border border-border px-1">Esc</kbd> close
     </p>
   {:else if loading}
-    <States state="loading" />
+    <div class="flex flex-1 items-center justify-center">
+      <States state="loading" />
+    </div>
   {:else if error}
-    <States state="error" message="Failed to load the deck." />
+    <div class="flex flex-1 items-center justify-center">
+      <States state="error" message="Failed to load the deck." />
+    </div>
   {:else}
-    <div class="flex flex-col items-center gap-3 py-16 text-center">
+    <div class="flex flex-1 flex-col items-center justify-center gap-3 px-6 text-center">
       <p class="text-lg font-semibold">You're all caught up</p>
       <p class="text-sm text-muted-foreground">No more jobs match these filters.</p>
-      <a
-        href={resolve('/jobs')}
-        class="text-sm font-medium text-foreground underline underline-offset-4"
-      >
-        Back to all jobs →
-      </a>
+      <div class="mt-2 flex items-center gap-3">
+        <button
+          type="button"
+          onclick={() => (modalOpen = true)}
+          class="rounded-lg border border-border bg-card px-4 py-2 text-sm font-medium transition hover:bg-accent"
+        >
+          Adjust filters
+        </button>
+        <button
+          type="button"
+          onclick={close}
+          class="rounded-lg border border-border bg-card px-4 py-2 text-sm font-medium transition hover:bg-accent"
+        >
+          Back to all jobs
+        </button>
+      </div>
     </div>
   {/if}
 </div>
+
+<!-- The shared job filter drawer. Applying commits to the FilterStore, which
+     mirrors the URL and resets the deck via the effect below. -->
+<FilterModal
+  store={filters}
+  {counts}
+  savedSearches
+  open={modalOpen}
+  onClose={() => (modalOpen = false)}
+  {previewCount}
+/>
 
 <style>
   /* Grow-in intro for each incoming card. Uses the independent `scale` property
@@ -338,6 +491,12 @@
      on `transform` instead of fighting it. Re-triggers per card via {#key slug}. */
   .swipe-card {
     animation: card-in 300ms ease-out;
+    /* Force a dedicated GPU compositing layer so per-frame drag updates only
+       recomposite (no main-thread repaint) — kills the mobile drag jitter. The
+       tilt pivots around the card's bottom for a natural Tinder-like arc. */
+    will-change: transform;
+    transform-origin: center bottom;
+    backface-visibility: hidden;
   }
 
   @keyframes card-in {

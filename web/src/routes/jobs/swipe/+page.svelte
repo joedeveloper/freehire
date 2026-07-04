@@ -8,6 +8,6 @@
   <meta name="robots" content="noindex" />
 </svelte:head>
 
-<div class="mx-auto w-full max-w-lg px-4 py-6">
-  <SwipeDeck />
-</div>
+<!-- SwipeDeck renders itself as a full-screen fixed overlay (its own chrome:
+     filter + close in the top bar, safe-area aware), so no page container here. -->
+<SwipeDeck />
