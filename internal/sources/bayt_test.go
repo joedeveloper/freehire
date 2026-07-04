@@ -51,6 +51,7 @@ func TestBaytJobID(t *testing.T) {
 	cases := map[string]string{
 		"/en/saudi-arabia/jobs/quality-control-officer-5466655/": "5466655",
 		"https://www.bayt.com/en/uae/jobs/senior-dev-42/":        "42",
+		"/en/saudi-arabia/jobs/tracked-role-88/?utm_source=x":    "88", // query stripped
 		"/en/saudi-arabia/jobs/no-trailing-id/":                  "",
 		"/en/saudi-arabia/companies/some-company-123/":           "",
 	}
@@ -154,6 +155,36 @@ func TestBaytSkipsListingLinkWithNoID(t *testing.T) {
 	}
 	if len(jobs) != 0 {
 		t.Fatalf("id-less links should yield no jobs, got %d", len(jobs))
+	}
+}
+
+func TestBaytDropsDetailWithNoJobPosting(t *testing.T) {
+	// A detail page whose markup lost its JobPosting block is dropped, not errored: one
+	// re-templated posting must not abort an otherwise healthy crawl.
+	href := "/en/saudi-arabia/jobs/broken-detail-321/"
+	fake := (&routedHTTP{}).
+		route("/en/saudi-arabia/jobs/?page=1", baytListingHTML(href)).
+		route("/en/saudi-arabia/jobs/?page=2", baytListingHTML()).
+		route("broken-detail-321", `<html><body>no ld+json here</body></html>`)
+
+	jobs, err := NewBayt(fake).Fetch(context.Background(), CompanyEntry{
+		Company: "Bayt", Provider: "bayt", Board: "saudi-arabia",
+	})
+	if err != nil {
+		t.Fatalf("a JobPosting-less detail must not error the board: %v", err)
+	}
+	if len(jobs) != 0 {
+		t.Fatalf("JobPosting-less detail should be dropped, got %d jobs", len(jobs))
+	}
+}
+
+func TestBaytFirstListingPageErrorFailsBoard(t *testing.T) {
+	// No route for page 1 → the transport errors → the board fails loudly.
+	_, err := NewBayt(&routedHTTP{}).Fetch(context.Background(), CompanyEntry{
+		Company: "Bayt", Provider: "bayt", Board: "saudi-arabia",
+	})
+	if err == nil {
+		t.Fatal("a broken first listing page must error the board, not yield an empty success")
 	}
 }
 

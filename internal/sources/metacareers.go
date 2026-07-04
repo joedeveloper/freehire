@@ -11,9 +11,8 @@ import (
 // source: Fetch ignores e.Board and uses e.Company ("Meta"), like google/amazon. Meta's edge
 // rejects Go's default TLS+HTTP/2 fingerprint, so in production the adapter is wired with the
 // shared Chrome-fingerprint transport (fingerprintHTTP, see fingerprinthttp.go) rather than the
-// shared client. The
-// jobsearch sitemap enumerates job_details URLs; each job page server-renders an
-// application/ld+json JobPosting, so title/description/date/location come from a per-job detail
+// shared client. The jobsearch sitemap enumerates job_details URLs; each job page server-renders
+// an application/ld+json JobPosting, so title/description/date/location come from a per-job detail
 // fetch under the shared bounded-concurrency pool, like the other detail-fetching adapters.
 
 // metacareersHTTP is the transport metacareers needs: an XML sitemap plus HTML detail pages.

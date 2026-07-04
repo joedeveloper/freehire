@@ -58,6 +58,7 @@ func TestGulfTalentJobID(t *testing.T) {
 	cases := map[string]string{
 		"https://www.gulftalent.com/uae/jobs/maintenance-specialist-604168": "604168",
 		"https://www.gulftalent.com/saudi-arabia/jobs/dev-42":               "42",
+		"https://www.gulftalent.com/uae/jobs/tracked-99?ref=feed":           "99", // query stripped
 		"https://www.gulftalent.com/jobs/category/accounting":               "",
 		"https://www.gulftalent.com/companies/some-group-careers":           "",
 	}
@@ -169,6 +170,24 @@ func TestGulfTalentDropsPostingWithNoCompany(t *testing.T) {
 	}
 	if len(jobs) != 0 {
 		t.Fatalf("company-less posting should be dropped, got %d", len(jobs))
+	}
+}
+
+func TestGulfTalentDropsDetailWithNoJobPosting(t *testing.T) {
+	// A detail page without a JobPosting block is dropped, not errored — one bad posting must
+	// not abort the crawl (only an unparseable index does).
+	jobURL := "https://www.gulftalent.com/uae/jobs/broken-555"
+	fake := (&routedHTTP{}).
+		route("/sitemap.xml", gtSitemapIndexXML("https://www.gulftalent.com/sitemaps/sitemap_jx000.xml")).
+		route("sitemap_jx000.xml", gtShardXML(jobURL)).
+		route("broken-555", `<html><body>no ld+json</body></html>`)
+
+	jobs, err := NewGulfTalent(fake).Fetch(context.Background(), CompanyEntry{Company: "GulfTalent"})
+	if err != nil {
+		t.Fatalf("a JobPosting-less detail must not error the crawl: %v", err)
+	}
+	if len(jobs) != 0 {
+		t.Fatalf("JobPosting-less detail should be dropped, got %d", len(jobs))
 	}
 }
 

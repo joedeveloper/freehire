@@ -65,15 +65,21 @@ fingerprint with a 403. Requests still dial through the SSRF-guarded dialer.
 - **THEN** it uses the Chrome-fingerprint transport so the edge serves a 200 with real
   markup rather than an anti-bot 403
 
-### Requirement: Resilient JSON-LD parsing
+### Requirement: Resilient parsing isolates per-detail failures but fails loudly on the listing
 
-The postings live in `JobPosting` JSON-LD, so the adapter SHALL fail with an error when a
-detail page carries no `JobPosting` JSON-LD block (a markup change must surface loudly
-rather than silently empty the catalogue), while a listing page with zero job links is
-valid and simply ends pagination.
+The adapter SHALL drop an individual detail page that carries no `JobPosting` JSON-LD (a single
+re-templated or malformed posting must not abort an otherwise healthy crawl — the same
+bounded-fan-out isolation the other detail-fetching adapters use), while a **first listing page**
+that fails to fetch SHALL error the whole board (a broken listing is the loud signal, not a
+per-posting miss). A listing page with zero job links is valid and simply ends pagination; a
+later listing page failing just ends pagination with the earlier pages' jobs intact.
 
-#### Scenario: Missing JobPosting JSON-LD errors
+#### Scenario: Missing JobPosting on a detail drops only that posting
 
 - **WHEN** a fetched detail page has no `JobPosting` JSON-LD
-- **THEN** the adapter reports an error for that page rather than treating it as an empty
-  success
+- **THEN** the adapter omits that posting and keeps the other postings from the crawl
+
+#### Scenario: A broken first listing page errors the board
+
+- **WHEN** the first listing page for a country cannot be fetched
+- **THEN** `Fetch` returns an error rather than an empty success

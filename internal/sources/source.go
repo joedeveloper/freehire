@@ -432,6 +432,16 @@ func ParseRFC3339(s string) *time.Time     { return parseRFC3339(s) }
 // would be read as offset 0, acceptable for an approximate posted_at.
 func parseSpaceTime(s string) *time.Time { return parseLayout("2006-01-02 15:04:05 MST", s) }
 
+// trimURLSuffix drops any query string or fragment from a URL, leaving just the path. Adapters
+// that extract an id from the end of a URL path use it so a tracking suffix (?utm=…) or a #anchor
+// does not defeat an end-anchored id pattern.
+func trimURLSuffix(u string) string {
+	if i := strings.IndexAny(u, "?#"); i >= 0 {
+		return u[:i]
+	}
+	return u
+}
+
 // joinNonEmpty joins the non-empty parts with ", ", so a location built from
 // separate city/state/country fields skips blanks.
 func joinNonEmpty(parts ...string) string {

@@ -65,14 +65,20 @@ fingerprint with a 403. Requests still dial through the SSRF-guarded dialer.
 - **THEN** it uses the Chrome-fingerprint transport so the edge serves a 200 rather than
   an anti-bot 403
 
-### Requirement: Resilient parsing
+### Requirement: Resilient parsing fails loudly on the index but isolates per-detail failures
 
-The postings live in `JobPosting` JSON-LD, so the adapter SHALL fail with an error when
-the sitemap index cannot be parsed or a detail page carries no `JobPosting` JSON-LD block,
-while an empty sitemap shard is valid and yields no jobs.
+The adapter SHALL error the whole crawl when the **sitemap index** cannot be fetched or parsed
+(the index is the loud, catalogue-wide signal), while dropping an individual detail page that
+carries no `JobPosting` JSON-LD (a single re-templated posting must not abort a healthy crawl).
+An empty sitemap shard is valid and yields no jobs; a single unreadable shard is skipped so it
+does not abort the run.
 
-#### Scenario: Unparseable sitemap or missing JobPosting errors
+#### Scenario: Unparseable sitemap index errors the crawl
 
-- **WHEN** the sitemap index is unparseable, or a fetched detail page has no `JobPosting`
-  JSON-LD
-- **THEN** the adapter reports an error rather than treating it as an empty success
+- **WHEN** the sitemap index cannot be fetched or parsed
+- **THEN** `Fetch` returns an error rather than an empty success
+
+#### Scenario: Missing JobPosting on a detail drops only that posting
+
+- **WHEN** a fetched detail page has no `JobPosting` JSON-LD
+- **THEN** the adapter omits that posting and keeps the other postings from the crawl

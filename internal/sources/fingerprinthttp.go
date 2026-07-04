@@ -58,14 +58,14 @@ func newFingerprintHTTP() (*fingerprintHTTP, error) {
 // non-2xx status. Unlike the shared Client, it does not retry: these are low-volume crawls of a
 // single host, a dropped detail page reappears on the next run, and a transient list-fetch failure
 // simply fails the board for that run (no jobs are closed on a single miss).
-func (m *fingerprintHTTP) get(ctx context.Context, url string) ([]byte, error) {
+func (c *fingerprintHTTP) get(ctx context.Context, url string) ([]byte, error) {
 	req, err := fhttp.NewRequestWithContext(ctx, fhttp.MethodGet, url, nil)
 	if err != nil {
 		return nil, fmt.Errorf("sources: build request %s: %w", url, err)
 	}
 	req.Header = fpHeaders()
 
-	resp, err := m.client.Do(req)
+	resp, err := c.client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("sources: GET %s: %w", url, err)
 	}
@@ -81,8 +81,8 @@ func (m *fingerprintHTTP) get(ctx context.Context, url string) ([]byte, error) {
 }
 
 // GetXML fetches url over the Chrome-fingerprint client and decodes its XML body into v.
-func (m *fingerprintHTTP) GetXML(ctx context.Context, url string, v any) error {
-	body, err := m.get(ctx, url)
+func (c *fingerprintHTTP) GetXML(ctx context.Context, url string, v any) error {
+	body, err := c.get(ctx, url)
 	if err != nil {
 		return err
 	}
@@ -93,8 +93,8 @@ func (m *fingerprintHTTP) GetXML(ctx context.Context, url string, v any) error {
 }
 
 // GetHTML fetches url over the Chrome-fingerprint client and returns its parsed HTML tree.
-func (m *fingerprintHTTP) GetHTML(ctx context.Context, url string) (*html.Node, error) {
-	body, err := m.get(ctx, url)
+func (c *fingerprintHTTP) GetHTML(ctx context.Context, url string) (*html.Node, error) {
+	body, err := c.get(ctx, url)
 	if err != nil {
 		return nil, err
 	}

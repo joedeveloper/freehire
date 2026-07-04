@@ -56,9 +56,10 @@ const (
 var gulftalentJobIDPattern = regexp.MustCompile(`/jobs/[^/]+-(\d+)/?$`)
 
 // gulftalentJobID extracts the native GulfTalent posting id from a job-detail URL, "" when the URL
-// is not a job-detail page or carries no trailing id.
+// is not a job-detail page or carries no trailing id. Any query string or fragment is stripped
+// first so a URL with a suffix still matches.
 func gulftalentJobID(loc string) string {
-	if m := gulftalentJobIDPattern.FindStringSubmatch(loc); m != nil {
+	if m := gulftalentJobIDPattern.FindStringSubmatch(trimURLSuffix(loc)); m != nil {
 		return m[1]
 	}
 	return ""

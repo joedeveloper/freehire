@@ -30,8 +30,10 @@ func NewBayt(c baytHTTP) Source { return bayt{http: c} }
 
 func (bayt) Provider() string { return "bayt" }
 
-// aggregator keeps bayt in the source facet: one crawl aggregates postings from many companies,
-// so filtering by source=bayt is meaningful (it is not redundant with the company filter).
+// aggregator documents that one bayt crawl aggregates postings from many companies (the employer
+// comes from each posting, not the configured entry). bayt is board-based (board = country), so it
+// already appears in the source facet without this marker; the marker records the multi-company
+// nature and future-proofs facet inclusion should bayt ever become boardless.
 func (bayt) aggregator() {}
 
 const (
@@ -53,9 +55,10 @@ const (
 var baytJobIDPattern = regexp.MustCompile(`/jobs/[^/]+-(\d+)/?$`)
 
 // baytJobID extracts the native Bayt posting id from a job-detail URL, "" when the URL is not a
-// job-detail page or carries no trailing id.
+// job-detail page or carries no trailing id. Any query string or fragment is stripped first so a
+// listing href with a tracking suffix (?utm=…) still matches.
 func baytJobID(loc string) string {
-	if m := baytJobIDPattern.FindStringSubmatch(loc); m != nil {
+	if m := baytJobIDPattern.FindStringSubmatch(trimURLSuffix(loc)); m != nil {
 		return m[1]
 	}
 	return ""
