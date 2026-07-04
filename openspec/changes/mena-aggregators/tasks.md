@@ -70,6 +70,8 @@
 
 ## 5. Verification
 
-- [ ] 5.1 `go build ./... && go vet ./... && go test ./...` all green; `gofmt` clean.
-- [ ] 5.2 `openspec validate mena-aggregators --strict` passes; run
-  `requesting-code-review` on the branch diff and resolve Critical + Important findings.
+- [x] 5.1 `go build ./... && go vet ./... && go test ./...` all green; `gofmt` clean
+  (full module verified).
+- [x] 5.2 `openspec validate mena-aggregators --strict` passes; code review run on the adapter
+  diff — 1 Important (spec↔code drop-vs-error) + minors, all resolved. Post-review changes
+  (Chrome_144 profile fix, query-strip) are live-verified.
