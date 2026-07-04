@@ -5,9 +5,9 @@
   and the `safehttp` SSRF-guarded dialer). Re-point the Meta adapter at it; move the SSRF
   test (`TestMetaHTTPBlocksInternalTarget` → `TestFingerprintHTTPBlocksInternalTarget`) and
   keep it green.
-- [ ] 1.2 In `All()`, build the fingerprint transport **once** and share it across
+- [x] 1.2 In `All()`, build the fingerprint transport **once** and share it across
   `meta`, `bayt`, `gulftalent` (nil-client marker/listing path stays transport-free).
-  Confirm `go build ./... && go test ./internal/sources/ -run Fingerprint` passes.
+  `go build ./...` + `go test ./internal/sources/` pass.
 
 ## 2. Bayt adapter (`internal/sources/bayt.go`)
 
