@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, untrack } from 'svelte';
   import { page } from '$app/state';
   import { goto } from '$app/navigation';
   import { resolve } from '$app/paths';
@@ -247,8 +247,14 @@
   // deck is just a plain load, so one path serves mount and every later change.
   $effect(() => {
     void filters.applied; // track the debounced snapshot
-    refreshCounts();
-    resetDeck();
+    // Only `filters.applied` is a real dependency. resetDeck()/loadBatch() read and
+    // write loading/exhausted/queue, so tracking them here would self-invalidate the
+    // effect into an infinite reload loop — untrack the imperative work (mirrors
+    // JobsView's reload effect).
+    untrack(() => {
+      refreshCounts();
+      resetDeck();
+    });
   });
 
   // Cancel the store's pending debounce when the deck unmounts.
