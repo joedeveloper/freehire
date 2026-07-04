@@ -36,16 +36,16 @@ const (
 	fpClientTimeout = 30 * time.Second
 	fpDialTimeout   = 15 * time.Second
 	// fpUserAgent must agree with the spoofed Chrome profile below; a mismatched UA is a
-	// cheap bot tell.
-	fpUserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36"
+	// cheap bot tell. Kept at Chrome/144 to match the Chrome_144 profile.
+	fpUserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36"
 )
 
 // newFingerprintHTTP builds the shared Chrome-fingerprint transport: a tls-client with the
-// Chrome_133 profile dialing through the SSRF-guarded dialer.
+// Chrome_144 profile dialing through the SSRF-guarded dialer.
 func newFingerprintHTTP() (*fingerprintHTTP, error) {
 	client, err := tls_client.NewHttpClient(tls_client.NewNoopLogger(),
 		tls_client.WithTimeoutSeconds(int(fpClientTimeout/time.Second)),
-		tls_client.WithClientProfile(profiles.Chrome_133),
+		tls_client.WithClientProfile(profiles.Chrome_144),
 		tls_client.WithDialer(*safehttp.GuardedDialer(fpDialTimeout)),
 	)
 	if err != nil {
@@ -107,10 +107,10 @@ func (c *fingerprintHTTP) GetHTML(ctx context.Context, url string) (*html.Node, 
 
 // fpHeaders is a Chrome-shaped header set with an explicit order (fhttp's HeaderOrderKey). The
 // header presence and order are part of the fingerprint the edge checks, so they are kept
-// consistent with the spoofed Chrome_133 profile.
+// consistent with the spoofed Chrome_144 profile.
 func fpHeaders() fhttp.Header {
 	return fhttp.Header{
-		"sec-ch-ua":          {`"Chromium";v="133", "Not(A:Brand";v="99"`},
+		"sec-ch-ua":          {`"Chromium";v="144", "Not(A:Brand";v="99"`},
 		"sec-ch-ua-mobile":   {"?0"},
 		"sec-ch-ua-platform": {`"macOS"`},
 		"user-agent":         {fpUserAgent},
