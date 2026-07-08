@@ -5,10 +5,20 @@
   import JobRow from '$lib/components/JobRow.svelte';
   import LoadMore from '$lib/components/LoadMore.svelte';
   import States from '$lib/components/States.svelte';
+  import Seo from '$lib/components/Seo.svelte';
   import type { PageData } from './$types';
 
   let { data }: { data: PageData } = $props();
   const board = $derived(data.board);
+
+  // Boards are share-by-link (kept out of search below), so they still want a rich
+  // link-preview card when posted to chat/social — but no canonical, which would
+  // contradict the noindex.
+  const shareDescription = $derived(
+    board.author_label
+      ? `A freehire job board shared by ${board.author_label}.`
+      : 'A curated tech job board on freehire.',
+  );
 
   // A public board is read-only: page the board's stored query (kept fixed here — there is
   // no filter panel to change it). The paginator is rebuilt when the loaded board changes
@@ -24,9 +34,9 @@
   });
 </script>
 
+<Seo title={`${board.name} — freehire`} description={shareDescription} />
 <svelte:head>
-  <title>{board.name} — freehire</title>
-  <!-- Share-by-link, not meant for search discovery. -->
+  <!-- Share-by-link, not meant for search discovery (orthogonal to the OG card above). -->
   <meta name="robots" content="noindex" />
 </svelte:head>
 
