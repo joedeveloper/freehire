@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/strelov1/freehire/internal/jobderive"
+	"github.com/strelov1/freehire/internal/normalize"
 	"github.com/strelov1/freehire/internal/sources"
 	"github.com/strelov1/freehire/internal/worker"
 )
@@ -285,6 +286,9 @@ func jobIdentity(e sources.CompanyEntry, j sources.Job) (source, externalID stri
 // across re-ingests and deterministic with the dedup key.
 func normalizeJob(e sources.CompanyEntry, j sources.Job) Job {
 	source, externalID := jobIdentity(e, j)
+	// Strip any coordinate tail a source jammed into the free-text location before it
+	// reaches both the facet derivation and the stored/displayed field.
+	location := normalize.CleanLocation(j.Location)
 	// The slugs and dictionary facets (geography/work-mode/skills/classification) are
 	// derived by the shared jobderive helper, so ingest and the moderator write path
 	// produce identical facets. The adapter's structured facet signals (work-mode,
@@ -295,7 +299,7 @@ func normalizeJob(e sources.CompanyEntry, j sources.Job) Job {
 		Company:            j.Company,
 		Source:             source,
 		ExternalID:         externalID,
-		Location:           j.Location,
+		Location:           location,
 		Description:        j.Description,
 		WorkMode:           j.WorkMode,
 		Seniority:          j.Seniority,
@@ -311,7 +315,7 @@ func normalizeJob(e sources.CompanyEntry, j sources.Job) Job {
 		Company:     j.Company,
 		CompanySlug: d.CompanySlug,
 		PublicSlug:  d.PublicSlug,
-		Location:    j.Location,
+		Location:    location,
 		Remote:      j.Remote,
 		Description: j.Description,
 		PostedAt:    j.PostedAt,
