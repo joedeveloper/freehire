@@ -221,3 +221,71 @@ func TestListCompaniesFacetFilterEndpoint(t *testing.T) {
 			[]string{"asia-co", "euro-corp", "euro-lab", "global-lab"})
 	})
 }
+
+func TestListCompaniesRemoteRegionsFacet(t *testing.T) {
+	pool := startPostgres(t)
+	ctx := context.Background()
+	if _, err := pool.Exec(ctx, "TRUNCATE companies RESTART IDENTITY CASCADE"); err != nil {
+		t.Fatalf("truncate: %v", err)
+	}
+
+	// remote_regions (curated) and regions (job-derived) are deliberately crossed,
+	// so a filter that hit the wrong column would return the wrong company.
+	seed := func(slug string, remote, regions []string) {
+		t.Helper()
+		if _, err := pool.Exec(ctx,
+			`INSERT INTO companies (slug, name, remote_regions, regions) VALUES ($1, $1, $2, $3)`,
+			slug, remote, regions); err != nil {
+			t.Fatalf("seed %q: %v", slug, err)
+		}
+	}
+	seed("eu-remote", []string{"eu"}, []string{"north_america"})
+	seed("na-remote", []string{"north_america"}, []string{"eu"})
+	seed("global-remote", []string{"global"}, []string{})
+
+	h := &API{pool: pool, queries: db.New(pool)}
+	app := fiber.New(fiber.Config{ErrorHandler: RenderError})
+	app.Get("/api/v1/companies", h.ListCompanies)
+
+	list := func(url string) (slugs []string, total float64) {
+		resp, err := app.Test(httptest.NewRequest("GET", url, nil))
+		if err != nil {
+			t.Fatalf("request %q: %v", url, err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != fiber.StatusOK {
+			body, _ := io.ReadAll(resp.Body)
+			t.Fatalf("status = %d, want 200 (body %s)", resp.StatusCode, body)
+		}
+		var body struct {
+			Data []struct {
+				Slug string `json:"slug"`
+			} `json:"data"`
+			Meta struct {
+				Total float64 `json:"total"`
+			} `json:"meta"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		for _, c := range body.Data {
+			slugs = append(slugs, c.Slug)
+		}
+		sort.Strings(slugs)
+		return slugs, body.Meta.Total
+	}
+
+	t.Run("filters by the remote_regions column", func(t *testing.T) {
+		got, total := list("/api/v1/companies?remote_regions=eu")
+		if strings.Join(got, ",") != "eu-remote" || int(total) != 1 {
+			t.Errorf("?remote_regions=eu → %v total=%v, want [eu-remote]/1", got, total)
+		}
+	})
+
+	t.Run("is independent of the job-derived regions facet", func(t *testing.T) {
+		got, _ := list("/api/v1/companies?regions=eu")
+		if strings.Join(got, ",") != "na-remote" {
+			t.Errorf("?regions=eu → %v, want [na-remote] (regions column, not remote_regions)", got)
+		}
+	})
+}

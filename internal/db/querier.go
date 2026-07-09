@@ -298,8 +298,10 @@ type Querier interface {
 	// the full list and a name search (`search` is a case-insensitive substring of the
 	// name). Each facet param is a text[] filtered by array overlap (&&): an empty
 	// array short-circuits to no constraint, non-empty values are OR-ed within the
-	// facet, and the facets AND together (and with the name search). CountCompanies
-	// MUST keep an identical WHERE so the filtered total matches the page.
+	// facet, and the facets AND together (and with the name search). `remote_regions`
+	// is the curated backfilled facet (see SetCompanyRemoteRegions), independent of the
+	// job-derived `regions`. CountCompanies MUST keep an identical WHERE so the filtered
+	// total matches the page.
 	ListCompanies(ctx context.Context, arg ListCompaniesParams) ([]ListCompaniesRow, error)
 	// All companies with their current collection membership. cmd/import-collections
 	// reads this to know the existing company slugs (the match target) and each

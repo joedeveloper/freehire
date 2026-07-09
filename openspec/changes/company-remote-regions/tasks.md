@@ -58,12 +58,12 @@
 
 ## 7. Company list facet (API)
 
-- [ ] 7.1 Add a `remote_regions text[]` facet param to `ListCompanies` and
+- [x] 7.1 Add a `remote_regions text[]` facet param to `ListCompanies` and
       `CountCompanies` in `companies.sql` (identical `&&` overlap + empty short-circuit
       as the existing facets; keep both WHEREs identical); regenerate via `make sqlc`
-- [ ] 7.2 Wire `remote_regions` through the companies list handler (parse repeatable
+- [x] 7.2 Wire `remote_regions` through the companies list handler (parse repeatable
       query param, pass to both queries)
-- [ ] 7.3 Handler test: `GET /api/v1/companies?remote_regions=eu` filters by the
+- [x] 7.3 Handler test: `GET /api/v1/companies?remote_regions=eu` filters by the
       column and reports the filtered `meta.total`; independence from `regions`
 
 ## 8. Web filter UI

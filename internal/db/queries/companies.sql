@@ -7,8 +7,10 @@
 -- the full list and a name search (`search` is a case-insensitive substring of the
 -- name). Each facet param is a text[] filtered by array overlap (&&): an empty
 -- array short-circuits to no constraint, non-empty values are OR-ed within the
--- facet, and the facets AND together (and with the name search). CountCompanies
--- MUST keep an identical WHERE so the filtered total matches the page.
+-- facet, and the facets AND together (and with the name search). `remote_regions`
+-- is the curated backfilled facet (see SetCompanyRemoteRegions), independent of the
+-- job-derived `regions`. CountCompanies MUST keep an identical WHERE so the filtered
+-- total matches the page.
 SELECT slug, name, job_count, tagline, industries, hq_country
 FROM companies
 WHERE (sqlc.arg('search')::text = '' OR name ILIKE '%' || sqlc.arg('search') || '%')
@@ -18,6 +20,7 @@ WHERE (sqlc.arg('search')::text = '' OR name ILIKE '%' || sqlc.arg('search') || 
   AND (coalesce(cardinality(sqlc.arg('domains')::text[]), 0) = 0 OR domains && sqlc.arg('domains')::text[])
   AND (coalesce(cardinality(sqlc.arg('company_types')::text[]), 0) = 0 OR company_types && sqlc.arg('company_types')::text[])
   AND (coalesce(cardinality(sqlc.arg('company_sizes')::text[]), 0) = 0 OR company_sizes && sqlc.arg('company_sizes')::text[])
+  AND (coalesce(cardinality(sqlc.arg('remote_regions')::text[]), 0) = 0 OR remote_regions && sqlc.arg('remote_regions')::text[])
 ORDER BY job_count DESC, name
 LIMIT sqlc.arg('limit') OFFSET sqlc.arg('offset');
 
@@ -33,7 +36,8 @@ WHERE (sqlc.arg('search')::text = '' OR name ILIKE '%' || sqlc.arg('search') || 
   AND (coalesce(cardinality(sqlc.arg('countries')::text[]), 0) = 0 OR countries && sqlc.arg('countries')::text[])
   AND (coalesce(cardinality(sqlc.arg('domains')::text[]), 0) = 0 OR domains && sqlc.arg('domains')::text[])
   AND (coalesce(cardinality(sqlc.arg('company_types')::text[]), 0) = 0 OR company_types && sqlc.arg('company_types')::text[])
-  AND (coalesce(cardinality(sqlc.arg('company_sizes')::text[]), 0) = 0 OR company_sizes && sqlc.arg('company_sizes')::text[]);
+  AND (coalesce(cardinality(sqlc.arg('company_sizes')::text[]), 0) = 0 OR company_sizes && sqlc.arg('company_sizes')::text[])
+  AND (coalesce(cardinality(sqlc.arg('remote_regions')::text[]), 0) = 0 OR remote_regions && sqlc.arg('remote_regions')::text[]);
 
 -- name: ListCompanySitemap :many
 -- Slim keyset page of companies for the sitemap, cursored by the slug primary key
