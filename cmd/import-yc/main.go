@@ -35,8 +35,13 @@ const (
 // store is the slice of the data layer the loader needs; *db.Queries satisfies it.
 type store interface {
 	CompanyExists(ctx context.Context, slug string) (bool, error)
+	CompanyJobCountBySlug(ctx context.Context, slug string) (int32, error)
 	UpsertYCCompany(ctx context.Context, arg db.UpsertYCCompanyParams) error
 }
+
+// collisionJobFloor is the minimum open-job count below which the homonym guard is
+// not applied — a small company lacks the footprint to disambiguate from a YC startup.
+const collisionJobFloor = 20
 
 func main() { worker.Main(run) }
 
@@ -59,7 +64,8 @@ func run() int {
 		log.Printf("import-yc: %v", err)
 		return 1
 	}
-	log.Printf("import-yc done: matched=%d inserted=%d skipped=%d", stats.matched, stats.inserted, stats.skipped)
+	log.Printf("import-yc done: matched=%d inserted=%d collisions=%d skipped=%d",
+		stats.matched, stats.inserted, stats.collisions, stats.skipped)
 	return 0
 }
 
@@ -97,10 +103,11 @@ func fetch(ctx context.Context, url string) ([]ycdir.Entry, error) {
 	return entries, nil
 }
 
-type loadStats struct{ matched, inserted, skipped int }
+type loadStats struct{ matched, inserted, collisions, skipped int }
 
 // load maps each entry and upserts it, tallying matched-existing vs inserted-
-// reference (via CompanyExists before the blind upsert) and skipped blank names.
+// reference vs skipped-collision (a matched company that dwarfs the YC entry — a
+// homonym) vs skipped blank names.
 func load(ctx context.Context, s store, entries []ycdir.Entry) (loadStats, error) {
 	var stats loadStats
 	for _, e := range entries {
@@ -115,6 +122,19 @@ func load(ctx context.Context, s store, entries []ycdir.Entry) (loadStats, error
 		if err != nil {
 			return stats, err
 		}
+		if matched {
+			// Homonym guard: a well-known non-YC company can share a normalized name
+			// with a small YC startup. If the matched company holds far more open jobs
+			// than the YC entry has employees, it is not the same entity — skip it.
+			jobCount, err := s.CompanyJobCountBySlug(ctx, target)
+			if err != nil {
+				return stats, err
+			}
+			if isCollision(int(jobCount), rec.EmployeeCount) {
+				stats.collisions++
+				continue
+			}
+		}
 		params := recordToParams(rec)
 		params.Slug = target
 		if err := s.UpsertYCCompany(ctx, params); err != nil {
@@ -127,6 +147,14 @@ func load(ctx context.Context, s store, entries []ycdir.Entry) (loadStats, error
 		}
 	}
 	return stats, nil
+}
+
+// isCollision reports whether an existing company with jobCount open jobs is too big
+// to be the matched YC startup of teamSize employees (a homonym): it holds more open
+// jobs than the startup has people, above a small floor. A zero/unknown team size is
+// never a collision (no signal to disambiguate).
+func isCollision(jobCount, teamSize int) bool {
+	return teamSize > 0 && jobCount >= collisionJobFloor && jobCount > teamSize
 }
 
 // resolveTarget returns the slug to upsert under and whether it matched an existing

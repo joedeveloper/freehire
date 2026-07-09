@@ -91,6 +91,10 @@ type Querier interface {
 	// before upserting to log matched-existing vs inserted-reference counts — the
 	// upsert itself is blind to which path (insert or update) it took.
 	CompanyExists(ctx context.Context, slug string) (bool, error)
+	// The denormalized open-job count for a slug (pgx.ErrNoRows if the company is
+	// absent). cmd/import-yc uses it to guard against homonym collisions: it skips
+	// enriching an existing company whose job_count dwarfs a matched YC entry's team.
+	CompanyJobCountBySlug(ctx context.Context, slug string) (int32, error)
 	// The slug ending every full chunk of `chunk_size` companies (ordered by slug),
 	// excluding the final row, so the sitemap index can list each company sub-sitemap's
 	// keyset cursor.

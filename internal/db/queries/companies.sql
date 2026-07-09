@@ -262,3 +262,9 @@ WHERE c.slug = c2.slug
     OR c.domains        IS DISTINCT FROM COALESCE(dom.arr, '{}')
     OR c.company_types  IS DISTINCT FROM COALESCE(ctype.arr, '{}')
     OR c.company_sizes  IS DISTINCT FROM COALESCE(csize.arr, '{}'));
+
+-- name: CompanyJobCountBySlug :one
+-- The denormalized open-job count for a slug (pgx.ErrNoRows if the company is
+-- absent). cmd/import-yc uses it to guard against homonym collisions: it skips
+-- enriching an existing company whose job_count dwarfs a matched YC entry's team.
+SELECT job_count FROM companies WHERE slug = $1;
