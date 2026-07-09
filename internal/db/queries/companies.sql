@@ -137,6 +137,21 @@ ON CONFLICT (slug) DO UPDATE SET
     company_info_at   = now(),
     updated_at        = now();
 
+-- name: SetCompanyRemoteRegions :execrows
+-- Apply one remote-hiring-regions record to an EXISTING company, matched by slug.
+-- Sets the curated remote_regions facet and records the raw source string under
+-- company_info.remote_regions_raw for mapping audit. It updates existing companies
+-- only — an unmatched slug affects zero rows and inserts nothing (no reference row) —
+-- and never touches name, job_count, collections, is_reference, or the job-derived
+-- facet arrays (regions/countries/domains/company_types/company_sizes). Idempotent:
+-- re-running the same record rewrites the same values. cmd/backfill-remote-regions
+-- reads the affected-rows count to tally matched vs unmatched.
+UPDATE companies
+SET remote_regions = sqlc.arg(remote_regions)::text[],
+    company_info   = company_info || jsonb_build_object('remote_regions_raw', sqlc.arg(remote_regions_raw)::text),
+    updated_at     = now()
+WHERE slug = sqlc.arg(slug);
+
 -- name: RefreshCompanyFacets :execrows
 -- Recompute every company's denormalized state in one set-based pass: the open-job
 -- count plus the facet arrays derived from those open jobs — regions/countries from

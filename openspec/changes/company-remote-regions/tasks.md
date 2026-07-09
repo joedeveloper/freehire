@@ -1,8 +1,8 @@
 ## 1. Schema
 
-- [ ] 1.1 Add migration `migrations/0005_company_remote_regions.sql` adding
+- [x] 1.1 Add migration `migrations/0005_company_remote_regions.sql` adding
       `companies.remote_regions text[] NOT NULL DEFAULT '{}'`
-- [ ] 1.2 Regenerate `internal/db` via `make sqlc`; confirm `db.Company` gains the
+- [x] 1.2 Regenerate `internal/db` via `make sqlc`; confirm `db.Company` gains the
       `RemoteRegions` field and the build passes
 
 ## 2. Region mapping dictionary (`internal/remoteregion`)
@@ -20,13 +20,13 @@
 
 ## 3. Persistence query (`SetCompanyRemoteRegions`)
 
-- [ ] 3.1 Add `SetCompanyRemoteRegions` to `internal/db/queries/companies.sql`:
+- [x] 3.1 Add `SetCompanyRemoteRegions` to `internal/db/queries/companies.sql`:
       UPDATE-only by slug, setting `remote_regions` and merging
       `remote_regions_raw` into `company_info` (jsonb), bumping `updated_at`;
       `:execrows` so callers see matched vs unmatched. Do NOT touch name/job_count/
       collections/is_reference/job-derived facets
-- [ ] 3.2 Regenerate `internal/db` via `make sqlc`
-- [ ] 3.3 Integration test (`//go:build integration`, testcontainers): existing
+- [x] 3.2 Regenerate `internal/db` via `make sqlc`
+- [x] 3.3 Integration test (`//go:build integration`, testcontainers): existing
       company gets `remote_regions` + `remote_regions_raw` and nothing else changes;
       an unmatched slug returns 0 rows and inserts no company
 
@@ -51,7 +51,7 @@
 
 ## 6. Recompute guard
 
-- [ ] 6.1 Integration test asserting `RefreshCompanyFacets` leaves a company's
+- [x] 6.1 Integration test asserting `RefreshCompanyFacets` leaves a company's
       backfilled `remote_regions` untouched (and confirm the query does not
       reference the column)
 

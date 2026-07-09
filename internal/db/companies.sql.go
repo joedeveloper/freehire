@@ -119,7 +119,7 @@ func (q *Queries) DeleteOrphanCompanies(ctx context.Context) (int64, error) {
 }
 
 const getCompany = `-- name: GetCompany :one
-SELECT slug, name, created_at, updated_at, collections, job_count, regions, countries, domains, company_types, company_sizes, industries, year_founded, employee_count, hq_country, organization_type, tagline, company_info, is_reference, company_info_at
+SELECT slug, name, created_at, updated_at, collections, job_count, regions, countries, domains, company_types, company_sizes, industries, year_founded, employee_count, hq_country, organization_type, tagline, company_info, is_reference, company_info_at, remote_regions
 FROM companies
 WHERE slug = $1
 `
@@ -151,6 +151,7 @@ func (q *Queries) GetCompany(ctx context.Context, slug string) (Company, error) 
 		&i.CompanyInfo,
 		&i.IsReference,
 		&i.CompanyInfoAt,
+		&i.RemoteRegions,
 	)
 	return i, err
 }
@@ -412,6 +413,36 @@ type SetCompanyCollectionsParams struct {
 func (q *Queries) SetCompanyCollections(ctx context.Context, arg SetCompanyCollectionsParams) error {
 	_, err := q.db.Exec(ctx, setCompanyCollections, arg.Slug, arg.Collections)
 	return err
+}
+
+const setCompanyRemoteRegions = `-- name: SetCompanyRemoteRegions :execrows
+UPDATE companies
+SET remote_regions = $1::text[],
+    company_info   = company_info || jsonb_build_object('remote_regions_raw', $2::text),
+    updated_at     = now()
+WHERE slug = $3
+`
+
+type SetCompanyRemoteRegionsParams struct {
+	RemoteRegions    []string `json:"remote_regions"`
+	RemoteRegionsRaw string   `json:"remote_regions_raw"`
+	Slug             string   `json:"slug"`
+}
+
+// Apply one remote-hiring-regions record to an EXISTING company, matched by slug.
+// Sets the curated remote_regions facet and records the raw source string under
+// company_info.remote_regions_raw for mapping audit. It updates existing companies
+// only — an unmatched slug affects zero rows and inserts nothing (no reference row) —
+// and never touches name, job_count, collections, is_reference, or the job-derived
+// facet arrays (regions/countries/domains/company_types/company_sizes). Idempotent:
+// re-running the same record rewrites the same values. cmd/backfill-remote-regions
+// reads the affected-rows count to tally matched vs unmatched.
+func (q *Queries) SetCompanyRemoteRegions(ctx context.Context, arg SetCompanyRemoteRegionsParams) (int64, error) {
+	result, err := q.db.Exec(ctx, setCompanyRemoteRegions, arg.RemoteRegions, arg.RemoteRegionsRaw, arg.Slug)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const syncCompaniesFromJobs = `-- name: SyncCompaniesFromJobs :exec

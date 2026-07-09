@@ -42,6 +42,7 @@ type Company struct {
 	CompanyInfo      json.RawMessage    `json:"company_info"`
 	IsReference      bool               `json:"is_reference"`
 	CompanyInfoAt    pgtype.Timestamptz `json:"company_info_at"`
+	RemoteRegions    []string           `json:"remote_regions"`
 }
 
 type EnrichmentOutbox struct {

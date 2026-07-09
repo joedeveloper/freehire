@@ -497,6 +497,15 @@ type Querier interface {
 	// (preserving unmanaged tags) and writes it here; updated_at is bumped for parity
 	// with the other write paths.
 	SetCompanyCollections(ctx context.Context, arg SetCompanyCollectionsParams) error
+	// Apply one remote-hiring-regions record to an EXISTING company, matched by slug.
+	// Sets the curated remote_regions facet and records the raw source string under
+	// company_info.remote_regions_raw for mapping audit. It updates existing companies
+	// only — an unmatched slug affects zero rows and inserts nothing (no reference row) —
+	// and never touches name, job_count, collections, is_reference, or the job-derived
+	// facet arrays (regions/countries/domains/company_types/company_sizes). Idempotent:
+	// re-running the same record rewrites the same values. cmd/backfill-remote-regions
+	// reads the affected-rows count to tally matched vs unmatched.
+	SetCompanyRemoteRegions(ctx context.Context, arg SetCompanyRemoteRegionsParams) (int64, error)
 	// Targeted enrichment write used by the enrichment command: set only the payload
 	// and the provenance stamp, touching no raw source field. Kept separate from
 	// UpsertJob (the ingest full-upsert path) so ingest and enrichment stay decoupled.
