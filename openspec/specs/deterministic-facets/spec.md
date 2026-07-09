@@ -8,8 +8,11 @@ TBD - created by archiving change dict-production-facets. Update Purpose after a
 The system SHALL store the deterministic, dictionary-derived facets —
 `countries`, `regions`, `work_mode`, `skills`, `seniority`, `category` — in the
 `jobs` table columns as source facts, computed by the curated dictionaries
-(`jobderive`, wrapping `location`/`skilltag`/`classify`). The public read model
-(`jobview.FromRow`) SHALL source these six facets from the `jobs` columns ONLY.
+(`jobderive`, wrapping `location`/`skilltag`/`classify`), and SHALL derive them
+through the `Job` aggregate factory (`job.New`) on every write path, so the
+derivation cannot diverge between the ingest, moderator-authoring, and Telegram
+paths. The public read model (`jobview`, projecting from the domain `Job` via
+`jobview.FromDomain`) SHALL source these six facets from the `jobs` columns ONLY.
 It SHALL NOT union the multi-valued facets (`countries`/`regions`/`skills`) with
 their `enrichment` counterparts, and it SHALL NOT let the LLM-derived
 `enrichment.work_mode`/`enrichment.seniority`/`enrichment.category` override or
@@ -34,6 +37,13 @@ from the LLM.
 - **WHEN** a job has an empty `category` column (the title dictionary resolved
   nothing) and `enrichment.category=backend` from the LLM, and is read
 - **THEN** the served `category` is empty
+
+#### Scenario: The Telegram path derives facets identically to ingest
+
+- **WHEN** a Telegram-extracted posting and a board-ingested posting carry the same
+  title, description, and location
+- **THEN** they resolve the same dictionary facets, because both construct their
+  `Job` through the aggregate factory rather than deriving inline
 
 ### Requirement: Raw LLM facet values are retained but not served
 
