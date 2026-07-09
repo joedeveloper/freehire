@@ -123,3 +123,16 @@ describe('yc facets (curated YC directory)', () => {
     expect(companyFiltersFromParams(p).facets.yc_batch).toEqual(['Summer 2009']);
   });
 });
+
+describe('yc_stage / yc_flags facets', () => {
+  test('are selectable and round-trip', () => {
+    let f = emptyCompanyFilters();
+    f = toggleCompanyFacet(f, 'yc_stage', 'Growth');
+    f = toggleCompanyFacet(f, 'yc_flags', 'top_company');
+    expect(f.facets.yc_stage).toEqual(['Growth']);
+    expect(f.facets.yc_flags).toEqual(['top_company']);
+    expect(activeCompanyFilterCount(f)).toBe(2);
+    const p = companyFiltersToParams(f);
+    expect(companyFiltersFromParams(p).facets.yc_flags).toEqual(['top_company']);
+  });
+});

@@ -30,6 +30,16 @@
     info.stock?.symbol ? [info.stock.exchange, info.stock.symbol].filter(Boolean).join(': ') : ''
   );
 
+  // YC-directory badges (present-only): marquee "top company", active-hiring, and
+  // funding stage, from the curated company_info the YC importer stores.
+  const badges = $derived(
+    [
+      info.top_company ? 'YC Top Company' : null,
+      info.is_hiring ? 'Hiring' : null,
+      info.stage ? `${info.stage}-stage` : null,
+    ].filter((b): b is string => !!b)
+  );
+
   // Ordered {term, value} pairs — present-only, so an absent field drops out of the
   // definition list rather than showing a blank row.
   const facts = $derived(
@@ -48,14 +58,23 @@
   );
 </script>
 
-{#if facts.length}
+{#if facts.length || badges.length}
   <div class="rounded-xl border border-border bg-card p-4">
     <p class="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Company facts</p>
-    <dl class="grid grid-cols-[auto_1fr] items-baseline gap-x-3 gap-y-2 text-sm">
-      {#each facts as fact (fact.term)}
-        <dt class="text-muted-foreground">{fact.term}</dt>
-        <dd class="text-right font-medium">{fact.value}</dd>
-      {/each}
-    </dl>
+    {#if badges.length}
+      <div class="mb-3 flex flex-wrap gap-1.5">
+        {#each badges as badge (badge)}
+          <span class="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-foreground">{badge}</span>
+        {/each}
+      </div>
+    {/if}
+    {#if facts.length}
+      <dl class="grid grid-cols-[auto_1fr] items-baseline gap-x-3 gap-y-2 text-sm">
+        {#each facts as fact (fact.term)}
+          <dt class="text-muted-foreground">{fact.term}</dt>
+          <dd class="text-right font-medium">{fact.value}</dd>
+        {/each}
+      </dl>
+    {/if}
   </div>
 {/if}

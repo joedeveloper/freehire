@@ -355,3 +355,63 @@ func TestListCompaniesYCFacets(t *testing.T) {
 		}
 	})
 }
+
+func TestListCompaniesYCStageFlags(t *testing.T) {
+	pool := startPostgres(t)
+	ctx := context.Background()
+	if _, err := pool.Exec(ctx, "TRUNCATE companies RESTART IDENTITY CASCADE"); err != nil {
+		t.Fatalf("truncate: %v", err)
+	}
+	seed := func(slug string, stage, flags []string) {
+		t.Helper()
+		if _, err := pool.Exec(ctx,
+			`INSERT INTO companies (slug, name, yc_stage, yc_flags) VALUES ($1, $1, $2, $3)`,
+			slug, stage, flags); err != nil {
+			t.Fatalf("seed %q: %v", slug, err)
+		}
+	}
+	seed("growthtop", []string{"Growth"}, []string{"top_company", "hiring"})
+	seed("earlyhiring", []string{"Early"}, []string{"hiring"})
+	seed("growthplain", []string{"Growth"}, []string{})
+
+	h := &API{pool: pool, queries: db.New(pool)}
+	app := fiber.New(fiber.Config{ErrorHandler: RenderError})
+	app.Get("/api/v1/companies", h.ListCompanies)
+
+	list := func(url string) (slugs []string, total float64) {
+		resp, err := app.Test(httptest.NewRequest("GET", url, nil))
+		if err != nil {
+			t.Fatalf("request: %v", err)
+		}
+		defer resp.Body.Close()
+		var body struct {
+			Data []struct {
+				Slug string `json:"slug"`
+			} `json:"data"`
+			Meta struct {
+				Total float64 `json:"total"`
+			} `json:"meta"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		for _, c := range body.Data {
+			slugs = append(slugs, c.Slug)
+		}
+		sort.Strings(slugs)
+		return slugs, body.Meta.Total
+	}
+
+	t.Run("flags facet (OR within)", func(t *testing.T) {
+		got, total := list("/api/v1/companies?yc_flags=hiring")
+		if strings.Join(got, ",") != "earlyhiring,growthtop" || int(total) != 2 {
+			t.Errorf("yc_flags=hiring → %v/%v", got, total)
+		}
+	})
+	t.Run("stage AND flags", func(t *testing.T) {
+		got, _ := list("/api/v1/companies?yc_stage=Growth&yc_flags=top_company")
+		if strings.Join(got, ",") != "growthtop" {
+			t.Errorf("→ %v, want [growthtop]", got)
+		}
+	})
+}

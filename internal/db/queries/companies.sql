@@ -23,6 +23,8 @@ WHERE (sqlc.arg('search')::text = '' OR name ILIKE '%' || sqlc.arg('search') || 
   AND (coalesce(cardinality(sqlc.arg('remote_regions')::text[]), 0) = 0 OR remote_regions && sqlc.arg('remote_regions')::text[])
   AND (coalesce(cardinality(sqlc.arg('yc_batch')::text[]), 0) = 0 OR yc_batch && sqlc.arg('yc_batch')::text[])
   AND (coalesce(cardinality(sqlc.arg('yc_status')::text[]), 0) = 0 OR yc_status && sqlc.arg('yc_status')::text[])
+  AND (coalesce(cardinality(sqlc.arg('yc_stage')::text[]), 0) = 0 OR yc_stage && sqlc.arg('yc_stage')::text[])
+  AND (coalesce(cardinality(sqlc.arg('yc_flags')::text[]), 0) = 0 OR yc_flags && sqlc.arg('yc_flags')::text[])
 ORDER BY job_count DESC, name
 LIMIT sqlc.arg('limit') OFFSET sqlc.arg('offset');
 
@@ -41,7 +43,9 @@ WHERE (sqlc.arg('search')::text = '' OR name ILIKE '%' || sqlc.arg('search') || 
   AND (coalesce(cardinality(sqlc.arg('company_sizes')::text[]), 0) = 0 OR company_sizes && sqlc.arg('company_sizes')::text[])
   AND (coalesce(cardinality(sqlc.arg('remote_regions')::text[]), 0) = 0 OR remote_regions && sqlc.arg('remote_regions')::text[])
   AND (coalesce(cardinality(sqlc.arg('yc_batch')::text[]), 0) = 0 OR yc_batch && sqlc.arg('yc_batch')::text[])
-  AND (coalesce(cardinality(sqlc.arg('yc_status')::text[]), 0) = 0 OR yc_status && sqlc.arg('yc_status')::text[]);
+  AND (coalesce(cardinality(sqlc.arg('yc_status')::text[]), 0) = 0 OR yc_status && sqlc.arg('yc_status')::text[])
+  AND (coalesce(cardinality(sqlc.arg('yc_stage')::text[]), 0) = 0 OR yc_stage && sqlc.arg('yc_stage')::text[])
+  AND (coalesce(cardinality(sqlc.arg('yc_flags')::text[]), 0) = 0 OR yc_flags && sqlc.arg('yc_flags')::text[]);
 
 -- name: ListCompanySitemap :many
 -- Slim keyset page of companies for the sitemap, cursored by the slug primary key
@@ -154,11 +158,13 @@ ON CONFLICT (slug) DO UPDATE SET
 -- are left untouched. Idempotent: re-running the same entry rewrites the same values.
 INSERT INTO companies (
     slug, name, industries, year_founded, employee_count, hq_country,
-    tagline, company_info, yc_batch, yc_status, is_reference, company_info_at
+    tagline, company_info, yc_batch, yc_status, yc_stage, yc_flags,
+    is_reference, company_info_at
 ) VALUES (
     sqlc.arg(slug), sqlc.arg(name), sqlc.arg(industries), sqlc.arg(year_founded),
     sqlc.arg(employee_count), sqlc.arg(hq_country), sqlc.arg(tagline),
-    sqlc.arg(company_info), sqlc.arg(yc_batch), sqlc.arg(yc_status), true, now()
+    sqlc.arg(company_info), sqlc.arg(yc_batch), sqlc.arg(yc_status),
+    sqlc.arg(yc_stage), sqlc.arg(yc_flags), true, now()
 )
 ON CONFLICT (slug) DO UPDATE SET
     industries      = EXCLUDED.industries,
@@ -169,6 +175,8 @@ ON CONFLICT (slug) DO UPDATE SET
     company_info    = EXCLUDED.company_info,
     yc_batch        = EXCLUDED.yc_batch,
     yc_status       = EXCLUDED.yc_status,
+    yc_stage        = EXCLUDED.yc_stage,
+    yc_flags        = EXCLUDED.yc_flags,
     company_info_at = now(),
     updated_at      = now();
 

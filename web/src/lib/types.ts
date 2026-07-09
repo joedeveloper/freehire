@@ -37,6 +37,14 @@ export interface CompanyInfo {
     symbol?: string;
     exchange?: string;
   };
+  // YC-directory extras (populated by cmd/import-yc; absent on non-YC companies).
+  description?: string;
+  website?: string;
+  stage?: string;
+  top_company?: boolean;
+  is_hiring?: boolean;
+  yc_url?: string;
+  logo?: string;
 }
 
 export interface Company {

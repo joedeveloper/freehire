@@ -21,7 +21,10 @@ type Entry struct {
 	Status          string   `json:"status"`
 	Stage           string   `json:"stage"`
 	Industry        string   `json:"industry"`
+	Industries      []string `json:"industries"`
+	Subindustry     string   `json:"subindustry"`
 	Tags            []string `json:"tags"`
+	FormerNames     []string `json:"former_names"`
 	TeamSize        int      `json:"team_size"`
 	LaunchedAt      int64    `json:"launched_at"`
 	Website         string   `json:"website"`
@@ -44,6 +47,9 @@ type Record struct {
 	HQCountry     string // "" = unknown
 	Batch         string
 	Status        string
+	Stage         string
+	Flags         []string       // curated flags: "top_company", "hiring" (sorted)
+	FormerSlugs   []string       // normalized slugs of former names, for matching
 	Info          map[string]any // company_info JSONB extras (empties omitted)
 }
 
@@ -60,12 +66,15 @@ func Map(e Entry) (Record, bool) {
 		Slug:          slug,
 		Name:          name,
 		Tagline:       strings.TrimSpace(e.OneLiner),
-		Industries:    industries(e.Industry, e.Tags),
+		Industries:    industries(e),
 		EmployeeCount: e.TeamSize,
 		YearFounded:   launchYear(e.LaunchedAt),
 		HQCountry:     hqCountry(e.AllLocations),
 		Batch:         strings.TrimSpace(e.Batch),
 		Status:        strings.TrimSpace(e.Status),
+		Stage:         strings.TrimSpace(e.Stage),
+		Flags:         flags(e),
+		FormerSlugs:   formerSlugs(e.FormerNames),
 		Info:          info(e),
 	}
 	if r.EmployeeCount < 0 {
@@ -74,12 +83,18 @@ func Map(e Entry) (Record, bool) {
 	return r, true
 }
 
-// industries returns the industry followed by each tag, de-duplicated (exact,
-// order-preserving), dropping blanks.
-func industries(industry string, tags []string) []string {
+// industries unions the entry's industry, industries[], the leaf of subindustry,
+// and tags — de-duplicated (exact, order-preserving), dropping blanks.
+func industries(e Entry) []string {
+	var vals []string
+	vals = append(vals, e.Industry)
+	vals = append(vals, e.Industries...)
+	vals = append(vals, subindustryLeaf(e.Subindustry))
+	vals = append(vals, e.Tags...)
+
 	var out []string
 	seen := map[string]struct{}{}
-	for _, v := range append([]string{industry}, tags...) {
+	for _, v := range vals {
 		v = strings.TrimSpace(v)
 		if v == "" {
 			continue
@@ -89,6 +104,41 @@ func industries(industry string, tags []string) []string {
 		}
 		seen[v] = struct{}{}
 		out = append(out, v)
+	}
+	return out
+}
+
+// subindustryLeaf returns the last "->"-separated segment of a subindustry path
+// ("Industrials -> Manufacturing and Robotics" → "Manufacturing and Robotics"), or
+// "" for a blank input.
+func subindustryLeaf(s string) string {
+	if strings.TrimSpace(s) == "" {
+		return ""
+	}
+	parts := strings.Split(s, "->")
+	return strings.TrimSpace(parts[len(parts)-1])
+}
+
+// flags returns the curated flag set for the entry, sorted for a stable facet value.
+func flags(e Entry) []string {
+	var out []string
+	if e.IsHiring {
+		out = append(out, "hiring")
+	}
+	if e.TopCompany {
+		out = append(out, "top_company")
+	}
+	return out
+}
+
+// formerSlugs returns the normalized slugs of the entry's former names, dropping
+// blanks; used to match a company we ingest under an old name.
+func formerSlugs(names []string) []string {
+	var out []string
+	for _, n := range names {
+		if s := normalize.Slug(n); s != "" {
+			out = append(out, s)
+		}
 	}
 	return out
 }

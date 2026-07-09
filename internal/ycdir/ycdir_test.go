@@ -14,7 +14,10 @@ func TestMapFullEntry(t *testing.T) {
 		Status:          "Active",
 		Stage:           "Early",
 		Industry:        "Industrials",
+		Industries:      []string{"Manufacturing"},
+		Subindustry:     "Industrials -> Manufacturing and Robotics",
 		Tags:            []string{"Industrials", "Robotics", "Hardware"},
+		FormerNames:     []string{"Old CircuitHub Inc"},
 		TeamSize:        58,
 		LaunchedAt:      1322045523, // 2011-11-23 UTC
 		Website:         "https://circuithub.com",
@@ -33,9 +36,9 @@ func TestMapFullEntry(t *testing.T) {
 	if r.Tagline != "On-Demand Electronics Manufacturing" {
 		t.Errorf("tagline = %q", r.Tagline)
 	}
-	// industry + tags, de-duplicated, industry first.
-	if !reflect.DeepEqual(r.Industries, []string{"Industrials", "Robotics", "Hardware"}) {
-		t.Errorf("industries = %v, want [Industrials Robotics Hardware]", r.Industries)
+	// industry + industries[] + subindustry leaf + tags, de-duplicated, in that order.
+	if !reflect.DeepEqual(r.Industries, []string{"Industrials", "Manufacturing", "Manufacturing and Robotics", "Robotics", "Hardware"}) {
+		t.Errorf("industries = %v", r.Industries)
 	}
 	if r.EmployeeCount != 58 {
 		t.Errorf("employee_count = %d, want 58", r.EmployeeCount)
@@ -54,6 +57,23 @@ func TestMapFullEntry(t *testing.T) {
 	}
 	if r.Info["website"] != "https://circuithub.com" || r.Info["stage"] != "Early" {
 		t.Errorf("info website/stage = %v/%v", r.Info["website"], r.Info["stage"])
+	}
+	if r.Stage != "Early" {
+		t.Errorf("stage = %q, want Early", r.Stage)
+	}
+	if !reflect.DeepEqual(r.FormerSlugs, []string{"old-circuithub-inc"}) {
+		t.Errorf("former slugs = %v, want [old-circuithub-inc]", r.FormerSlugs)
+	}
+	// flags sorted: hiring, top_company.
+	if !reflect.DeepEqual(r.Flags, []string{"hiring", "top_company"}) {
+		t.Errorf("flags = %v, want [hiring top_company]", r.Flags)
+	}
+}
+
+func TestMapNoFlagsWhenNeither(t *testing.T) {
+	r, _ := Map(Entry{Name: "Plain Co"})
+	if len(r.Flags) != 0 {
+		t.Errorf("flags = %v, want empty", r.Flags)
 	}
 }
 

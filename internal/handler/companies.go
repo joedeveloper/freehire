@@ -44,6 +44,8 @@ func (a *API) ListCompanies(c *fiber.Ctx) error {
 	remoteRegions := facetValues(vals, "remote_regions")
 	ycBatch := facetValues(vals, "yc_batch")
 	ycStatus := facetValues(vals, "yc_status")
+	ycStage := facetValues(vals, "yc_stage")
+	ycFlags := facetValues(vals, "yc_flags")
 
 	companies, err := a.queries.ListCompanies(c.Context(), db.ListCompaniesParams{
 		Search:        search,
@@ -56,6 +58,8 @@ func (a *API) ListCompanies(c *fiber.Ctx) error {
 		RemoteRegions: remoteRegions,
 		YcBatch:       ycBatch,
 		YcStatus:      ycStatus,
+		YcStage:       ycStage,
+		YcFlags:       ycFlags,
 		Limit:         int32(limit),
 		Offset:        int32(offset),
 	})
@@ -74,6 +78,8 @@ func (a *API) ListCompanies(c *fiber.Ctx) error {
 		RemoteRegions: remoteRegions,
 		YcBatch:       ycBatch,
 		YcStatus:      ycStatus,
+		YcStage:       ycStage,
+		YcFlags:       ycFlags,
 	})
 	if err != nil {
 		return err

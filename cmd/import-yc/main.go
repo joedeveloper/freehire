@@ -109,20 +109,40 @@ func load(ctx context.Context, s store, entries []ycdir.Entry) (loadStats, error
 			stats.skipped++
 			continue
 		}
-		exists, err := s.CompanyExists(ctx, rec.Slug)
+		// Resolve to an existing company by current-name slug or any former-name
+		// slug (first match wins); otherwise insert under the current-name slug.
+		target, matched, err := resolveTarget(ctx, s, rec)
 		if err != nil {
 			return stats, err
 		}
-		if err := s.UpsertYCCompany(ctx, recordToParams(rec)); err != nil {
+		params := recordToParams(rec)
+		params.Slug = target
+		if err := s.UpsertYCCompany(ctx, params); err != nil {
 			return stats, err
 		}
-		if exists {
+		if matched {
 			stats.matched++
 		} else {
 			stats.inserted++
 		}
 	}
 	return stats, nil
+}
+
+// resolveTarget returns the slug to upsert under and whether it matched an existing
+// company: the current-name slug if it exists, else the first former-name slug that
+// exists, else the current-name slug (a new reference row).
+func resolveTarget(ctx context.Context, s store, rec ycdir.Record) (string, bool, error) {
+	for _, slug := range append([]string{rec.Slug}, rec.FormerSlugs...) {
+		exists, err := s.CompanyExists(ctx, slug)
+		if err != nil {
+			return "", false, err
+		}
+		if exists {
+			return slug, true, nil
+		}
+	}
+	return rec.Slug, false, nil
 }
 
 // recordToParams maps a mapped directory record to upsert params: empty scalars
@@ -146,6 +166,8 @@ func recordToParams(r ycdir.Record) db.UpsertYCCompanyParams {
 		CompanyInfo:   info,
 		YcBatch:       single(r.Batch),
 		YcStatus:      single(r.Status),
+		YcStage:       single(r.Stage),
+		YcFlags:       nonNil(r.Flags),
 	}
 }
 

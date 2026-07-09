@@ -39,6 +39,8 @@ func ycParams(slug, name, batch, status string) UpsertYCCompanyParams {
 		CompanyInfo:   json.RawMessage(`{"description":"Long text","website":"https://x.co"}`),
 		YcBatch:       []string{batch},
 		YcStatus:      []string{status},
+		YcStage:       []string{"Growth"},
+		YcFlags:       []string{"top_company"},
 	}
 }
 
@@ -65,6 +67,9 @@ func TestUpsertYCCompany(t *testing.T) {
 		}
 		if len(c.YcBatch) != 1 || c.YcBatch[0] != "Summer 2009" || len(c.YcStatus) != 1 || c.YcStatus[0] != "Public" {
 			t.Errorf("yc facets = %v/%v", c.YcBatch, c.YcStatus)
+		}
+		if len(c.YcStage) != 1 || c.YcStage[0] != "Growth" || len(c.YcFlags) != 1 || c.YcFlags[0] != "top_company" {
+			t.Errorf("yc_stage/yc_flags = %v/%v", c.YcStage, c.YcFlags)
 		}
 		if c.EmployeeCount.Int32 != 58 || c.YearFounded.Int32 != 2011 || c.HqCountry.String != "us" {
 			t.Errorf("company-info not applied: %+v", c)
@@ -137,7 +142,8 @@ func TestRefreshCompanyFacetsLeavesYCFacets(t *testing.T) {
 	if len(c.RemoteRegions) != 1 || c.RemoteRegions[0] != "eu" {
 		t.Errorf("remote_regions = %v, want [eu]", c.RemoteRegions)
 	}
-	if len(c.YcBatch) != 1 || c.YcBatch[0] != "Summer 2009" || len(c.YcStatus) != 1 || c.YcStatus[0] != "Public" {
-		t.Errorf("yc facets disturbed by recompute: %v/%v", c.YcBatch, c.YcStatus)
+	if len(c.YcBatch) != 1 || c.YcBatch[0] != "Summer 2009" || len(c.YcStatus) != 1 || c.YcStatus[0] != "Public" ||
+		len(c.YcStage) != 1 || c.YcStage[0] != "Growth" || len(c.YcFlags) != 1 || c.YcFlags[0] != "top_company" {
+		t.Errorf("yc facets disturbed by recompute: %v/%v/%v/%v", c.YcBatch, c.YcStatus, c.YcStage, c.YcFlags)
 	}
 }

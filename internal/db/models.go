@@ -57,6 +57,8 @@ type Company struct {
 	RemoteRegions    []string           `json:"remote_regions"`
 	YcBatch          []string           `json:"yc_batch"`
 	YcStatus         []string           `json:"yc_status"`
+	YcStage          []string           `json:"yc_stage"`
+	YcFlags          []string           `json:"yc_flags"`
 }
 
 type EnrichmentOutbox struct {

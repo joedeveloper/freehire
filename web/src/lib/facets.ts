@@ -392,6 +392,11 @@ const COUNTRY: FacetOption[] = ISO_COUNTRY_CODES.map((value) => ({
 // companies list endpoint filters by plain array overlap. Reuses the same option
 // vocabularies as the job facets so labels never drift.
 const YC_STATUS: FacetOption[] = options(['Active', 'Acquired', 'Public', 'Inactive']);
+const YC_STAGE: FacetOption[] = options(['Early', 'Growth']);
+const YC_FLAGS: FacetOption[] = options(['top_company', 'hiring'], {
+  top_company: 'YC Top Company',
+  hiring: 'Hiring',
+});
 // YC batch labels are the verbatim source strings ("Winter 2012"). Generate the full
 // season×year grid so the searchable select covers any batch; phantom combinations
 // that no company has simply match nothing.
@@ -407,6 +412,8 @@ export const COMPANY_FACETS: FacetDef[] = [
   { param: 'company_type', label: 'Company type', control: 'pills', options: COMPANY_TYPE, excludable: false },
   { param: 'company_size', label: 'Company size', control: 'pills', options: COMPANY_SIZE, excludable: false },
   { param: 'yc_status', label: 'YC status', control: 'pills', options: YC_STATUS, excludable: false },
+  { param: 'yc_stage', label: 'YC stage', control: 'pills', options: YC_STAGE, excludable: false },
+  { param: 'yc_flags', label: 'YC', control: 'pills', options: YC_FLAGS, excludable: false },
   { param: 'yc_batch', label: 'YC batch', control: 'select', options: YC_BATCH, excludable: false, placeholder: 'Search YC batches' },
 ];
 
