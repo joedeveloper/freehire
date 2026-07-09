@@ -217,6 +217,227 @@ export const FILTER_COLLECTIONS: FilterCollection[] = [
     description: 'Open roles that use Svelte and SvelteKit for web interfaces.',
     params: { skills: 'svelte' },
   },
+  // Tech-category landings — the "<category> jobs" search pattern, one per canonical
+  // `category` facet value (see enrich.CategoryValues). The param is `category`; the
+  // slug is a readable form of the value — usually its kebab case (data_engineering →
+  // data-engineering), but chosen for readability where they differ (ml_ai →
+  // machine-learning). Only technical categories are listed — non-tech ones
+  // (sales/management/support/marketing) are off-audience. Each was confirmed to have
+  // a healthy live count (≥ 300) before shipping.
+  {
+    slug: 'backend',
+    title: 'Backend',
+    description: 'Server-side engineering roles — APIs, services, databases and backend systems.',
+    params: { category: 'backend' },
+  },
+  {
+    slug: 'frontend',
+    title: 'Frontend',
+    description: 'Frontend engineering roles building web user interfaces and client-side apps.',
+    params: { category: 'frontend' },
+  },
+  {
+    slug: 'fullstack',
+    title: 'Full-Stack',
+    description: 'Full-stack roles spanning both frontend and backend development.',
+    params: { category: 'fullstack' },
+  },
+  {
+    slug: 'devops',
+    title: 'DevOps',
+    description: 'DevOps roles automating build, deployment and cloud infrastructure.',
+    params: { category: 'devops' },
+  },
+  {
+    slug: 'sre',
+    title: 'SRE',
+    description: 'Site reliability roles keeping production systems scalable and resilient.',
+    params: { category: 'sre' },
+  },
+  {
+    slug: 'data-engineering',
+    title: 'Data Engineering',
+    description: 'Data engineering roles building pipelines, warehouses and data platforms.',
+    params: { category: 'data_engineering' },
+  },
+  {
+    slug: 'data-science',
+    title: 'Data Science',
+    description: 'Data science roles turning data into models, insight and decisions.',
+    params: { category: 'data_science' },
+  },
+  {
+    slug: 'machine-learning',
+    title: 'Machine Learning',
+    description: 'Machine learning roles training and shipping ML models to production.',
+    params: { category: 'ml_ai' },
+  },
+  {
+    slug: 'ai-engineering',
+    title: 'AI Engineering',
+    description: 'AI engineering roles building LLM and generative-AI powered products.',
+    params: { category: 'ai_engineering' },
+  },
+  {
+    slug: 'mobile',
+    title: 'Mobile',
+    description: 'Mobile engineering roles for iOS, Android and cross-platform apps.',
+    params: { category: 'mobile' },
+  },
+  {
+    slug: 'security',
+    title: 'Security',
+    description: 'Security roles covering application, cloud and infrastructure security.',
+    params: { category: 'security' },
+  },
+  {
+    slug: 'qa',
+    title: 'QA',
+    description: 'Quality assurance and test engineering roles across manual and automated testing.',
+    params: { category: 'qa' },
+  },
+  {
+    slug: 'architecture',
+    title: 'Architecture',
+    description: 'Software and solution architecture roles designing systems at scale.',
+    params: { category: 'architecture' },
+  },
+  {
+    slug: 'embedded',
+    title: 'Embedded',
+    description: 'Embedded and firmware roles programming devices and low-level systems.',
+    params: { category: 'embedded' },
+  },
+  {
+    slug: 'network-engineering',
+    title: 'Network Engineering',
+    description: 'Network engineering roles designing and operating network infrastructure.',
+    params: { category: 'network_engineering' },
+  },
+  // Seniority landings — the "<level> jobs" pattern, one per canonical `seniority`
+  // facet value. Copy leans on the level ("Senior-Level"), not a category it cannot
+  // claim. Generic intent, but each has a large live count.
+  {
+    slug: 'junior',
+    title: 'Junior-Level',
+    description: 'Entry-level and junior engineering roles for early-career developers.',
+    params: { seniority: 'junior' },
+  },
+  {
+    slug: 'mid-level',
+    title: 'Mid-Level',
+    description: 'Mid-level engineering roles for developers with a few years of experience.',
+    params: { seniority: 'middle' },
+  },
+  {
+    slug: 'senior',
+    title: 'Senior-Level',
+    description: 'Senior engineering roles for experienced developers who lead delivery.',
+    params: { seniority: 'senior' },
+  },
+  {
+    slug: 'lead',
+    title: 'Lead',
+    description: 'Lead engineering roles owning technical direction and delivery for a team.',
+    params: { seniority: 'lead' },
+  },
+  {
+    slug: 'staff',
+    title: 'Staff',
+    description: 'Staff engineering roles driving technical strategy across teams.',
+    params: { seniority: 'staff' },
+  },
+  {
+    slug: 'principal',
+    title: 'Principal',
+    description: 'Principal engineering roles setting technical direction org-wide.',
+    params: { seniority: 'principal' },
+  },
+  {
+    slug: 'internship',
+    title: 'Internship',
+    description: 'Internship and trainee roles for students and new graduates in tech.',
+    params: { seniority: 'intern' },
+  },
+  // Infra-skill landings — the same "<skill> jobs" pattern as the language/framework
+  // set above, extended to cloud & platform tools. `slug`/`params.skills` MUST be the
+  // exact skilltag canonical. Each was confirmed to have a live count before shipping.
+  {
+    slug: 'aws',
+    title: 'AWS',
+    description: 'Open roles that use Amazon Web Services for cloud infrastructure.',
+    params: { skills: 'aws' },
+  },
+  {
+    slug: 'kubernetes',
+    title: 'Kubernetes',
+    description: 'Open roles that use Kubernetes to orchestrate containerized workloads.',
+    params: { skills: 'kubernetes' },
+  },
+  {
+    slug: 'terraform',
+    title: 'Terraform',
+    description: 'Open roles that use Terraform for infrastructure as code.',
+    params: { skills: 'terraform' },
+  },
+  {
+    slug: 'docker',
+    title: 'Docker',
+    description: 'Open roles that use Docker to build and run containerized apps.',
+    params: { skills: 'docker' },
+  },
+  {
+    slug: 'postgresql',
+    title: 'PostgreSQL',
+    description: 'Open roles that use PostgreSQL as the primary relational database.',
+    params: { skills: 'postgresql' },
+  },
+  {
+    slug: 'redis',
+    title: 'Redis',
+    description: 'Open roles that use Redis for caching, queues and real-time data.',
+    params: { skills: 'redis' },
+  },
+  {
+    slug: 'kafka',
+    title: 'Kafka',
+    description: 'Open roles that use Apache Kafka for event streaming and messaging.',
+    params: { skills: 'kafka' },
+  },
+  {
+    slug: 'graphql',
+    title: 'GraphQL',
+    description: 'Open roles that use GraphQL for API design and data fetching.',
+    params: { skills: 'graphql' },
+  },
+  // Named-role landings — the `role` facet (roletag: named roles + skill×seniority
+  // combos). Only clearly-technical roles with an individually-verified live count
+  // are listed; the facet also carries non-tech and seniority-only values, which are
+  // covered by the category/seniority axes instead.
+  {
+    slug: 'software-engineer',
+    title: 'Software Engineer',
+    description: 'General software engineering roles across the stack and domains.',
+    params: { role: 'software_engineer' },
+  },
+  {
+    slug: 'senior-backend',
+    title: 'Senior Backend',
+    description: 'Senior backend engineering roles owning server-side systems and APIs.',
+    params: { role: 'senior_backend' },
+  },
+  {
+    slug: 'senior-frontend',
+    title: 'Senior Frontend',
+    description: 'Senior frontend engineering roles owning web UI architecture and delivery.',
+    params: { role: 'senior_frontend' },
+  },
+  {
+    slug: 'founding-engineer',
+    title: 'Founding Engineer',
+    description: 'Founding engineer roles building the first product at early-stage startups.',
+    params: { role: 'founding_engineer' },
+  },
 ];
 
 // toQuery expands a filter collection's params into a URL query string, repeating a
