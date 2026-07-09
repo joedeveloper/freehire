@@ -11,12 +11,17 @@ import (
 )
 
 type fakeStore struct {
-	exists map[string]bool
-	calls  []db.UpsertYCCompanyParams
+	exists    map[string]bool
+	jobCounts map[string]int32
+	calls     []db.UpsertYCCompanyParams
 }
 
 func (f *fakeStore) CompanyExists(_ context.Context, slug string) (bool, error) {
 	return f.exists[slug], nil
+}
+
+func (f *fakeStore) CompanyJobCountBySlug(_ context.Context, slug string) (int32, error) {
+	return f.jobCounts[slug], nil
 }
 
 func (f *fakeStore) UpsertYCCompany(_ context.Context, p db.UpsertYCCompanyParams) error {
@@ -29,20 +34,30 @@ func TestLoad(t *testing.T) {
 		{Name: "Stripe", OneLiner: "Payments", Industry: "Fintech", TeamSize: 8000, Batch: "Summer 2009", Status: "Public", Stage: "Growth", TopCompany: true},
 		{Name: "New Co", Batch: "Winter 2024", Status: "Active"},
 		{Name: "Meta", FormerNames: []string{"Facebook"}, Batch: "Summer 2005", Status: "Public"}, // current absent, former exists
+		{Name: "Benchmark", TeamSize: 7, Batch: "Winter 2023", Status: "Active"},                  // homonym: tiny YC vs big non-YC company
 		{Name: "   "}, // blank → skipped
 	}
 	// "meta" slug absent, but its former name "facebook" exists → enriches facebook.
-	fs := &fakeStore{exists: map[string]bool{"stripe": true, "new-co": false, "meta": false, "facebook": true}}
+	// "benchmark" exists with 1326 jobs but the YC entry has 7 employees → collision.
+	fs := &fakeStore{
+		exists:    map[string]bool{"stripe": true, "new-co": false, "meta": false, "facebook": true, "benchmark": true},
+		jobCounts: map[string]int32{"stripe": 543, "facebook": 600, "benchmark": 1326},
+	}
 
 	stats, err := load(context.Background(), fs, entries)
 	if err != nil {
 		t.Fatalf("load: %v", err)
 	}
-	if stats.matched != 2 || stats.inserted != 1 || stats.skipped != 1 {
-		t.Errorf("stats = %+v, want matched2 inserted1 skipped1", stats)
+	if stats.matched != 2 || stats.inserted != 1 || stats.skipped != 1 || stats.collisions != 1 {
+		t.Errorf("stats = %+v, want matched2 inserted1 skipped1 collisions1", stats)
 	}
 	if len(fs.calls) != 3 {
-		t.Fatalf("UpsertYCCompany called %d times, want 3", len(fs.calls))
+		t.Fatalf("UpsertYCCompany called %d times, want 3 (benchmark collision not written)", len(fs.calls))
+	}
+	for _, c := range fs.calls {
+		if c.Slug == "benchmark" {
+			t.Error("benchmark (homonym collision) was enriched, want skipped")
+		}
 	}
 
 	// Meta resolves to the existing "facebook" via former name — no new row.

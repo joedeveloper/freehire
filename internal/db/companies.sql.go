@@ -26,6 +26,20 @@ func (q *Queries) CompanyExists(ctx context.Context, slug string) (bool, error) 
 	return exists, err
 }
 
+const companyJobCountBySlug = `-- name: CompanyJobCountBySlug :one
+SELECT job_count FROM companies WHERE slug = $1
+`
+
+// The denormalized open-job count for a slug (pgx.ErrNoRows if the company is
+// absent). cmd/import-yc uses it to guard against homonym collisions: it skips
+// enriching an existing company whose job_count dwarfs a matched YC entry's team.
+func (q *Queries) CompanyJobCountBySlug(ctx context.Context, slug string) (int32, error) {
+	row := q.db.QueryRow(ctx, companyJobCountBySlug, slug)
+	var job_count int32
+	err := row.Scan(&job_count)
+	return job_count, err
+}
+
 const companySitemapBoundaries = `-- name: CompanySitemapBoundaries :many
 SELECT slug FROM (
   SELECT slug,
