@@ -302,8 +302,10 @@ type Querier interface {
 	// the full list and a name search (`search` is a case-insensitive substring of the
 	// name). Each facet param is a text[] filtered by array overlap (&&): an empty
 	// array short-circuits to no constraint, non-empty values are OR-ed within the
-	// facet, and the facets AND together (and with the name search). CountCompanies
-	// MUST keep an identical WHERE so the filtered total matches the page.
+	// facet, and the facets AND together (and with the name search). `remote_regions`
+	// is the curated backfilled facet (see SetCompanyRemoteRegions), independent of the
+	// job-derived `regions`. CountCompanies MUST keep an identical WHERE so the filtered
+	// total matches the page.
 	ListCompanies(ctx context.Context, arg ListCompaniesParams) ([]ListCompaniesRow, error)
 	// All companies with their current collection membership. cmd/import-collections
 	// reads this to know the existing company slugs (the match target) and each
@@ -501,6 +503,15 @@ type Querier interface {
 	// (preserving unmanaged tags) and writes it here; updated_at is bumped for parity
 	// with the other write paths.
 	SetCompanyCollections(ctx context.Context, arg SetCompanyCollectionsParams) error
+	// Apply one remote-hiring-regions record to an EXISTING company, matched by slug.
+	// Sets the curated remote_regions facet and records the raw source string under
+	// company_info.remote_regions_raw for mapping audit. It updates existing companies
+	// only — an unmatched slug affects zero rows and inserts nothing (no reference row) —
+	// and never touches name, job_count, collections, is_reference, or the job-derived
+	// facet arrays (regions/countries/domains/company_types/company_sizes). Idempotent:
+	// re-running the same record rewrites the same values. cmd/backfill-remote-regions
+	// reads the affected-rows count to tally matched vs unmatched.
+	SetCompanyRemoteRegions(ctx context.Context, arg SetCompanyRemoteRegionsParams) (int64, error)
 	// Targeted enrichment write used by the enrichment command: set only the payload
 	// and the provenance stamp, touching no raw source field. Kept separate from
 	// UpsertJob (the ingest full-upsert path) so ingest and enrichment stay decoupled.

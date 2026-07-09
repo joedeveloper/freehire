@@ -91,3 +91,21 @@ describe('activeCompanyFilterCount', () => {
     expect(activeCompanyFilterCount(f)).toBe(3);
   });
 });
+
+describe('remote_regions facet (curated hiring regions)', () => {
+  test('is a selectable facet, distinct from the job-derived regions facet', () => {
+    let f = emptyCompanyFilters();
+    f = toggleCompanyFacet(f, 'remote_regions', 'eu');
+    f = toggleCompanyFacet(f, 'regions', 'north_america');
+    expect(f.facets.remote_regions).toEqual(['eu']);
+    expect(f.facets.regions).toEqual(['north_america']);
+    expect(activeCompanyFilterCount(f)).toBe(2);
+  });
+
+  test('round-trips through the URL as a repeatable param', () => {
+    const p = new URLSearchParams('remote_regions=eu&remote_regions=apac');
+    const f = companyFiltersFromParams(p);
+    expect(f.facets.remote_regions).toEqual(['eu', 'apac']);
+    expect(companyFiltersToParams(f).getAll('remote_regions')).toEqual(['eu', 'apac']);
+  });
+});

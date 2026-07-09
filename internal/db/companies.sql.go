@@ -70,16 +70,18 @@ WHERE ($1::text = '' OR name ILIKE '%' || $1 || '%')
   AND (coalesce(cardinality($5::text[]), 0) = 0 OR domains && $5::text[])
   AND (coalesce(cardinality($6::text[]), 0) = 0 OR company_types && $6::text[])
   AND (coalesce(cardinality($7::text[]), 0) = 0 OR company_sizes && $7::text[])
+  AND (coalesce(cardinality($8::text[]), 0) = 0 OR remote_regions && $8::text[])
 `
 
 type CountCompaniesParams struct {
-	Search       string   `json:"search"`
-	Collections  []string `json:"collections"`
-	Regions      []string `json:"regions"`
-	Countries    []string `json:"countries"`
-	Domains      []string `json:"domains"`
-	CompanyTypes []string `json:"company_types"`
-	CompanySizes []string `json:"company_sizes"`
+	Search        string   `json:"search"`
+	Collections   []string `json:"collections"`
+	Regions       []string `json:"regions"`
+	Countries     []string `json:"countries"`
+	Domains       []string `json:"domains"`
+	CompanyTypes  []string `json:"company_types"`
+	CompanySizes  []string `json:"company_sizes"`
+	RemoteRegions []string `json:"remote_regions"`
 }
 
 // Total companies matching the same optional name + facet filters as ListCompanies,
@@ -94,6 +96,7 @@ func (q *Queries) CountCompanies(ctx context.Context, arg CountCompaniesParams) 
 		arg.Domains,
 		arg.CompanyTypes,
 		arg.CompanySizes,
+		arg.RemoteRegions,
 	)
 	var count int64
 	err := row.Scan(&count)
@@ -119,7 +122,7 @@ func (q *Queries) DeleteOrphanCompanies(ctx context.Context) (int64, error) {
 }
 
 const getCompany = `-- name: GetCompany :one
-SELECT slug, name, created_at, updated_at, collections, job_count, regions, countries, domains, company_types, company_sizes, industries, year_founded, employee_count, hq_country, organization_type, tagline, company_info, is_reference, company_info_at
+SELECT slug, name, created_at, updated_at, collections, job_count, regions, countries, domains, company_types, company_sizes, industries, year_founded, employee_count, hq_country, organization_type, tagline, company_info, is_reference, company_info_at, remote_regions
 FROM companies
 WHERE slug = $1
 `
@@ -151,6 +154,7 @@ func (q *Queries) GetCompany(ctx context.Context, slug string) (Company, error) 
 		&i.CompanyInfo,
 		&i.IsReference,
 		&i.CompanyInfoAt,
+		&i.RemoteRegions,
 	)
 	return i, err
 }
@@ -165,20 +169,22 @@ WHERE ($1::text = '' OR name ILIKE '%' || $1 || '%')
   AND (coalesce(cardinality($5::text[]), 0) = 0 OR domains && $5::text[])
   AND (coalesce(cardinality($6::text[]), 0) = 0 OR company_types && $6::text[])
   AND (coalesce(cardinality($7::text[]), 0) = 0 OR company_sizes && $7::text[])
+  AND (coalesce(cardinality($8::text[]), 0) = 0 OR remote_regions && $8::text[])
 ORDER BY job_count DESC, name
-LIMIT $9 OFFSET $8
+LIMIT $10 OFFSET $9
 `
 
 type ListCompaniesParams struct {
-	Search       string   `json:"search"`
-	Collections  []string `json:"collections"`
-	Regions      []string `json:"regions"`
-	Countries    []string `json:"countries"`
-	Domains      []string `json:"domains"`
-	CompanyTypes []string `json:"company_types"`
-	CompanySizes []string `json:"company_sizes"`
-	Offset       int32    `json:"offset"`
-	Limit        int32    `json:"limit"`
+	Search        string   `json:"search"`
+	Collections   []string `json:"collections"`
+	Regions       []string `json:"regions"`
+	Countries     []string `json:"countries"`
+	Domains       []string `json:"domains"`
+	CompanyTypes  []string `json:"company_types"`
+	CompanySizes  []string `json:"company_sizes"`
+	RemoteRegions []string `json:"remote_regions"`
+	Offset        int32    `json:"offset"`
+	Limit         int32    `json:"limit"`
 }
 
 type ListCompaniesRow struct {
@@ -198,8 +204,10 @@ type ListCompaniesRow struct {
 // the full list and a name search (`search` is a case-insensitive substring of the
 // name). Each facet param is a text[] filtered by array overlap (&&): an empty
 // array short-circuits to no constraint, non-empty values are OR-ed within the
-// facet, and the facets AND together (and with the name search). CountCompanies
-// MUST keep an identical WHERE so the filtered total matches the page.
+// facet, and the facets AND together (and with the name search). `remote_regions`
+// is the curated backfilled facet (see SetCompanyRemoteRegions), independent of the
+// job-derived `regions`. CountCompanies MUST keep an identical WHERE so the filtered
+// total matches the page.
 func (q *Queries) ListCompanies(ctx context.Context, arg ListCompaniesParams) ([]ListCompaniesRow, error) {
 	rows, err := q.db.Query(ctx, listCompanies,
 		arg.Search,
@@ -209,6 +217,7 @@ func (q *Queries) ListCompanies(ctx context.Context, arg ListCompaniesParams) ([
 		arg.Domains,
 		arg.CompanyTypes,
 		arg.CompanySizes,
+		arg.RemoteRegions,
 		arg.Offset,
 		arg.Limit,
 	)
@@ -412,6 +421,36 @@ type SetCompanyCollectionsParams struct {
 func (q *Queries) SetCompanyCollections(ctx context.Context, arg SetCompanyCollectionsParams) error {
 	_, err := q.db.Exec(ctx, setCompanyCollections, arg.Slug, arg.Collections)
 	return err
+}
+
+const setCompanyRemoteRegions = `-- name: SetCompanyRemoteRegions :execrows
+UPDATE companies
+SET remote_regions = $1::text[],
+    company_info   = company_info || jsonb_build_object('remote_regions_raw', $2::text),
+    updated_at     = now()
+WHERE slug = $3
+`
+
+type SetCompanyRemoteRegionsParams struct {
+	RemoteRegions    []string `json:"remote_regions"`
+	RemoteRegionsRaw string   `json:"remote_regions_raw"`
+	Slug             string   `json:"slug"`
+}
+
+// Apply one remote-hiring-regions record to an EXISTING company, matched by slug.
+// Sets the curated remote_regions facet and records the raw source string under
+// company_info.remote_regions_raw for mapping audit. It updates existing companies
+// only — an unmatched slug affects zero rows and inserts nothing (no reference row) —
+// and never touches name, job_count, collections, is_reference, or the job-derived
+// facet arrays (regions/countries/domains/company_types/company_sizes). Idempotent:
+// re-running the same record rewrites the same values. cmd/backfill-remote-regions
+// reads the affected-rows count to tally matched vs unmatched.
+func (q *Queries) SetCompanyRemoteRegions(ctx context.Context, arg SetCompanyRemoteRegionsParams) (int64, error) {
+	result, err := q.db.Exec(ctx, setCompanyRemoteRegions, arg.RemoteRegions, arg.RemoteRegionsRaw, arg.Slug)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const syncCompaniesFromJobs = `-- name: SyncCompaniesFromJobs :exec
