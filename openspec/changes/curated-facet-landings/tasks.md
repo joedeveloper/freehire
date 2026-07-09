@@ -20,4 +20,4 @@
 
 ## 6. Verify and ship
 
-- [ ] 6.1 `svelte-check` and `vitest` green; spot-check 2–3 new landing pages render a scoped feed with a non-zero count and a self-canonical
+- [x] 6.1 `svelte-check` and `vitest` green; spot-check 2–3 new landing pages render a scoped feed with a non-zero count and a self-canonical
