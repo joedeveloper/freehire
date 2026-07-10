@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"net/url"
 	"regexp"
 	"strings"
 	"sync"
@@ -252,7 +251,11 @@ func taleoLocation(cell string) string {
 // taleoDescription decodes a jobdetail.ftl page's description. Taleo embeds it in the hidden
 // initialHistory input: state fields are "!|!"-delimited and the URL-encoded description HTML
 // follows the "!*!" marker. We take the segment after "!*!" up to the next "!|!", percent-decode
-// it (PathUnescape leaves "+" intact so tokens like "C++" survive), and sanitize.
+// it, and sanitize. Decoding is lenient (LenientPercentUnescape, not url.PathUnescape) because
+// Word-pasted descriptions carry a literal "%" in their CSS ("line-height:115%") that Taleo left
+// un-encoded; strict PathUnescape rejects the whole string on that stray "%", which used to store
+// the description still fully percent-encoded. Lenient decoding keeps "+" intact too, so "C++"
+// survives.
 func taleoDescription(page string) string {
 	value := taleoInitialHistory(page)
 	if value == "" {
@@ -265,11 +268,7 @@ func taleoDescription(page string) string {
 	if i := strings.Index(after, "!|!"); i >= 0 {
 		after = after[:i]
 	}
-	decoded, err := url.PathUnescape(after)
-	if err != nil {
-		decoded = after // keep the encoded form rather than dropping the description
-	}
-	return sanitizeHTML(decoded)
+	return sanitizeHTML(LenientPercentUnescape(after))
 }
 
 // keyedMutex hands out one mutex per string key, created on demand, so callers serialize work

@@ -52,3 +52,22 @@ func TestSanitizeHTMLNormalizesNoBreakSpaces(t *testing.T) {
 		}
 	}
 }
+
+func TestLenientPercentUnescape(t *testing.T) {
+	cases := map[string]struct{ in, want string }{
+		"plain":              {"hello world", "hello world"},
+		"valid escapes":      {"%3Cp%3Ehi%3C%2Fp%3E", "<p>hi</p>"},
+		"literal percent":    {"line-height:115%;color", "line-height:115%;color"},
+		"stat percent":       {"100% remote", "100% remote"},
+		"mixed":              {"%3Cb%3E100%25 %3D%3E all%3C%2Fb%3E", "<b>100% => all</b>"},
+		"plus preserved":     {"C%2B%2B and C++", "C++ and C++"},
+		"trailing lone pct":  {"done 50%", "done 50%"},
+		"lone pct then hex1": {"%3 only", "%3 only"},
+		"utf8 bytes":         {"%D0%9F%D1%80%D0%B8%D0%B2%D0%B5%D1%82", "Привет"},
+	}
+	for name, c := range cases {
+		if got := LenientPercentUnescape(c.in); got != c.want {
+			t.Errorf("%s: LenientPercentUnescape(%q) = %q, want %q", name, c.in, got, c.want)
+		}
+	}
+}

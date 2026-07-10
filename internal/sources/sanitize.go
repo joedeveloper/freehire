@@ -58,3 +58,43 @@ func SanitizeHTML(s string) string { return sanitizeHTML(s) }
 // IsRemote is the exported form of the shared location-based remote heuristic, so sibling
 // packages flag remote jobs consistently with the ATS adapters.
 func IsRemote(location string) bool { return isRemote(location) }
+
+// LenientPercentUnescape percent-decodes every valid "%XX" (two hex digits) sequence and
+// passes any stray "%" through literally. It exists because Go's url.PathUnescape is strict:
+// a single "%" not followed by two hex digits (common in Word-pasted ATS HTML, e.g. the CSS
+// "line-height:115%") makes it reject the ENTIRE string, so callers that fell back to the
+// raw value stored a still-fully-encoded description. Like PathUnescape it leaves "+" intact
+// so tokens like "C++" survive. Decoding is byte-wise (percent-encoding is defined on bytes),
+// so multi-byte UTF-8 sequences reassemble correctly.
+func LenientPercentUnescape(s string) string {
+	// Fast path: nothing to decode.
+	if !strings.ContainsRune(s, '%') {
+		return s
+	}
+	var b strings.Builder
+	b.Grow(len(s))
+	for i := 0; i < len(s); i++ {
+		if s[i] == '%' && i+2 < len(s) && isHex(s[i+1]) && isHex(s[i+2]) {
+			b.WriteByte(unhex(s[i+1])<<4 | unhex(s[i+2]))
+			i += 2
+			continue
+		}
+		b.WriteByte(s[i])
+	}
+	return b.String()
+}
+
+func isHex(c byte) bool {
+	return c >= '0' && c <= '9' || c >= 'a' && c <= 'f' || c >= 'A' && c <= 'F'
+}
+
+func unhex(c byte) byte {
+	switch {
+	case c >= '0' && c <= '9':
+		return c - '0'
+	case c >= 'a' && c <= 'f':
+		return c - 'a' + 10
+	default:
+		return c - 'A' + 10
+	}
+}

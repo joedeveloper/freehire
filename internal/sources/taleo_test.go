@@ -107,6 +107,25 @@ func TestTaleoFetch(t *testing.T) {
 	}
 }
 
+// TestTaleoDescriptionLiteralPercent guards the Word-paste regression: Taleo descriptions
+// pasted from Word carry a literal "%" (CSS "line-height:115%") that the source left
+// un-encoded. Strict url.PathUnescape rejected the whole string on that stray "%", and the
+// fallback stored the description still fully percent-encoded (rendered as literal "%3Cp...").
+// The lenient decoder must recover readable text while leaving the literal "%" and "C++" intact.
+func TestTaleoDescriptionLiteralPercent(t *testing.T) {
+	page := taleoJobDetail(`%3Cp style=%22line-height%5C:115%;%22%3EWrite Go. 100% remote. C++%3C/p%3E`)
+	got := taleoDescription(page)
+
+	if strings.Contains(got, "%3C") || strings.Contains(got, "%22") {
+		t.Fatalf("description still percent-encoded: %q", got)
+	}
+	for _, want := range []string{"Write Go.", "100% remote", "C++"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("description missing %q: %q", want, got)
+		}
+	}
+}
+
 // TestTaleoImplementsStreaming pins the compile-time contract: taleo is a StreamingSource so
 // the pipeline persists a long crawl incrementally instead of buffering the whole board.
 func TestTaleoImplementsStreaming(t *testing.T) {
