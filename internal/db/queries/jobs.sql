@@ -18,6 +18,27 @@ WHERE id > sqlc.arg(after_id)
 ORDER BY id
 LIMIT sqlc.arg(batch_size);
 
+-- name: ListJobsBySourceAfter :many
+-- Keyset scan over one provider's rows, for cmd/backfill-justjoin: pages by the immutable
+-- primary key (concurrent writes can't skip or repeat rows) filtered to a single source. Returns
+-- closed rows too — a one-time backfill of a missing description fills open and closed alike.
+SELECT *
+FROM jobs
+WHERE source = sqlc.arg(source) AND id > sqlc.arg(after_id)
+ORDER BY id
+LIMIT sqlc.arg(batch_size);
+
+-- name: UpdateJobDescription :execrows
+-- Targeted description rewrite for cmd/backfill-justjoin: sets the description and the refreshed
+-- content_hash (recomputed in Go from the row's indexed fields with the new description) so the
+-- row re-indexes. Stamps updated_at so `reindex --since` also captures it. Only the description
+-- and hash move; the deterministic facets are re-derived separately by cmd/backfill-derive.
+UPDATE jobs
+SET description  = sqlc.arg(description),
+    content_hash = sqlc.arg(content_hash),
+    updated_at   = now()
+WHERE id = sqlc.arg(id);
+
 -- name: ListJobsUpdatedAfter :many
 -- Incremental keyset scan for `reindex --since`: like ListJobsByIDAfter but only
 -- rows changed at or after the cutoff. Every write path (UpsertJob, the close
@@ -404,6 +425,35 @@ SET closed_at  = now(),
 WHERE closed_at IS NULL
   AND source = sqlc.arg(source)
   AND external_id = sqlc.arg(external_id);
+
+-- name: ExistingExternalIDs :many
+-- Seen-set for a hydrating source (see source-ingest): all external_ids stored for one
+-- provider, so an adapter with expensive per-posting detail (justjoin, ~20k live offers)
+-- fetches detail only for postings the catalogue does not already have. Closed rows are
+-- included — a closed posting is still "seen" (no need to re-fetch its detail; a reappearance
+-- reopens it via the upsert regardless). Keyed by source alone; the caller namespaces the
+-- adapter's raw posting id to match the stored external_id.
+SELECT external_id FROM jobs WHERE source = sqlc.arg(source);
+
+-- name: TouchJob :one
+-- Liveness refresh for a hydrating source's already-ingested posting (see source-ingest): the
+-- crawl re-listed the offer but fetched no fresh content (detail is fetched only for new
+-- offers), so refresh last_seen_at and reopen if it had been closed — WITHOUT touching the
+-- content columns. A full upsert of the content-less listing would re-derive the deterministic
+-- facets from an empty description and wipe the row's hydrated description/skills. This is the
+-- reopen half of UpsertJob's ON CONFLICT, minus every content write. RETURNING company_slug so
+-- the caller records the company into the crawled-set that scopes the post-run unseen sweep —
+-- exactly as UpsertJob's write path does — otherwise a company whose offers were all touched
+-- (not newly saved) would drop out of the sweep and its removed offers would never close.
+UPDATE jobs
+SET last_seen_at = now(),
+    closed_at    = NULL,
+    -- A reopen resets the strike count so a single later expired probe can't immediately
+    -- re-close it, mirroring UpsertJob.
+    liveness_strikes = CASE WHEN closed_at IS NOT NULL THEN 0 ELSE liveness_strikes END,
+    updated_at   = now()
+WHERE source = sqlc.arg(source) AND external_id = sqlc.arg(external_id)
+RETURNING company_slug;
 
 -- name: CloseJobByID :execrows
 -- Soft-close one job now (see job-lifecycle): a moderator resolving a report with

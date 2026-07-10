@@ -165,6 +165,42 @@ func (s *dbStore) Close(ctx context.Context, source, externalID string) error {
 	return nil
 }
 
+// ExistingExternalIDs returns the set of external_ids already stored for a provider — the
+// pipeline's seen-set for a hydrating source (justjoin), so per-posting detail is fetched only
+// for postings the catalogue lacks. Implements pipeline.seenLookup.
+func (s *dbStore) ExistingExternalIDs(ctx context.Context, source string) (map[string]struct{}, error) {
+	ids, err := s.q.ExistingExternalIDs(ctx, source)
+	if err != nil {
+		return nil, err
+	}
+	set := make(map[string]struct{}, len(ids))
+	for _, id := range ids {
+		set[id] = struct{}{}
+	}
+	return set, nil
+}
+
+// Touch refreshes an already-ingested posting's liveness (last_seen_at, reopen if closed) by
+// its (source, external_id) identity, without rewriting content — the path a HydratingSource
+// (justjoin) uses for an offer it re-listed but did not re-fetch, so its hydrated description
+// and facets are preserved. Implements pipeline.toucher.
+func (s *dbStore) Touch(ctx context.Context, source, externalID string) error {
+	companySlug, err := s.q.TouchJob(ctx, db.TouchJobParams{
+		Source:     source,
+		ExternalID: externalID,
+	})
+	if err != nil {
+		return fmt.Errorf("touch job %s/%s: %w", source, externalID, err)
+	}
+	// Record the company as crawled, exactly as Save does, so the post-run stale sweep keeps
+	// this company in scope. Otherwise a company whose offers were all touched (none newly
+	// saved) would fall out of the crawled-set and its removed offers would never close.
+	if s.crawled != nil {
+		s.crawled.record(source, companySlug)
+	}
+	return nil
+}
+
 // toTimestamptz maps an optional posted_at to the pgtype the generated params expect;
 // a nil time becomes SQL NULL.
 func toTimestamptz(t *time.Time) pgtype.Timestamptz {

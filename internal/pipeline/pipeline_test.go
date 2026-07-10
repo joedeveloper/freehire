@@ -14,11 +14,23 @@ import (
 
 // fakeStore records every saved job and every (source, external_id) closed. It implements
 // the optional closer capability, so it is safe for the runner's concurrent Save/Close calls.
+// It also implements the optional seenLookup capability (ExistingExternalIDs), so a hydrating
+// source can be driven by a canned seen-set.
 type fakeStore struct {
-	mu     sync.Mutex
-	saved  []job.Job
-	closed [][2]string
-	err    error
+	mu      sync.Mutex
+	saved   []job.Job
+	closed  [][2]string
+	touched [][2]string
+	err     error
+	seenIDs map[string]struct{} // stored (namespaced) external_ids for ExistingExternalIDs
+	seenErr error               // when set, ExistingExternalIDs fails
+}
+
+func (s *fakeStore) ExistingExternalIDs(_ context.Context, _ string) (map[string]struct{}, error) {
+	if s.seenErr != nil {
+		return nil, s.seenErr
+	}
+	return s.seenIDs, nil
 }
 
 func (s *fakeStore) Save(_ context.Context, j job.Job) error {
@@ -38,6 +50,16 @@ func (s *fakeStore) Close(_ context.Context, source, externalID string) error {
 		return s.err
 	}
 	s.closed = append(s.closed, [2]string{source, externalID})
+	return nil
+}
+
+func (s *fakeStore) Touch(_ context.Context, source, externalID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.err != nil {
+		return s.err
+	}
+	s.touched = append(s.touched, [2]string{source, externalID})
 	return nil
 }
 
@@ -79,6 +101,37 @@ func (f fakeStreamingSource) FetchStream(_ context.Context, _ sources.CompanyEnt
 		emit(j)
 	}
 	return nil
+}
+
+// fakeHydratingSource implements sources.HydratingSource: FetchNew records that it was used and
+// captures the seen(externalID) result for each job's raw id, so a test can prove the runner
+// preferred FetchNew and supplied a predicate reflecting the store's seen-set. Its Fetch returns
+// the same jobs, so a test seeing FetchNew's side effects proves the hydrating path was taken.
+type fakeHydratingSource struct {
+	provider       string
+	jobs           []sources.Job
+	fetchNewCalled bool
+	seenResults    map[string]bool
+}
+
+func (f *fakeHydratingSource) Provider() string { return f.provider }
+
+func (f *fakeHydratingSource) Fetch(context.Context, sources.CompanyEntry) ([]sources.Job, error) {
+	return f.jobs, nil
+}
+
+func (f *fakeHydratingSource) FetchNew(_ context.Context, _ sources.CompanyEntry, seen func(string) bool) ([]sources.Job, error) {
+	f.fetchNewCalled = true
+	f.seenResults = map[string]bool{}
+	out := make([]sources.Job, len(f.jobs))
+	for i, j := range f.jobs {
+		s := seen(j.ExternalID)
+		f.seenResults[j.ExternalID] = s
+		// Mirror the real adapter: a seen offer is marked for liveness refresh, not upsert.
+		j.SeenRefresh = s
+		out[i] = j
+	}
+	return out, nil
 }
 
 func registry(srcs ...sources.Source) map[string]sources.Source {
@@ -164,6 +217,68 @@ func TestRunStreamsAllJobs(t *testing.T) {
 	}
 	if len(store.saved) != 2 || stats.Total().Ingested != 2 || stats.Total().Failed != 0 {
 		t.Fatalf("saved=%d stats=%+v, want 2 saved Ingested=2 Failed=0", len(store.saved), stats.Total())
+	}
+}
+
+// TestRunDrivesHydratingSourceWithSeenSet proves the runner prefers FetchNew for a
+// HydratingSource and supplies a seen predicate backed by the store's set of already-ingested
+// (namespaced) external_ids: the boardless offer already stored as ":seen" reads seen=true, a
+// new offer reads seen=false.
+func TestRunDrivesHydratingSourceWithSeenSet(t *testing.T) {
+	src := &fakeHydratingSource{provider: "justjoin", jobs: []sources.Job{
+		{ExternalID: "seen", Title: "A", Company: "C", URL: "u"},
+		{ExternalID: "new", Title: "B", Company: "C", URL: "u"},
+	}}
+	store := &fakeStore{seenIDs: map[string]struct{}{":seen": {}}}
+	r := Runner{Registry: registry(src), Store: store}
+
+	if _, err := r.Run(context.Background(), []sources.CompanyEntry{
+		{Company: "C", Provider: "justjoin", Board: ""},
+	}); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if !src.fetchNewCalled {
+		t.Fatal("runner should call FetchNew for a HydratingSource, not Fetch")
+	}
+	if !src.seenResults["seen"] {
+		t.Error("seen(\"seen\") = false, want true (already stored as \":seen\")")
+	}
+	if src.seenResults["new"] {
+		t.Error("seen(\"new\") = true, want false (not yet stored)")
+	}
+	// The new offer is upserted; the seen offer is only touched (liveness refresh), so its
+	// hydrated content is never overwritten by a content-less re-upsert. Boardless → ":<id>".
+	if len(store.saved) != 1 || store.saved[0].Fields().ExternalID != ":new" {
+		t.Errorf("saved = %+v, want only the new offer (\":new\")", store.saved)
+	}
+	if len(store.touched) != 1 || store.touched[0] != [2]string{"justjoin", ":seen"} {
+		t.Errorf("touched = %v, want one touch of (justjoin, :seen)", store.touched)
+	}
+}
+
+// TestRunHydratingSourceFailsOpenOnSeenLookupError proves a seen-set query failure does not skip
+// the board: the runner falls back to an empty seen-set (every offer treated as new) and still
+// crawls via FetchNew.
+func TestRunHydratingSourceFailsOpenOnSeenLookupError(t *testing.T) {
+	src := &fakeHydratingSource{provider: "justjoin", jobs: []sources.Job{
+		{ExternalID: "a", Title: "A", Company: "C", URL: "u"},
+	}}
+	store := &fakeStore{seenErr: errors.New("db down")}
+	r := Runner{Registry: registry(src), Store: store}
+
+	if _, err := r.Run(context.Background(), []sources.CompanyEntry{
+		{Company: "C", Provider: "justjoin", Board: ""},
+	}); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if !src.fetchNewCalled {
+		t.Fatal("runner should still crawl via FetchNew despite the seen-lookup error")
+	}
+	if src.seenResults["a"] {
+		t.Error("seen(\"a\") = true, want false (empty set on lookup error)")
+	}
+	if len(store.saved) != 1 {
+		t.Errorf("len(saved) = %d, want 1 (board still crawled)", len(store.saved))
 	}
 }
 

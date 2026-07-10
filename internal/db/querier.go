@@ -217,6 +217,13 @@ type Querier interface {
 	// search filter stays bounded; the overflow risk is only an occasional re-shown
 	// long-ago-seen job, never a correctness problem.
 	ExcludedJobIDs(ctx context.Context, arg ExcludedJobIDsParams) ([]int64, error)
+	// Seen-set for a hydrating source (see source-ingest): all external_ids stored for one
+	// provider, so an adapter with expensive per-posting detail (justjoin, ~20k live offers)
+	// fetches detail only for postings the catalogue does not already have. Closed rows are
+	// included — a closed posting is still "seen" (no need to re-fetch its detail; a reappearance
+	// reopens it via the upsert regardless). Keyed by source alone; the caller namespaces the
+	// adapter's raw posting id to match the stored external_id.
+	ExistingExternalIDs(ctx context.Context, source string) ([]string, error)
 	// The board's current cooldown_until (NULL = eligible). Absent row → pgx.ErrNoRows,
 	// which the caller treats as "never seen, eligible".
 	GetBoardCooldown(ctx context.Context, arg GetBoardCooldownParams) (pgtype.Timestamptz, error)
@@ -347,6 +354,10 @@ type Querier interface {
 	// concurrent inserts/updates (which shift posted_at ordering) cannot make the
 	// scan skip or repeat rows the way OFFSET pagination would.
 	ListJobsByIDAfter(ctx context.Context, arg ListJobsByIDAfterParams) ([]Job, error)
+	// Keyset scan over one provider's rows, for cmd/backfill-justjoin: pages by the immutable
+	// primary key (concurrent writes can't skip or repeat rows) filtered to a single source. Returns
+	// closed rows too — a one-time backfill of a missing description fills open and closed alike.
+	ListJobsBySourceAfter(ctx context.Context, arg ListJobsBySourceAfterParams) ([]Job, error)
 	// Incremental keyset scan for `reindex --since`: like ListJobsByIDAfter but only
 	// rows changed at or after the cutoff. Every write path (UpsertJob, the close
 	// sweeps, SetJobEnrichment, UpdateJobFacets) stamps updated_at = now(), so this
@@ -565,6 +576,16 @@ type Querier interface {
 	// re-keys jobs, this re-keys companies to match. DISTINCT ON collapses a slug's
 	// name variants; ON CONFLICT folds collisions and refreshes existing rows.
 	SyncCompaniesFromJobs(ctx context.Context) error
+	// Liveness refresh for a hydrating source's already-ingested posting (see source-ingest): the
+	// crawl re-listed the offer but fetched no fresh content (detail is fetched only for new
+	// offers), so refresh last_seen_at and reopen if it had been closed — WITHOUT touching the
+	// content columns. A full upsert of the content-less listing would re-derive the deterministic
+	// facets from an empty description and wipe the row's hydrated description/skills. This is the
+	// reopen half of UpsertJob's ON CONFLICT, minus every content write. RETURNING company_slug so
+	// the caller records the company into the crawled-set that scopes the post-run unseen sweep —
+	// exactly as UpsertJob's write path does — otherwise a company whose offers were all touched
+	// (not newly saved) would drop out of the sweep and its removed offers would never close.
+	TouchJob(ctx context.Context, arg TouchJobParams) (string, error)
 	// Set an application's stage and/or notes for a user, idempotently. Upserts the
 	// (user, job) row (viewed_at defaults). Partial update: a NULL param leaves that
 	// column unchanged (COALESCE keeps the existing value), so the caller can set the
@@ -582,6 +603,11 @@ type Querier interface {
 	// Remove a job from the board: drop every pipeline mark, keep viewed_at so the
 	// job remains in the user's view history.
 	UntrackJob(ctx context.Context, arg UntrackJobParams) (UserJob, error)
+	// Targeted description rewrite for cmd/backfill-justjoin: sets the description and the refreshed
+	// content_hash (recomputed in Go from the row's indexed fields with the new description) so the
+	// row re-indexes. Stamps updated_at so `reindex --since` also captures it. Only the description
+	// and hash move; the deterministic facets are re-derived separately by cmd/backfill-derive.
+	UpdateJobDescription(ctx context.Context, arg UpdateJobDescriptionParams) (int64, error)
 	// One-off backfill (cmd/backfill-derive): rewrite every deterministic dictionary
 	// facet column — countries, regions, work_mode, skills, seniority, category, plus the
 	// synthetic enrichment facets posting_language, employment_type, education_level,

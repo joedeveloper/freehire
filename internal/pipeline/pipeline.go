@@ -40,6 +40,25 @@ type closer interface {
 	Close(ctx context.Context, source, externalID string) error
 }
 
+// toucher is the optional Store capability a HydratingSource needs: refresh a posting's liveness
+// (last_seen_at, reopen if closed) by its (source, external_id) identity, WITHOUT rewriting its
+// content. The pipeline uses it for a posting the adapter re-listed but did not re-fetch (its
+// stored content is already current); a full upsert of the content-less listing would wipe the
+// hydrated description/facets. Only the ingest dbStore implements it; the pipeline type-asserts
+// for it and drops the refresh when a Store lacks it (test fakes), like closer.
+type toucher interface {
+	Touch(ctx context.Context, source, externalID string) error
+}
+
+// seenLookup is the optional Store capability a HydratingSource needs: the set of external_ids
+// already stored for a provider, so the adapter fetches expensive per-posting detail only for
+// postings the catalogue lacks. Only the ingest dbStore implements it; the runner type-asserts
+// for it and falls back to the list-only Fetch when a Store lacks it (test fakes, non-DB
+// callers), so other Store implementations are unaffected.
+type seenLookup interface {
+	ExistingExternalIDs(ctx context.Context, source string) (map[string]struct{}, error)
+}
+
 // BoardHealth is the optional per-board health port: it tells the Runner whether a
 // board is currently cooled down (skip it) and records each crawl's outcome so a
 // repeatedly-failing board backs off. A nil BoardHealth disables the feature entirely
@@ -185,7 +204,7 @@ func (r Runner) ingestBoard(ctx context.Context, e sources.CompanyEntry) (ingest
 		return ing, fail, skip, 0
 	}
 
-	raw, err := src.Fetch(ctx, e)
+	raw, err := r.fetchBoard(ctx, e, src)
 	if err != nil {
 		// Log the cause so a failed board is diagnosable (the source error carries
 		// the HTTP status / timeout); the run still isolates and continues.
@@ -196,6 +215,20 @@ func (r Runner) ingestBoard(ctx context.Context, e sources.CompanyEntry) (ingest
 
 	var firstErr error
 	for _, j := range raw {
+		// A HydratingSource marks an already-ingested posting it re-listed but did not
+		// re-fetch: refresh its liveness by identity instead of re-upserting content-less
+		// (which would wipe the description/facets hydrated when it was new).
+		if j.SeenRefresh {
+			if err := r.touch(ctx, e, j); err != nil {
+				skipped++
+				if firstErr == nil {
+					firstErr = err
+				}
+				continue
+			}
+			ingested++
+			continue
+		}
 		dj, err := normalizeJob(e, j)
 		if err != nil {
 			skipped++
@@ -224,6 +257,46 @@ func (r Runner) ingestBoard(ctx context.Context, e sources.CompanyEntry) (ingest
 	// save skips — those are stats.Skipped, not a board outage.
 	r.recordSuccess(ctx, e, ingested)
 	return ingested, 0, skipped, 0
+}
+
+// fetchBoard fetches a board's postings, preferring a hydrating adapter's FetchNew — which
+// fetches per-posting detail (e.g. the description the list omits) only for postings not already
+// ingested — when the adapter opts in AND the Store can supply the provider's seen-set. It falls
+// back to the list-only Fetch otherwise. The seen predicate namespaces the adapter's raw posting
+// id the same way the write path does, so it matches the stored external_id. A seen-set lookup
+// error fails OPEN (empty set → every posting treated as new), so a health hiccup never skips the
+// board.
+func (r Runner) fetchBoard(ctx context.Context, e sources.CompanyEntry, src sources.Source) ([]sources.Job, error) {
+	hs, ok := src.(sources.HydratingSource)
+	if !ok {
+		return src.Fetch(ctx, e)
+	}
+	sl, ok := r.Store.(seenLookup)
+	if !ok {
+		return src.Fetch(ctx, e)
+	}
+	set, err := sl.ExistingExternalIDs(ctx, e.Provider)
+	if err != nil {
+		log.Printf("ingest: %s seen-set lookup failed, hydrating every posting as new: %v", e.Provider, err)
+		set = nil
+	}
+	seen := func(externalID string) bool {
+		_, ok := set[sources.NamespaceExternalID(e.Board, externalID)]
+		return ok
+	}
+	return hs.FetchNew(ctx, e, seen)
+}
+
+// touch refreshes an already-ingested posting's liveness (last_seen_at, reopen) by identity,
+// without rewriting its content. It routes through the Store's optional toucher capability; a
+// Store without it (a test fake) drops the refresh, matching how ingestStream handles closer.
+func (r Runner) touch(ctx context.Context, e sources.CompanyEntry, j sources.Job) error {
+	t, ok := r.Store.(toucher)
+	if !ok {
+		return nil
+	}
+	source, externalID := jobIdentity(e, j)
+	return t.Touch(ctx, source, externalID)
 }
 
 // cooledDown reports whether a board is currently backed off. It fails OPEN: a health

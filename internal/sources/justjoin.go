@@ -3,6 +3,12 @@ package sources
 import (
 	"context"
 	"fmt"
+	"log"
+	"slices"
+	"strings"
+
+	"github.com/strelov1/freehire/internal/enrich"
+	"github.com/strelov1/freehire/internal/skilltag"
 )
 
 // justjoin adapts justjoin.it, a Polish/CEE IT job marketplace. Boardless (one public API,
@@ -21,6 +27,9 @@ const (
 	justJoinBaseURL  = "https://api.justjoin.it/v2/user-panel/offers/by-cursor"
 	// justJoinOfferURL builds the canonical detail URL the feed omits, from the slug.
 	justJoinOfferURL = "https://justjoin.it/job-offer/%s"
+	// justJoinDetailURL is the per-offer detail endpoint carrying the posting body the list
+	// endpoint omits (a `/v1` route, distinct from the `/v2` list base).
+	justJoinDetailURL = "https://api.justjoin.it/v1/offers/%s"
 )
 
 // NewJustJoin builds the JustJoin adapter over the given HTTP client.
@@ -54,8 +63,59 @@ type justJoinOffer struct {
 	PublishedAt   string `json:"publishedAt"`
 }
 
+// Fetch is the list-only crawl (no description): kept for back-compat and as the fallback for
+// callers that do not drive hydration. FetchNew is the hydrating path used by ingest.
 func (s justjoin) Fetch(ctx context.Context, _ CompanyEntry) ([]Job, error) {
+	offers, err := s.crawl(ctx)
+	if err != nil {
+		return nil, err
+	}
 	var jobs []Job
+	for _, o := range offers {
+		if job, ok := o.toJob(); ok {
+			jobs = append(jobs, job)
+		}
+	}
+	return jobs, nil
+}
+
+// FetchNew is the hydrating crawl: it pages the same list, but fetches a posting's detail (the
+// body the list omits) only for an offer the catalogue does not already have — seen reports
+// whether an offer's guid is already ingested. A seen offer yields the list-only job (no detail
+// request); an unseen offer is hydrated with its detail; a single offer's detail failure is
+// isolated (logged, falling back to list-only so the offer is still ingested). Detail fetches
+// run under the shared bounded worker pool.
+func (s justjoin) FetchNew(ctx context.Context, _ CompanyEntry, seen func(externalID string) bool) ([]Job, error) {
+	offers, err := s.crawl(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return fetchDetails(offers, defaultDetailWorkers, func(o justJoinOffer) (Job, bool) {
+		base, ok := o.toJob()
+		if !ok {
+			return Job{}, false // unusable offer — dropped, as in Fetch
+		}
+		if seen(o.GUID) {
+			// Already ingested: refresh liveness only, no detail request. The pipeline
+			// must not re-upsert content — that would wipe the description/facets
+			// hydrated when this offer was new (an empty description re-derives to empty
+			// facets). base carries just the identity fields toJob set.
+			base.SeenRefresh = true
+			return base, true
+		}
+		d, ok := s.detail(ctx, o.Slug)
+		if !ok {
+			log.Printf("justjoin: detail %q failed; ingesting list-only", o.Slug)
+			return base, true
+		}
+		return d.apply(base), true
+	}), nil
+}
+
+// crawl pages the cursor feed and returns every raw offer — the shared list walk behind Fetch
+// and FetchNew.
+func (s justjoin) crawl(ctx context.Context) ([]justJoinOffer, error) {
+	var offers []justJoinOffer
 	cursor := 0
 	for page := 0; page < justJoinMaxPages; page++ {
 		url := justJoinBaseURL
@@ -68,11 +128,7 @@ func (s justjoin) Fetch(ctx context.Context, _ CompanyEntry) ([]Job, error) {
 		if err := s.http.GetJSON(ctx, url, &resp); err != nil {
 			return nil, fmt.Errorf("justjoin: list cursor %d: %w", cursor, err)
 		}
-		for _, o := range resp.Data {
-			if job, ok := o.toJob(); ok {
-				jobs = append(jobs, job)
-			}
-		}
+		offers = append(offers, resp.Data...)
 		// Stop at the end of the feed, or whenever the cursor fails to advance — a
 		// non-increasing cursor means the page param was ignored (refetching page 1) or
 		// the feed looped, so one extra request is the worst case, never an endless loop.
@@ -81,7 +137,91 @@ func (s justjoin) Fetch(ctx context.Context, _ CompanyEntry) ([]Job, error) {
 		}
 		cursor = resp.Meta.Next.Cursor
 	}
-	return jobs, nil
+	return offers, nil
+}
+
+// justJoinDetail is the per-offer detail payload (GET /v1/offers/{slug}). It carries the
+// posting body the list omits, plus the structured facets justjoin states.
+type justJoinDetail struct {
+	Body            string          `json:"body"`
+	RequiredSkills  []justJoinSkill `json:"requiredSkills"`
+	ExperienceLevel struct {
+		Value string `json:"value"`
+	} `json:"experienceLevel"`
+}
+
+// justJoinSkill is one required-skill entry (only the canonical name is used).
+type justJoinSkill struct {
+	Name string `json:"name"`
+}
+
+// JustJoinDescription fetches the sanitized description for a stored justjoin job URL, deriving
+// the offer slug from the URL. It returns ok=false when the URL is not a justjoin offer URL, the
+// detail request fails, or the offer has no body. It exists for cmd/backfill-justjoin, which
+// fills the description of rows ingested before detail hydration existed; the crawl path uses
+// (justjoin).detail directly.
+func JustJoinDescription(ctx context.Context, c JSONGetter, jobURL string) (string, bool) {
+	slug, ok := strings.CutPrefix(jobURL, "https://justjoin.it/job-offer/")
+	if !ok || slug == "" {
+		return "", false
+	}
+	d, ok := justjoin{http: c}.detail(ctx, slug)
+	if !ok {
+		return "", false
+	}
+	body := sanitizeHTML(d.Body)
+	if body == "" {
+		return "", false
+	}
+	return body, true
+}
+
+// detail fetches an offer's detail, returning ok=false on a failed request so the caller
+// falls back to the list-only job — an offer is never dropped over a missing detail.
+func (s justjoin) detail(ctx context.Context, slug string) (justJoinDetail, bool) {
+	var d justJoinDetail
+	if err := s.http.GetJSON(ctx, fmt.Sprintf(justJoinDetailURL, slug), &d); err != nil {
+		return justJoinDetail{}, false
+	}
+	return d, true
+}
+
+// apply enriches a list-derived job with the detail payload: the sanitized body becomes the
+// description, and the structured facets justjoin states unambiguously are mapped into
+// freehire's vocabularies (empty when unmapped, so the pipeline's dictionaries decide).
+// Category is deliberately not set — justjoin's category is a language/stack tag that does not
+// pin a single freehire role category, so the title dictionary decides it.
+func (d justJoinDetail) apply(base Job) Job {
+	base.Description = sanitizeHTML(d.Body)
+	base.Skills = justJoinSkills(d.RequiredSkills)
+	base.Seniority = justJoinSeniority(d.ExperienceLevel.Value)
+	return base
+}
+
+// justJoinSkills canonicalizes the required skills through the skilltag dictionary, keeping
+// only resolved technologies. The names are joined into one blob so skilltag.Parse applies the
+// same matching it uses on a description.
+func justJoinSkills(skills []justJoinSkill) []string {
+	names := make([]string, 0, len(skills))
+	for _, s := range skills {
+		names = append(names, s.Name)
+	}
+	return skilltag.Parse(strings.Join(names, " "))
+}
+
+// justJoinSeniority maps justjoin's experience level to freehire's seniority vocabulary.
+// justjoin names the middle grade "mid"; the rest (intern/junior/senior/c_level) share
+// spelling, so after that one rename vocabulary membership IS the map — an unrecognized level
+// (e.g. "manager", which is not a freehire seniority) drops rather than being guessed.
+func justJoinSeniority(level string) string {
+	l := strings.ToLower(strings.TrimSpace(level))
+	if l == "mid" {
+		l = "middle"
+	}
+	if slices.Contains(enrich.SeniorityValues, l) {
+		return l
+	}
+	return ""
 }
 
 // toJob maps an offer to a Job, returning ok=false for an unusable offer (no slug to build

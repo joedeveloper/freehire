@@ -63,6 +63,14 @@ type Job struct {
 	// these so the pipeline closes the job by identity instead of upserting it; all other
 	// adapters leave it false and only ever emit live postings.
 	Removed bool
+	// SeenRefresh marks a posting a HydratingSource re-listed but did NOT fetch fresh
+	// content for (it was already ingested, so detail is skipped). The pipeline refreshes
+	// the row's liveness (last_seen_at, reopen) by identity WITHOUT rewriting its content,
+	// so the description and facets hydrated when it was new are preserved — a content-less
+	// re-upsert would re-derive the facets from an empty description and wipe them. Only a
+	// HydratingSource sets it (carrying just Title/Company/URL/ExternalID for the identity);
+	// all other adapters leave it false. Mutually exclusive with Removed.
+	SeenRefresh bool
 }
 
 // Source adapts one job-source platform. Provider is the platform key that selects
@@ -84,6 +92,18 @@ type Source interface {
 type StreamingSource interface {
 	Source
 	FetchStream(ctx context.Context, e CompanyEntry, emit func(Job)) error
+}
+
+// HydratingSource is a Source that fetches expensive per-posting detail (e.g. the description
+// the list omits) only for postings the catalogue does not already have. The pipeline supplies a
+// seen predicate — seen(externalID) reports whether that posting is already ingested for the
+// provider — so a large aggregator (justjoin, ~20k live offers) issues detail requests only for
+// new postings instead of on every crawl. An adapter opts in by implementing this in addition to
+// Fetch (the list-only fallback used when the pipeline cannot supply a seen set); every other
+// adapter is unaffected. The pipeline prefers FetchNew when the adapter implements it.
+type HydratingSource interface {
+	Source
+	FetchNew(ctx context.Context, e CompanyEntry, seen func(externalID string) bool) ([]Job, error)
 }
 
 // boardless marks an adapter whose API has no per-tenant board id, so config

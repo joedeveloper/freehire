@@ -3,8 +3,58 @@ package sources
 import (
 	"context"
 	"slices"
+	"strings"
 	"testing"
 )
+
+// TestJustJoinHydrateMapsDetail verifies the per-offer detail fetch + mapping: the sanitized
+// body becomes the description and the structured facets justjoin states unambiguously
+// (skills, seniority) map into freehire's vocabularies. justjoin's "mid" means "middle".
+func TestJustJoinHydrateMapsDetail(t *testing.T) {
+	detail := `{
+"body":"<p>Build things.</p><script>alert(1)</script>",
+"requiredSkills":[{"name":"TypeScript","level":3},{"name":"Node.js","level":3}],
+"experienceLevel":{"label":"Mid","value":"mid"}
+}`
+	fake := (&routedHTTP{}).route("/v1/offers/acme-go-dev", detail)
+	s := justjoin{http: fake}
+
+	d, ok := s.detail(context.Background(), "acme-go-dev")
+	if !ok {
+		t.Fatal("detail() ok=false, want a successful fetch")
+	}
+	got := d.apply(Job{Title: "Go Developer", Company: "Acme"})
+
+	if !strings.Contains(got.Description, "Build things.") || strings.Contains(got.Description, "<script>") {
+		t.Errorf("Description not sanitized/assembled: %q", got.Description)
+	}
+	if !slices.Contains(got.Skills, "typescript") || !slices.Contains(got.Skills, "nodejs") {
+		t.Errorf("Skills = %v, want canonical typescript+nodejs", got.Skills)
+	}
+	if got.Seniority != "middle" {
+		t.Errorf("Seniority = %q, want middle (justjoin mid)", got.Seniority)
+	}
+}
+
+// TestJustJoinDescription covers the exported backfill helper: it derives the slug from a stored
+// job URL, fetches the detail, and returns the sanitized body — or ok=false when the URL is not a
+// justjoin offer URL, the fetch fails, or the body is empty.
+func TestJustJoinDescription(t *testing.T) {
+	detail := `{"body":"<p>Real body.</p><script>x()</script>"}`
+	fake := (&routedHTTP{}).route("/v1/offers/acme-go-dev--krakow", detail)
+
+	got, ok := JustJoinDescription(context.Background(), fake, "https://justjoin.it/job-offer/acme-go-dev--krakow")
+	if !ok {
+		t.Fatal("ok=false, want a fetched description")
+	}
+	if !strings.Contains(got, "Real body.") || strings.Contains(got, "<script>") {
+		t.Errorf("description not sanitized: %q", got)
+	}
+
+	if _, ok := JustJoinDescription(context.Background(), fake, "https://example.com/not-justjoin"); ok {
+		t.Error("ok=true for a non-justjoin URL, want false")
+	}
+}
 
 func TestJustJoinProvider(t *testing.T) {
 	if got := NewJustJoin(nil).Provider(); got != "justjoin" {
@@ -19,6 +69,12 @@ func TestJustJoinIsBoardlessAggregator(t *testing.T) {
 	}
 	if _, ok := s.(aggregator); !ok {
 		t.Error("justjoin should implement the aggregator marker")
+	}
+}
+
+func TestJustJoinIsHydratingSource(t *testing.T) {
+	if _, ok := NewJustJoin(nil).(HydratingSource); !ok {
+		t.Error("justjoin should implement the HydratingSource marker")
 	}
 }
 
@@ -38,6 +94,61 @@ func TestJustJoinBoardFileValidates(t *testing.T) {
 	}
 	if err := cfg.Validate(All(nil)); err != nil {
 		t.Fatalf("sources/justjoin.yml fails validation: %v", err)
+	}
+}
+
+func TestJustJoinFetchNewHydratesOnlyUnseen(t *testing.T) {
+	list := `{"data":[
+{"guid":"new-1","slug":"acme-go-dev--krakow","title":"Go Developer","companyName":"Acme","city":"Kraków","workplaceType":"remote","publishedAt":"2026-05-18T10:00:00.000Z"},
+{"guid":"seen-1","slug":"coder-security--warszawa","title":"Security Engineer","companyName":"Coder","city":"Warszawa","workplaceType":"office","publishedAt":"2026-05-19T00:41:27.040Z"}
+],"meta":{"next":null}}`
+	detail := `{"body":"<p>Build things.</p>","requiredSkills":[{"name":"Go"}],"experienceLevel":{"value":"senior"}}`
+	fake := (&routedHTTP{}).route("/v1/offers/acme-go-dev--krakow", detail).route("by-cursor", list)
+	seen := func(id string) bool { return id == "seen-1" }
+
+	jobs, err := justjoin{http: fake}.FetchNew(context.Background(), CompanyEntry{}, seen)
+	if err != nil {
+		t.Fatalf("FetchNew: %v", err)
+	}
+	if len(jobs) != 2 {
+		t.Fatalf("got %d jobs, want 2", len(jobs))
+	}
+	byID := map[string]Job{}
+	for _, j := range jobs {
+		byID[j.ExternalID] = j
+	}
+	if got := byID["new-1"]; !strings.Contains(got.Description, "Build things.") || got.Seniority != "senior" {
+		t.Errorf("unseen offer not hydrated: desc=%q seniority=%q", got.Description, got.Seniority)
+	}
+	if got := byID["seen-1"]; got.Description != "" || !got.SeenRefresh {
+		t.Errorf("seen offer should be a liveness-refresh with no content, got description=%q SeenRefresh=%v", got.Description, got.SeenRefresh)
+	}
+	if byID["new-1"].SeenRefresh {
+		t.Error("hydrated new offer must not be marked SeenRefresh")
+	}
+	// One detail request for the single unseen offer (plus the one list page).
+	if fake.calls != 2 {
+		t.Errorf("made %d requests, want 2 (1 list + 1 detail for the unseen offer)", fake.calls)
+	}
+}
+
+func TestJustJoinFetchNewIsolatesDetailFailure(t *testing.T) {
+	list := `{"data":[
+{"guid":"new-1","slug":"acme-go-dev--krakow","title":"Go Developer","companyName":"Acme","city":"Kraków","workplaceType":"remote","publishedAt":"2026-05-18T10:00:00.000Z"}
+],"meta":{"next":null}}`
+	// No detail route → the detail fetch errors; the offer must still be ingested list-only.
+	fake := (&routedHTTP{}).route("by-cursor", list)
+	seen := func(string) bool { return false }
+
+	jobs, err := justjoin{http: fake}.FetchNew(context.Background(), CompanyEntry{}, seen)
+	if err != nil {
+		t.Fatalf("FetchNew must not abort on a single detail failure: %v", err)
+	}
+	if len(jobs) != 1 {
+		t.Fatalf("got %d jobs, want 1 (list-only fallback)", len(jobs))
+	}
+	if jobs[0].Description != "" {
+		t.Errorf("detail failed, want empty description, got %q", jobs[0].Description)
 	}
 }
 

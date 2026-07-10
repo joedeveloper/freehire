@@ -140,6 +140,36 @@ func (q *Queries) EstimateOpenJobs(ctx context.Context) (int64, error) {
 	return column_1, err
 }
 
+const existingExternalIDs = `-- name: ExistingExternalIDs :many
+SELECT external_id FROM jobs WHERE source = $1
+`
+
+// Seen-set for a hydrating source (see source-ingest): all external_ids stored for one
+// provider, so an adapter with expensive per-posting detail (justjoin, ~20k live offers)
+// fetches detail only for postings the catalogue does not already have. Closed rows are
+// included — a closed posting is still "seen" (no need to re-fetch its detail; a reappearance
+// reopens it via the upsert regardless). Keyed by source alone; the caller namespaces the
+// adapter's raw posting id to match the stored external_id.
+func (q *Queries) ExistingExternalIDs(ctx context.Context, source string) ([]string, error) {
+	rows, err := q.db.Query(ctx, existingExternalIDs, source)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []string{}
+	for rows.Next() {
+		var external_id string
+		if err := rows.Scan(&external_id); err != nil {
+			return nil, err
+		}
+		items = append(items, external_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getJob = `-- name: GetJob :one
 SELECT id, source, external_id, url, title, company, location, remote, description, posted_at, created_at, updated_at, company_slug, enrichment, enriched_at, enrichment_version, public_slug, last_seen_at, closed_at, countries, regions, work_mode, liveness_strikes, skills, seniority, category, created_by, updated_by, posting_language, employment_type, education_level, experience_years_min, collections, content_hash, english_level, cities, view_count, applied_count, role_fingerprint, semantic_embedded_model, semantic_embedded_hash
 FROM jobs
@@ -674,6 +704,85 @@ func (q *Queries) ListJobsByIDAfter(ctx context.Context, arg ListJobsByIDAfterPa
 	return items, nil
 }
 
+const listJobsBySourceAfter = `-- name: ListJobsBySourceAfter :many
+SELECT id, source, external_id, url, title, company, location, remote, description, posted_at, created_at, updated_at, company_slug, enrichment, enriched_at, enrichment_version, public_slug, last_seen_at, closed_at, countries, regions, work_mode, liveness_strikes, skills, seniority, category, created_by, updated_by, posting_language, employment_type, education_level, experience_years_min, collections, content_hash, english_level, cities, view_count, applied_count, role_fingerprint, semantic_embedded_model, semantic_embedded_hash
+FROM jobs
+WHERE source = $1 AND id > $2
+ORDER BY id
+LIMIT $3
+`
+
+type ListJobsBySourceAfterParams struct {
+	Source    string `json:"source"`
+	AfterID   int64  `json:"after_id"`
+	BatchSize int32  `json:"batch_size"`
+}
+
+// Keyset scan over one provider's rows, for cmd/backfill-justjoin: pages by the immutable
+// primary key (concurrent writes can't skip or repeat rows) filtered to a single source. Returns
+// closed rows too — a one-time backfill of a missing description fills open and closed alike.
+func (q *Queries) ListJobsBySourceAfter(ctx context.Context, arg ListJobsBySourceAfterParams) ([]Job, error) {
+	rows, err := q.db.Query(ctx, listJobsBySourceAfter, arg.Source, arg.AfterID, arg.BatchSize)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Job{}
+	for rows.Next() {
+		var i Job
+		if err := rows.Scan(
+			&i.ID,
+			&i.Source,
+			&i.ExternalID,
+			&i.URL,
+			&i.Title,
+			&i.Company,
+			&i.Location,
+			&i.Remote,
+			&i.Description,
+			&i.PostedAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.CompanySlug,
+			&i.Enrichment,
+			&i.EnrichedAt,
+			&i.EnrichmentVersion,
+			&i.PublicSlug,
+			&i.LastSeenAt,
+			&i.ClosedAt,
+			&i.Countries,
+			&i.Regions,
+			&i.WorkMode,
+			&i.LivenessStrikes,
+			&i.Skills,
+			&i.Seniority,
+			&i.Category,
+			&i.CreatedBy,
+			&i.UpdatedBy,
+			&i.PostingLanguage,
+			&i.EmploymentType,
+			&i.EducationLevel,
+			&i.ExperienceYearsMin,
+			&i.Collections,
+			&i.ContentHash,
+			&i.EnglishLevel,
+			&i.Cities,
+			&i.ViewCount,
+			&i.AppliedCount,
+			&i.RoleFingerprint,
+			&i.SemanticEmbeddedModel,
+			&i.SemanticEmbeddedHash,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listJobsUpdatedAfter = `-- name: ListJobsUpdatedAfter :many
 SELECT id, source, external_id, url, title, company, location, remote, description, posted_at, created_at, updated_at, company_slug, enrichment, enriched_at, enrichment_version, public_slug, last_seen_at, closed_at, countries, regions, work_mode, liveness_strikes, skills, seniority, category, created_by, updated_by, posting_language, employment_type, education_level, experience_years_min, collections, content_hash, english_level, cities, view_count, applied_count, role_fingerprint, semantic_embedded_model, semantic_embedded_hash
 FROM jobs
@@ -1100,6 +1209,65 @@ func (q *Queries) SetJobEnrichment(ctx context.Context, arg SetJobEnrichmentPara
 		arg.ID,
 	)
 	return err
+}
+
+const touchJob = `-- name: TouchJob :one
+UPDATE jobs
+SET last_seen_at = now(),
+    closed_at    = NULL,
+    -- A reopen resets the strike count so a single later expired probe can't immediately
+    -- re-close it, mirroring UpsertJob.
+    liveness_strikes = CASE WHEN closed_at IS NOT NULL THEN 0 ELSE liveness_strikes END,
+    updated_at   = now()
+WHERE source = $1 AND external_id = $2
+RETURNING company_slug
+`
+
+type TouchJobParams struct {
+	Source     string `json:"source"`
+	ExternalID string `json:"external_id"`
+}
+
+// Liveness refresh for a hydrating source's already-ingested posting (see source-ingest): the
+// crawl re-listed the offer but fetched no fresh content (detail is fetched only for new
+// offers), so refresh last_seen_at and reopen if it had been closed — WITHOUT touching the
+// content columns. A full upsert of the content-less listing would re-derive the deterministic
+// facets from an empty description and wipe the row's hydrated description/skills. This is the
+// reopen half of UpsertJob's ON CONFLICT, minus every content write. RETURNING company_slug so
+// the caller records the company into the crawled-set that scopes the post-run unseen sweep —
+// exactly as UpsertJob's write path does — otherwise a company whose offers were all touched
+// (not newly saved) would drop out of the sweep and its removed offers would never close.
+func (q *Queries) TouchJob(ctx context.Context, arg TouchJobParams) (string, error) {
+	row := q.db.QueryRow(ctx, touchJob, arg.Source, arg.ExternalID)
+	var company_slug string
+	err := row.Scan(&company_slug)
+	return company_slug, err
+}
+
+const updateJobDescription = `-- name: UpdateJobDescription :execrows
+UPDATE jobs
+SET description  = $1,
+    content_hash = $2,
+    updated_at   = now()
+WHERE id = $3
+`
+
+type UpdateJobDescriptionParams struct {
+	Description string      `json:"description"`
+	ContentHash pgtype.Text `json:"content_hash"`
+	ID          int64       `json:"id"`
+}
+
+// Targeted description rewrite for cmd/backfill-justjoin: sets the description and the refreshed
+// content_hash (recomputed in Go from the row's indexed fields with the new description) so the
+// row re-indexes. Stamps updated_at so `reindex --since` also captures it. Only the description
+// and hash move; the deterministic facets are re-derived separately by cmd/backfill-derive.
+func (q *Queries) UpdateJobDescription(ctx context.Context, arg UpdateJobDescriptionParams) (int64, error) {
+	result, err := q.db.Exec(ctx, updateJobDescription, arg.Description, arg.ContentHash, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const updateJobFacets = `-- name: UpdateJobFacets :exec
