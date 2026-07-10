@@ -255,9 +255,10 @@ type UserJobAnalysis struct {
 }
 
 type UserProfile struct {
-	UserID          int64              `json:"user_id"`
-	Skills          []string           `json:"skills"`
-	CreatedAt       pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt       pgtype.Timestamptz `json:"updated_at"`
-	Specializations []string           `json:"specializations"`
+	UserID              int64              `json:"user_id"`
+	Skills              []string           `json:"skills"`
+	CreatedAt           pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt           pgtype.Timestamptz `json:"updated_at"`
+	Specializations     []string           `json:"specializations"`
+	LocationPreferences json.RawMessage    `json:"location_preferences"`
 }
