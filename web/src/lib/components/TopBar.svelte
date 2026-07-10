@@ -8,6 +8,7 @@
   import HeaderSearch from './HeaderSearch.svelte';
   import HeaderListSearch from './HeaderListSearch.svelte';
   import HeaderMenu from './HeaderMenu.svelte';
+  import BrandMark from './BrandMark.svelte';
 
   // The header is three slots — logo | search | menu — identical on every
   // viewport. Nav links, the account items, the theme toggle, and the auth
@@ -85,22 +86,7 @@
       href={resolve('/')}
       class="flex shrink-0 items-center gap-2 text-sm font-semibold tracking-tight"
     >
-      <!-- The mark inherits text colour via currentColor, so it tracks the theme
-           (light/dark) exactly like the wordmark beside it. aria-hidden: the
-           "FreeHire" text already names the link. -->
-      <svg
-        viewBox="0 0 512 512"
-        class="size-5 shrink-0"
-        fill="currentColor"
-        aria-hidden="true"
-        xmlns="http://www.w3.org/2000/svg"
-      >
-        <path
-          fill-rule="evenodd"
-          clip-rule="evenodd"
-          d="M256 56C366.457 56 456 145.543 456 256C456 366.457 366.457 456 256 456C145.543 456 56 366.457 56 256C56 145.543 145.543 56 256 56ZM256 166L346 256L256 346L166 256L256 166Z"
-        />
-      </svg>
+      <BrandMark />
       <span class="hidden sm:inline">FreeHire</span>
     </a>
 
