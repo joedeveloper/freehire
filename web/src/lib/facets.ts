@@ -194,6 +194,18 @@ export function uniqueByValue(opts: FacetOption[]): FacetOption[] {
   return opts.filter((o) => (seen.has(o.value) ? false : seen.add(o.value)));
 }
 
+/** Build select options for a dynamic facet from its live distribution (value →
+ *  count) plus any already-selected values (so a selection absent from the current
+ *  distribution stays listed and removable), labelled via dynamicLabel and sorted
+ *  busiest-first. Shared by the filter panel's dynamic selects (FacetSection) and
+ *  the onboarding stack picker. */
+export function dynamicOptions(param: string, dist: Record<string, number>, selected: string[]): FacetOption[] {
+  const keys = new Set<string>([...Object.keys(dist), ...selected]);
+  return [...keys]
+    .map((value) => ({ value, label: dynamicLabel(param, value), count: dist[value] ?? 0 }))
+    .toSorted((a, b) => (b.count ?? 0) - (a.count ?? 0) || a.label.localeCompare(b.label));
+}
+
 // Role slugs carry an optional seniority grade prefix (senior_backend); the
 // related-role map is keyed by the ungraded base (backend), so one entry serves
 // every grade. Longest prefix first is unnecessary — the grades share no
@@ -421,7 +433,7 @@ export const FACETS: FacetDef[] = [
   { param: 'collections', label: 'Collection', control: 'pills', options: COLLECTION, excludable: false },
   { param: 'regions', label: 'Region', control: 'pills', options: JOB_REGION, excludable: true },
   { param: 'work_mode', label: 'Work format', control: 'pills', options: WORK_MODE, excludable: true },
-  { param: 'role', label: 'Role', control: 'select', dynamic: true, excludable: true, hasAndOr: true, placeholder: 'Search roles', cap: 24, related: ROLE_RELATED, searchAliases: ROLE_ALIASES },
+  { param: 'role', label: 'Role', control: 'select', dynamic: true, excludable: true, hasAndOr: true, placeholder: 'Search roles', cap: 8, related: ROLE_RELATED, searchAliases: ROLE_ALIASES },
   { param: 'category', label: 'Specialization', control: 'select', options: CATEGORY, excludable: true, placeholder: 'Search specializations' },
   { param: 'seniority', label: 'Seniority', control: 'pills', options: SENIORITY, excludable: true },
   { param: 'skills', label: 'Skills', control: 'select', dynamic: true, excludable: true, hasAndOr: true, placeholder: 'Search skills' },

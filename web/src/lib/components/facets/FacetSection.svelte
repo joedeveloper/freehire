@@ -1,6 +1,6 @@
 <script lang="ts">
   import { X } from '@lucide/svelte';
-  import { dynamicLabel, type FacetDef, type FacetOption, type FacetStore } from '$lib/facets';
+  import { dynamicLabel, dynamicOptions, type FacetDef, type FacetOption, type FacetStore } from '$lib/facets';
   import type { FacetCounts } from '$lib/types';
   import PillGroup from './PillGroup.svelte';
   import RemoteSearchSelect from './RemoteSearchSelect.svelte';
@@ -26,11 +26,7 @@
   // removable.
   const selectOptions = $derived.by((): FacetOption[] => {
     if (!def.dynamic) return def.options ?? [];
-    const dist = counts?.facets?.[def.param] ?? {};
-    const keys = new Set<string>([...Object.keys(dist), ...st.include, ...st.exclude]);
-    return [...keys]
-      .map((value) => ({ value, label: dynamicLabel(def.param, value), count: dist[value] ?? 0 }))
-      .toSorted((a, b) => b.count - a.count || a.label.localeCompare(b.label));
+    return dynamicOptions(def.param, counts?.facets?.[def.param] ?? {}, [...st.include, ...st.exclude]);
   });
   // The match/clear actions only appear once something is selected — so their
   // meaning is clear ("you picked these — match all, or clear them") rather than

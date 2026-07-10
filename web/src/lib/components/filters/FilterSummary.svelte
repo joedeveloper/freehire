@@ -36,6 +36,10 @@
       push(label, facetChips(param));
     };
 
+    // The text query (from the header search on the standalone list) as a removable
+    // chip, so the sidebar shows what you searched, not just the facet filters.
+    push('Search', f.q.trim() ? [{ text: f.q, exclude: false, remove: () => store.setQuery('') }] : []);
+
     facetGroup('category', 'Specialization');
     // Location: regions + countries + cities under one heading.
     push('Location', [...facetChips('regions'), ...facetChips('countries'), ...facetChips('cities')]);
