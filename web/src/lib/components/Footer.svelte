@@ -18,6 +18,7 @@
     {
       title: 'Resources',
       links: [
+        { label: 'Trends', href: resolve('/trends') },
         { label: 'CLI', href: resolve('/cli') },
         { label: 'API docs', href: resolve('/docs/api') },
       ],
