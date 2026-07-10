@@ -11,6 +11,16 @@
   import { Paginator } from '$lib/paginated.svelte';
   import { FilterStore, filtersToParams } from '$lib/filters';
   import { loadJobFilters } from '$lib/filterStorage';
+  import {
+    bannerVisible,
+    loadOnboardingState,
+    markDone,
+    markSeen,
+    narrowestFacet,
+    type OnboardingLifecycle,
+  } from '$lib/onboarding';
+  import OnboardingWizard from './onboarding/OnboardingWizard.svelte';
+  import OnboardingBanner from './onboarding/OnboardingBanner.svelte';
   import { syncOnNavigation } from '$lib/urlSynced.svelte';
   import { setListSearchTarget } from '$lib/listSearch.svelte';
   import type { Job, FacetCounts } from '$lib/types';
@@ -94,6 +104,45 @@
 
   let modalOpen = $state(false);
   let started = false;
+
+  // Onboarding: the one-time nudge banner + wizard, standalone-only. The lifecycle
+  // lives in localStorage (client-only); seed it at init on the client so a returning
+  // (dismissed/completed) visitor never flashes a banner before mount. The banner is
+  // the sole entry — once dismissed or completed it retires; there is no persistent
+  // re-open control.
+  let wizardOpen = $state(false);
+  let onboardingState = $state<OnboardingLifecycle>(browser ? loadOnboardingState() : 'unseen');
+  // Show only to an un-nudged visitor with no active facet filters AND no text query,
+  // so a shared search/filter link is never interrupted (activeFilterCount ignores the
+  // query, so check it explicitly). Gated on `browser`: never SSR the banner.
+  const showBanner = $derived(
+    browser && standalone && bannerVisible(onboardingState, filters.active > 0 || filters.value.q.trim() !== ''),
+  );
+
+  function dismissBanner() {
+    markSeen();
+    onboardingState = 'seen';
+  }
+  function cancelWizard() {
+    wizardOpen = false;
+    markSeen();
+    onboardingState = loadOnboardingState(); // markSeen never downgrades a completed run
+  }
+  function completeWizard(query: string) {
+    // Apply through the same store path as a saved search — feed, counts, and
+    // localStorage all reconfigure via the existing effect; then the banner retires.
+    filters.apply(query);
+    markDone();
+    onboardingState = 'done';
+    wizardOpen = false;
+  }
+  // Narrow-feed relief: the single narrowest applied facet to drop (skills → regions →
+  // seniority; never the role), or null if none. Shared by the empty-state guard and
+  // the relax action so they can't disagree. Never broadens on its own.
+  const relaxTarget = $derived(narrowestFacet(filters.value));
+  function relaxFeed() {
+    if (relaxTarget) filters.clearFacet(relaxTarget);
+  }
 
   // Live disjunctive facet counts for the staged filter set (built by the modal),
   // merged with the fixed scope params (e.g. company_slug) so every control's counts —
@@ -212,12 +261,33 @@
   </aside>
 
   <div class="min-w-0 flex-1">
+    {#if showBanner}
+      <!-- pl-12 md:pl-0 clears the mobile filters edge tab, matching the count row.
+           The banner is the only onboarding entry: it shows once (until dismissed or
+           completed), then retires — no persistent re-open control. -->
+      <div class="pl-12 md:pl-0">
+        <OnboardingBanner onOpen={() => (wizardOpen = true)} onDismiss={dismissBanner} />
+      </div>
+    {/if}
     {#if jobs.status === 'loading'}
       <States state="loading" />
     {:else if jobs.status === 'error'}
       <States state="error" message="Failed to load jobs." />
     {:else if jobs.items.length === 0}
       <States state="empty" message="No matching jobs." />
+      {#if standalone && relaxTarget}
+        <!-- No semantic fallback in this slice: offer an honest one-step broaden
+             instead of silently widening the feed. -->
+        <div class="mt-4 flex justify-center">
+          <button
+            type="button"
+            onclick={relaxFeed}
+            class="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-4 py-2 text-sm font-medium transition-colors hover:bg-accent"
+          >
+            Broaden search
+          </button>
+        </div>
+      {/if}
     {:else}
       <!-- Standalone: the count is the topmost element, level with the fixed edge
            tab, so pl-12 clears it (reset at md). Company embed: the count sits well
@@ -278,3 +348,7 @@
   onClose={() => (modalOpen = false)}
   {stagedCounts}
 />
+
+{#if standalone}
+  <OnboardingWizard open={wizardOpen} {counts} onComplete={completeWizard} onCancel={cancelWizard} />
+{/if}
