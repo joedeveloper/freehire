@@ -1,14 +1,20 @@
 <script lang="ts">
   import { dynamicLabel, FACETS } from '$lib/facets';
-  import type { FilterStore } from '$lib/filters';
+  import { type FilterStore, filtersToParams } from '$lib/filters';
   import { freshnessLabel } from '$lib/filterControls';
   import FilterSummaryShell, { type SummaryChip, type SummaryGroup } from './FilterSummaryShell.svelte';
+  import SaveSearchAlert from './SaveSearchAlert.svelte';
 
   // The job filters sidebar: a summary of the *applied* filters as chips grouped by
   // facet, over the reusable FilterSummaryShell. Removing a chip edits the live store
-  // directly — the sidebar applies immediately; only the modal defers. Saved searches
-  // ("My filters") now live in the modal's first tab, not here.
-  let { store, exclude = [], onOpen }: { store: FilterStore; exclude?: string[]; onOpen: () => void } = $props();
+  // directly — the sidebar applies immediately; only the modal defers. The shared
+  // save-then-alert control (Save filter → get it in Telegram) sits under the
+  // All-filters button on the standalone list (`canSave`); the modal's "My filters"
+  // tab drives the same control.
+  let { store, exclude = [], onOpen, canSave = false }: { store: FilterStore; exclude?: string[]; onOpen: () => void; canSave?: boolean } = $props();
+
+  // The current filters as a canonical query string — the saved-search / alert target.
+  const current = $derived(filtersToParams(store.value).toString());
 
   function valueLabel(param: string, value: string): string {
     const def = FACETS.find((d) => d.param === param);
@@ -68,4 +74,10 @@
   });
 </script>
 
-<FilterSummaryShell {groups} active={store.active} onReset={() => store.clear()} {onOpen} />
+<FilterSummaryShell {groups} active={store.active} onReset={() => store.clear()} {onOpen}>
+  {#snippet afterButton()}
+    {#if canSave}
+      <SaveSearchAlert query={current} variant="full" />
+    {/if}
+  {/snippet}
+</FilterSummaryShell>

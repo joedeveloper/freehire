@@ -12,6 +12,7 @@
 </script>
 
 <script lang="ts">
+  import type { Snippet } from 'svelte';
   import { SlidersHorizontal, X } from '@lucide/svelte';
 
   // The reusable filter-summary sidebar chrome: heading + Reset all, the All-filters
@@ -24,11 +25,15 @@
     active,
     onReset,
     onOpen,
+    afterButton,
   }: {
     groups: SummaryGroup[];
     active: number;
     onReset: () => void;
     onOpen: () => void;
+    /** Optional content under the All-filters button — the job summary uses it for the
+     *  "Save filter" affordance; the company summary omits it. */
+    afterButton?: Snippet;
   } = $props();
 </script>
 
@@ -51,6 +56,8 @@
       <span class="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-[11px] font-semibold text-primary-foreground">{active}</span>
     {/if}
   </button>
+
+  {@render afterButton?.()}
 
   {#if groups.length === 0}
     <div class="rounded-xl border border-dashed border-border p-4 text-center text-sm text-muted-foreground">

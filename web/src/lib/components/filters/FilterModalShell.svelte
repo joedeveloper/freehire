@@ -233,7 +233,6 @@
         {#if applyError}
           <p class="text-sm text-destructive">{applyError}</p>
         {/if}
-        {#if footerNote}{@render footerNote({ jumpTo: (k) => (active = k), activeKey: active })}{/if}
         <div class="flex items-center justify-between">
           <button
             type="button"
@@ -256,6 +255,7 @@
             {/if}
           </button>
         </div>
+        {#if footerNote}{@render footerNote({ jumpTo: (k) => (active = k), activeKey: active })}{/if}
       </div>
     </div>
   </div>

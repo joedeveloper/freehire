@@ -19,8 +19,10 @@
     narrowestFacet,
     type OnboardingLifecycle,
   } from '$lib/onboarding';
+  import { consumePendingAlert } from '$lib/saveSearchAlert';
   import OnboardingWizard from './onboarding/OnboardingWizard.svelte';
   import OnboardingBanner from './onboarding/OnboardingBanner.svelte';
+  import OnboardingAlertBanner from './onboarding/OnboardingAlertBanner.svelte';
   import { syncOnNavigation } from '$lib/urlSynced.svelte';
   import { setListSearchTarget } from '$lib/listSearch.svelte';
   import type { Job, FacetCounts } from '$lib/types';
@@ -112,6 +114,9 @@
   // re-open control.
   let wizardOpen = $state(false);
   let onboardingState = $state<OnboardingLifecycle>(browser ? loadOnboardingState() : 'unseen');
+  // The ephemeral post-onboarding Telegram-alert offer (set after the wizard, or on
+  // mount to resume a pending alert after sign-in). Dismissible; not persisted.
+  let alertBanner = $state<{ query: string; autostart: boolean } | null>(null);
   // Show only to an un-nudged visitor with no active facet filters AND no text query,
   // so a shared search/filter link is never interrupted (activeFilterCount ignores the
   // query, so check it explicitly). Gated on `browser`: never SSR the banner.
@@ -135,6 +140,8 @@
     markDone();
     onboardingState = 'done';
     wizardOpen = false;
+    // Peak intent: offer to keep this feed as a Telegram alert.
+    alertBanner = { query, autostart: false };
   }
   // Narrow-feed relief: the single narrowest applied facet to drop (skills → regions →
   // seniority; never the role), or null if none. Shared by the empty-state guard and
@@ -143,6 +150,18 @@
   function relaxFeed() {
     if (relaxTarget) filters.clearFacet(relaxTarget);
   }
+
+  // Resume a save the user started before signing in. Reactive on the session so it
+  // fires whether auth resolved server-side (an OAuth full-page redirect — mount is
+  // already authed) or flipped in-tab (an in-dialog sign-in re-resolves page.data.user
+  // without a remount). Consumed exactly once; standalone list only; skipped if a banner
+  // is already showing.
+  $effect(() => {
+    if (!browser || !untrack(() => standalone) || alertBanner) return;
+    if (!isAuthenticated()) return;
+    const pending = consumePendingAlert();
+    if (pending !== null) alertBanner = { query: pending, autostart: true };
+  });
 
   // Live disjunctive facet counts for the staged filter set (built by the modal),
   // merged with the fixed scope params (e.g. company_slug) so every control's counts —
@@ -255,7 +274,7 @@
       {/if}
       {@render sidebarTop?.()}
       <div class="rounded-xl border border-border bg-card p-4">
-        <FilterSummary store={filters} exclude={excludeFacets} onOpen={() => (modalOpen = true)} />
+        <FilterSummary store={filters} exclude={excludeFacets} onOpen={() => (modalOpen = true)} canSave={standalone} />
       </div>
     </div>
   </aside>
@@ -267,6 +286,15 @@
            completed), then retires — no persistent re-open control. -->
       <div class="pl-12 md:pl-0">
         <OnboardingBanner onOpen={() => (wizardOpen = true)} onDismiss={dismissBanner} />
+      </div>
+    {/if}
+    {#if alertBanner}
+      <div class="pl-12 md:pl-0">
+        <OnboardingAlertBanner
+          query={alertBanner.query}
+          autostart={alertBanner.autostart}
+          onDismiss={() => (alertBanner = null)}
+        />
       </div>
     {/if}
     {#if jobs.status === 'loading'}
