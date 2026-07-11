@@ -1,0 +1,19 @@
+{
+  "schema_version": "v1",
+  "name_for_human": "freehire",
+  "name_for_model": "freehire",
+  "description_for_human": "Search IT jobs on freehire and track saved or applied jobs.",
+  "description_for_model": "Use freehire to search IT jobs, inspect job and company details, find similar jobs, and manage the user's saved/applied job pipeline. Call getJobFacets before using uncertain filter values or skills.",
+  "auth": {
+    "type": "service_http",
+    "authorization_type": "bearer"
+  },
+  "api": {
+    "type": "openapi",
+    "url": "https://freehire.dev/openapi.yaml",
+    "is_user_authenticated": true
+  },
+  "logo_url": "https://freehire.dev/favicon.png",
+  "contact_email": "support@freehire.dev",
+  "legal_info_url": "https://freehire.dev"
+}

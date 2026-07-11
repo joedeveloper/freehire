@@ -1,0 +1,910 @@
+openapi: 3.1.0
+info:
+  title: freehire ChatGPT Actions API
+  version: 1.0.0
+  description: |
+    Search IT jobs, inspect companies, and track a user's job pipeline in freehire.
+    Public search endpoints do not require authentication. Tracking endpoints require
+    a personal freehire API key passed as a Bearer token.
+servers:
+  - url: https://freehire.dev/api/v1
+security: []
+tags:
+  - name: Jobs
+    description: Job search, facets, details, and similar jobs.
+  - name: Companies
+    description: Company search and company details.
+  - name: Tracking
+    description: User-specific saved, applied, stage, notes, and history actions.
+paths:
+  /jobs/search:
+    get:
+      operationId: searchJobs
+      tags: [Jobs]
+      summary: Search open jobs
+      description: |
+        Search open jobs with text and optional facets. Start with getJobFacets
+        when you need valid facet values or canonical skill slugs.
+      x-openai-isConsequential: false
+      parameters:
+        - $ref: "#/components/parameters/q"
+        - $ref: "#/components/parameters/limit"
+        - $ref: "#/components/parameters/offset"
+        - $ref: "#/components/parameters/sort"
+        - $ref: "#/components/parameters/order"
+        - $ref: "#/components/parameters/semanticRatio"
+        - $ref: "#/components/parameters/collections"
+        - $ref: "#/components/parameters/regions"
+        - $ref: "#/components/parameters/workMode"
+        - $ref: "#/components/parameters/category"
+        - $ref: "#/components/parameters/seniority"
+        - $ref: "#/components/parameters/skills"
+        - $ref: "#/components/parameters/domains"
+        - $ref: "#/components/parameters/companyType"
+        - $ref: "#/components/parameters/countries"
+        - $ref: "#/components/parameters/relocation"
+        - $ref: "#/components/parameters/employmentType"
+        - $ref: "#/components/parameters/englishLevel"
+        - $ref: "#/components/parameters/postingLanguage"
+        - $ref: "#/components/parameters/salaryCurrency"
+        - $ref: "#/components/parameters/companySlug"
+        - $ref: "#/components/parameters/source"
+        - $ref: "#/components/parameters/companySize"
+        - $ref: "#/components/parameters/educationLevel"
+        - $ref: "#/components/parameters/salaryPeriod"
+        - $ref: "#/components/parameters/visaSponsorship"
+        - $ref: "#/components/parameters/salaryMin"
+        - $ref: "#/components/parameters/salaryMax"
+        - $ref: "#/components/parameters/experienceYearsMin"
+      responses:
+        "200":
+          description: Matching jobs with pagination metadata.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JobListEnvelope"
+        default:
+          $ref: "#/components/responses/Error"
+  /jobs/facets:
+    get:
+      operationId: getJobFacets
+      tags: [Jobs]
+      summary: Get live filter vocabulary and counts
+      description: |
+        Return facet values, counts, canonical skill slugs, and numeric ranges for
+        the current search slice. Use this before applying uncertain filters.
+      x-openai-isConsequential: false
+      parameters:
+        - $ref: "#/components/parameters/q"
+        - $ref: "#/components/parameters/collections"
+        - $ref: "#/components/parameters/regions"
+        - $ref: "#/components/parameters/workMode"
+        - $ref: "#/components/parameters/category"
+        - $ref: "#/components/parameters/seniority"
+        - $ref: "#/components/parameters/skills"
+        - $ref: "#/components/parameters/domains"
+        - $ref: "#/components/parameters/companyType"
+        - $ref: "#/components/parameters/countries"
+        - $ref: "#/components/parameters/relocation"
+        - $ref: "#/components/parameters/employmentType"
+        - $ref: "#/components/parameters/englishLevel"
+        - $ref: "#/components/parameters/postingLanguage"
+        - $ref: "#/components/parameters/salaryCurrency"
+        - $ref: "#/components/parameters/companySlug"
+        - $ref: "#/components/parameters/source"
+        - $ref: "#/components/parameters/companySize"
+        - $ref: "#/components/parameters/educationLevel"
+        - $ref: "#/components/parameters/salaryPeriod"
+        - $ref: "#/components/parameters/visaSponsorship"
+        - $ref: "#/components/parameters/salaryMin"
+        - $ref: "#/components/parameters/salaryMax"
+        - $ref: "#/components/parameters/experienceYearsMin"
+      responses:
+        "200":
+          description: Facet distribution for matching jobs.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FacetsEnvelope"
+        default:
+          $ref: "#/components/responses/Error"
+  /jobs/{slug}:
+    get:
+      operationId: getJob
+      tags: [Jobs]
+      summary: Get a job by slug
+      x-openai-isConsequential: false
+      parameters:
+        - $ref: "#/components/parameters/jobSlug"
+      responses:
+        "200":
+          description: Job detail.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Job"
+        default:
+          $ref: "#/components/responses/Error"
+  /jobs/{slug}/similar:
+    get:
+      operationId: getSimilarJobs
+      tags: [Jobs]
+      summary: Find jobs similar to a job
+      x-openai-isConsequential: false
+      parameters:
+        - $ref: "#/components/parameters/jobSlug"
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 10
+          description: Maximum similar jobs to return.
+      responses:
+        "200":
+          description: Similar jobs.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JobListEnvelope"
+        default:
+          $ref: "#/components/responses/Error"
+  /companies:
+    get:
+      operationId: searchCompanies
+      tags: [Companies]
+      summary: Search companies
+      x-openai-isConsequential: false
+      parameters:
+        - name: q
+          in: query
+          schema:
+            type: string
+          description: Case-insensitive company name substring.
+        - $ref: "#/components/parameters/limit"
+        - $ref: "#/components/parameters/offset"
+      responses:
+        "200":
+          description: Companies with job counts.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/CompanySummary"
+                  meta:
+                    $ref: "#/components/schemas/PaginationMeta"
+        default:
+          $ref: "#/components/responses/Error"
+  /companies/{slug}:
+    get:
+      operationId: getCompany
+      tags: [Companies]
+      summary: Get company details and open jobs
+      x-openai-isConsequential: false
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Company slug.
+        - $ref: "#/components/parameters/limit"
+        - $ref: "#/components/parameters/offset"
+      responses:
+        "200":
+          description: Company and open jobs.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    additionalProperties: true
+                    properties:
+                      company:
+                        $ref: "#/components/schemas/CompanySummary"
+                      jobs:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/Job"
+        default:
+          $ref: "#/components/responses/Error"
+  /auth/me:
+    get:
+      operationId: getCurrentUser
+      tags: [Tracking]
+      summary: Check the authenticated user
+      x-openai-isConsequential: false
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Current user.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: "#/components/schemas/User"
+        default:
+          $ref: "#/components/responses/Error"
+  /jobs/{slug}/view:
+    post:
+      operationId: markJobViewed
+      tags: [Tracking]
+      summary: Mark a job as viewed
+      x-openai-isConsequential: true
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/jobSlug"
+      responses:
+        "200":
+          $ref: "#/components/responses/Interaction"
+        default:
+          $ref: "#/components/responses/Error"
+  /jobs/{slug}/apply:
+    post:
+      operationId: markJobApplied
+      tags: [Tracking]
+      summary: Mark a job as applied
+      x-openai-isConsequential: true
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/jobSlug"
+      responses:
+        "200":
+          $ref: "#/components/responses/Interaction"
+        default:
+          $ref: "#/components/responses/Error"
+  /jobs/{slug}/save:
+    post:
+      operationId: saveJob
+      tags: [Tracking]
+      summary: Save a job
+      x-openai-isConsequential: true
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/jobSlug"
+      responses:
+        "200":
+          $ref: "#/components/responses/Interaction"
+        default:
+          $ref: "#/components/responses/Error"
+    delete:
+      operationId: unsaveJob
+      tags: [Tracking]
+      summary: Remove a saved job
+      x-openai-isConsequential: true
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/jobSlug"
+      responses:
+        "200":
+          $ref: "#/components/responses/Interaction"
+        default:
+          $ref: "#/components/responses/Error"
+  /jobs/{slug}/track:
+    patch:
+      operationId: updateJobTracking
+      tags: [Tracking]
+      summary: Set application stage and/or notes
+      description: |
+        Set the user's application stage and notes for a job. Stage must be one
+        of applied, screening, responded, interview, offer, accepted, rejected, or withdrawn.
+      x-openai-isConsequential: true
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/jobSlug"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              minProperties: 1
+              properties:
+                stage:
+                  $ref: "#/components/schemas/ApplicationStage"
+                notes:
+                  type: string
+                  description: Free-text notes for this job.
+      responses:
+        "200":
+          $ref: "#/components/responses/Interaction"
+        default:
+          $ref: "#/components/responses/Error"
+    delete:
+      operationId: deleteJobTracking
+      tags: [Tracking]
+      summary: Remove the tracking record for a job
+      x-openai-isConsequential: true
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/jobSlug"
+      responses:
+        "200":
+          description: Tracking record removed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkEnvelope"
+        default:
+          $ref: "#/components/responses/Error"
+  /jobs/{slug}/stage:
+    delete:
+      operationId: clearJobStage
+      tags: [Tracking]
+      summary: Clear the application stage for a job
+      x-openai-isConsequential: true
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/jobSlug"
+      responses:
+        "200":
+          $ref: "#/components/responses/Interaction"
+        default:
+          $ref: "#/components/responses/Error"
+  /me/jobs:
+    get:
+      operationId: listTrackedJobs
+      tags: [Tracking]
+      summary: List the user's tracked jobs
+      x-openai-isConsequential: false
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: filter
+          in: query
+          schema:
+            type: string
+            enum: [all, viewed, saved, applied, board]
+            default: all
+          description: Subset of tracked jobs to return.
+        - $ref: "#/components/parameters/limit"
+        - $ref: "#/components/parameters/offset"
+      responses:
+        "200":
+          description: Tracked jobs joined with job data.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrackedJobsEnvelope"
+        default:
+          $ref: "#/components/responses/Error"
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: freehire API key
+      description: Personal freehire API key from the API keys page.
+  parameters:
+    jobSlug:
+      name: slug
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Job public_slug.
+    q:
+      name: q
+      in: query
+      schema:
+        type: string
+      description: Full-text query over title, company, and description.
+    limit:
+      name: limit
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+      description: Page size.
+    offset:
+      name: offset
+      in: query
+      schema:
+        type: integer
+        minimum: 0
+        default: 0
+      description: Rows to skip.
+    sort:
+      name: sort
+      in: query
+      schema:
+        type: string
+        enum: [created_at, posted_at, salary_min, salary_max]
+      description: Sort field. Omit for relevance or newest default.
+    order:
+      name: order
+      in: query
+      schema:
+        type: string
+        enum: [asc, desc]
+        default: desc
+      description: Sort direction.
+    semanticRatio:
+      name: semantic_ratio
+      in: query
+      schema:
+        type: number
+        minimum: 0
+        maximum: 1
+        default: 0
+      description: Hybrid semantic search ratio.
+    collections:
+      name: collections
+      in: query
+      style: form
+      explode: true
+      schema:
+        type: array
+        items:
+          type: string
+          enum: [yc, techstars, european, ai, mag7, bigtech, unicorn, fortune500]
+      description: Company collections.
+    regions:
+      name: regions
+      in: query
+      style: form
+      explode: true
+      schema:
+        type: array
+        items:
+          type: string
+          enum: [global, north_america, latam, eu, uk, mena, africa, apac, cis]
+      description: Geographic regions.
+    workMode:
+      name: work_mode
+      in: query
+      style: form
+      explode: true
+      schema:
+        type: array
+        items:
+          type: string
+          enum: [remote, hybrid, onsite]
+      description: Work format.
+    category:
+      name: category
+      in: query
+      style: form
+      explode: true
+      schema:
+        type: array
+        items:
+          type: string
+          enum: [backend, frontend, fullstack, mobile, devops, sre, data_engineering, data_science, data_analytics, ml_ai, qa, security, hardware, embedded, blockchain, design, product, project_management, management, marketing, sales, support, other]
+      description: Role specialization.
+    seniority:
+      name: seniority
+      in: query
+      style: form
+      explode: true
+      schema:
+        type: array
+        items:
+          type: string
+          enum: [intern, junior, middle, senior, lead, staff, principal, c_level]
+      description: Seniority levels.
+    skills:
+      name: skills
+      in: query
+      style: form
+      explode: true
+      schema:
+        type: array
+        items:
+          type: string
+      description: Canonical skill slugs from getJobFacets.
+    domains:
+      name: domains
+      in: query
+      style: form
+      explode: true
+      schema:
+        type: array
+        items:
+          type: string
+          enum: [fintech, gambling, ecommerce, crypto, healthcare, saas, gamedev, edtech, adtech, govtech, media, travel, logistics, other]
+      description: Industry domains.
+    companyType:
+      name: company_type
+      in: query
+      style: form
+      explode: true
+      schema:
+        type: array
+        items:
+          type: string
+          enum: [product, startup, outsource, outstaff, agency, inhouse, government]
+      description: Company type.
+    countries:
+      name: countries
+      in: query
+      style: form
+      explode: true
+      schema:
+        type: array
+        items:
+          type: string
+      description: Country codes from getJobFacets.
+    relocation:
+      name: relocation
+      in: query
+      style: form
+      explode: true
+      schema:
+        type: array
+        items:
+          type: string
+          enum: [not_supported, supported, required]
+      description: Relocation support.
+    employmentType:
+      name: employment_type
+      in: query
+      style: form
+      explode: true
+      schema:
+        type: array
+        items:
+          type: string
+          enum: [full_time, part_time, contract, internship]
+      description: Employment type.
+    englishLevel:
+      name: english_level
+      in: query
+      style: form
+      explode: true
+      schema:
+        type: array
+        items:
+          type: string
+          enum: [none, a1, a2, b1, b2, c1, c2, native]
+      description: Required English level.
+    postingLanguage:
+      name: posting_language
+      in: query
+      style: form
+      explode: true
+      schema:
+        type: array
+        items:
+          type: string
+          enum: [en, ru, uk]
+      description: Job posting language.
+    salaryCurrency:
+      name: salary_currency
+      in: query
+      style: form
+      explode: true
+      schema:
+        type: array
+        items:
+          type: string
+          enum: [USD, EUR, GBP, RUB]
+      description: Salary currency.
+    companySlug:
+      name: company_slug
+      in: query
+      style: form
+      explode: true
+      schema:
+        type: array
+        items:
+          type: string
+      description: Company slug from getJobFacets or searchCompanies.
+    source:
+      name: source
+      in: query
+      style: form
+      explode: true
+      schema:
+        type: array
+        items:
+          type: string
+      description: Job source slug from getJobFacets.
+    companySize:
+      name: company_size
+      in: query
+      style: form
+      explode: true
+      schema:
+        type: array
+        items:
+          type: string
+          enum: ["1-10", "11-50", "51-200", "201-500", "501-1000", "1000+"]
+      description: Company size bucket.
+    educationLevel:
+      name: education_level
+      in: query
+      style: form
+      explode: true
+      schema:
+        type: array
+        items:
+          type: string
+          enum: [none, bachelor, master, phd]
+      description: Education level.
+    salaryPeriod:
+      name: salary_period
+      in: query
+      style: form
+      explode: true
+      schema:
+        type: array
+        items:
+          type: string
+          enum: [year, month, day, hour]
+      description: Salary period.
+    visaSponsorship:
+      name: visa_sponsorship
+      in: query
+      schema:
+        type: boolean
+      description: Whether visa sponsorship is available.
+    salaryMin:
+      name: salary_min
+      in: query
+      schema:
+        type: integer
+      description: Minimum salary lower bound.
+    salaryMax:
+      name: salary_max
+      in: query
+      schema:
+        type: integer
+      description: Maximum salary upper bound.
+    experienceYearsMin:
+      name: experience_years_min
+      in: query
+      schema:
+        type: integer
+      description: Minimum required experience in years.
+  responses:
+    Error:
+      description: Error response.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+    Interaction:
+      description: User interaction record.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/InteractionEnvelope"
+  schemas:
+    Job:
+      type: object
+      additionalProperties: true
+      required: [public_slug, title, company]
+      properties:
+        public_slug:
+          type: string
+        title:
+          type: string
+        company:
+          type: string
+        company_slug:
+          type: string
+        url:
+          type: string
+          format: uri
+        location:
+          type: string
+        regions:
+          type: array
+          items:
+            type: string
+        countries:
+          type: array
+          items:
+            type: string
+        work_mode:
+          type: string
+        skills:
+          type: array
+          items:
+            type: string
+        source:
+          type: string
+        posted_at:
+          type: string
+          format: date-time
+        closed_at:
+          type:
+            - string
+            - "null"
+          format: date-time
+        description:
+          type: string
+    JobListEnvelope:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Job"
+        meta:
+          $ref: "#/components/schemas/PaginationMeta"
+    FacetsEnvelope:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+          required: [total, facets]
+          additionalProperties: true
+          properties:
+            total:
+              type: integer
+            facets:
+              type: object
+              additionalProperties:
+                type: object
+                additionalProperties:
+                  type: integer
+            stats:
+              type: object
+              additionalProperties:
+                type: object
+                additionalProperties:
+                  type: number
+    CompanySummary:
+      type: object
+      additionalProperties: true
+      required: [slug, name]
+      properties:
+        slug:
+          type: string
+        name:
+          type: string
+        job_count:
+          type: integer
+    User:
+      type: object
+      additionalProperties: true
+      required: [id, email]
+      properties:
+        id:
+          type: integer
+        email:
+          type: string
+          format: email
+        role:
+          type: string
+    ApplicationStage:
+      type: string
+      enum: [applied, screening, responded, interview, offer, accepted, rejected, withdrawn]
+    Interaction:
+      type: object
+      additionalProperties: true
+      properties:
+        job_id:
+          type: integer
+        viewed_at:
+          type:
+            - string
+            - "null"
+          format: date-time
+        saved_at:
+          type:
+            - string
+            - "null"
+          format: date-time
+        applied_at:
+          type:
+            - string
+            - "null"
+          format: date-time
+        stage:
+          anyOf:
+            - $ref: "#/components/schemas/ApplicationStage"
+            - type: "null"
+        notes:
+          type:
+            - string
+            - "null"
+    InteractionEnvelope:
+      type: object
+      required: [data]
+      properties:
+        data:
+          $ref: "#/components/schemas/Interaction"
+    TrackedJob:
+      type: object
+      additionalProperties: true
+      required: [job]
+      properties:
+        job:
+          $ref: "#/components/schemas/Job"
+        viewed_at:
+          type:
+            - string
+            - "null"
+          format: date-time
+        saved_at:
+          type:
+            - string
+            - "null"
+          format: date-time
+        applied_at:
+          type:
+            - string
+            - "null"
+          format: date-time
+        stage:
+          anyOf:
+            - $ref: "#/components/schemas/ApplicationStage"
+            - type: "null"
+        notes:
+          type:
+            - string
+            - "null"
+    TrackedJobsEnvelope:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/TrackedJob"
+        meta:
+          allOf:
+            - $ref: "#/components/schemas/PaginationMeta"
+            - type: object
+              properties:
+                counts:
+                  type: object
+                  additionalProperties:
+                    type: integer
+    PaginationMeta:
+      type: object
+      additionalProperties: true
+      properties:
+        total:
+          type: integer
+        limit:
+          type: integer
+        offset:
+          type: integer
+    OkEnvelope:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+          required: [ok]
+          properties:
+            ok:
+              type: boolean
+    ErrorEnvelope:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
