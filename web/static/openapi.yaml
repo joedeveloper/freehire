@@ -365,7 +365,7 @@ paths:
           $ref: "#/components/responses/Interaction"
         default:
           $ref: "#/components/responses/Error"
-  /me/jobs:
+  /me/tracking:
     get:
       operationId: listTrackedJobs
       tags: [Tracking]
@@ -390,6 +390,46 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/TrackedJobsEnvelope"
+        default:
+          $ref: "#/components/responses/Error"
+  /me/tracking/analyses:
+    get:
+      operationId: listMyAnalyses
+      tags: [Tracking]
+      summary: List the jobs the user has run the AI fit analysis on
+      x-openai-isConsequential: false
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Analysed jobs (newest first, closed included) with monthly quota.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        slug: { type: string }
+                        title: { type: string }
+                        company: { type: string }
+                        closed: { type: boolean }
+                        overall_score: { type: integer }
+                        verdict: { type: string }
+                        analysed_at: { type: string, format: date-time }
+                        stale: { type: boolean }
+                  meta:
+                    type: object
+                    properties:
+                      quota:
+                        type: object
+                        properties:
+                          used: { type: integer }
+                          limit: { type: integer }
+                          remaining: { type: integer }
         default:
           $ref: "#/components/responses/Error"
 components:
