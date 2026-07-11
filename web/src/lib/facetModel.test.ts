@@ -6,6 +6,8 @@ import {
   filtersFromParams,
   activeFilterCount,
   canonicalQuery,
+  savedSearchQuery,
+  DEFAULT_SORT,
   signOf,
   facetSetSign,
   facetCycle,
@@ -161,5 +163,45 @@ describe('sign transitions (pure)', () => {
   it('facetRemove clears the value from both sets', () => {
     expect(facetRemove({ include: ['go'], exclude: [], matchAll: false }, 'go')).toEqual(emptyFacet());
     expect(facetRemove({ include: [], exclude: ['go'], matchAll: false }, 'go')).toEqual(emptyFacet());
+  });
+});
+
+describe('sort', () => {
+  it('parses a known sort value from the URL', () => {
+    expect(filtersFromParams(new URLSearchParams('sort=cv')).sort).toBe('cv');
+  });
+
+  it('defaults an absent sort to DEFAULT_SORT', () => {
+    expect(filtersFromParams(new URLSearchParams('')).sort).toBe(DEFAULT_SORT);
+  });
+
+  it('defaults an unknown sort value to DEFAULT_SORT', () => {
+    expect(filtersFromParams(new URLSearchParams('sort=bogus')).sort).toBe(DEFAULT_SORT);
+  });
+
+  it('serializes a non-default sort and omits the default', () => {
+    const cv = emptyFilters();
+    cv.sort = 'cv';
+    expect(filtersToParams(cv).get('sort')).toBe('cv');
+    expect(filtersToParams(emptyFilters()).get('sort')).toBeNull();
+  });
+
+  it('round-trips sort=cv through the URL (parse then serialize)', () => {
+    expect(filtersToParams(filtersFromParams(new URLSearchParams('sort=cv'))).get('sort')).toBe('cv');
+  });
+
+  it('savedSearchQuery drops the view-only sort', () => {
+    const cv = emptyFilters();
+    cv.sort = 'cv';
+    expect(savedSearchQuery(cv)).toBe('');
+    const filtered = withSkills({ include: ['go'] });
+    filtered.sort = 'cv';
+    expect(new URLSearchParams(savedSearchQuery(filtered)).get('sort')).toBeNull();
+    expect(new URLSearchParams(savedSearchQuery(filtered)).getAll('skills')).toEqual(['go']);
+  });
+
+  it('canonicalQuery drops sort so a sort change never flips the active saved search', () => {
+    expect(canonicalQuery('sort=cv')).toBe('');
+    expect(canonicalQuery('skills=go&sort=cv')).toBe(canonicalQuery('skills=go'));
   });
 });

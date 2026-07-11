@@ -21,14 +21,16 @@ export type Sign = 'off' | 'include' | 'exclude';
  *  shape `FacetSection` reads — one canonical type so the two can't drift. */
 export type FacetState = FacetSelection;
 
-/** The fields the browse list can be ordered by. Only `posted_at` (the source's
- *  posting date, newest-first) is offered today; the type stays a union so a
- *  future sort (e.g. salary) re-introduces an option without reshaping callers. */
-export type SortField = 'posted_at';
+/** The orders the browse list can take. `posted_at` is the source's posting date
+ *  (newest-first). `cv` is a frontend-only routing signal: the feed ranks by the
+ *  signed-in user's CV vector via the recommendations endpoint — it is never sent
+ *  to the keyword search endpoint (whose sort allowlist is posted_at/created_at/
+ *  salary_*), only carried in the URL/store for round-trip. */
+export type SortField = 'posted_at' | 'cv';
 
-/** Default (and currently only) browse order: freshest by posting date. Kept out
- *  of the URL (see filtersToParams) so the default reads as a clean, sort-less URL
- *  and the backend's own empty-query default stays the single source of truth. */
+/** Default browse order: freshest by posting date. Kept out of the URL (see
+ *  filtersToParams) so the default reads as a clean, sort-less URL and the
+ *  backend's own empty-query default stays the single source of truth. */
 export const DEFAULT_SORT: SortField = 'posted_at';
 
 export interface JobFilters {
@@ -104,8 +106,9 @@ export function filtersFromParams(p: URLSearchParams): JobFilters {
   // negative, non-numeric) reads as "any age", matching the backend's own guard.
   const days = Number(p.get('posted_within_days'));
   f.postedWithinDays = Number.isInteger(days) && days > 0 ? days : null;
-  // Sort isn't user-selectable today, so it's never read from the URL — it stays
-  // the default seeded by emptyFilters().
+  // Only `cv` round-trips (posted_at is the default and never written to the URL);
+  // any other value — absent, legacy, malformed — reads as the default.
+  f.sort = p.get('sort') === 'cv' ? 'cv' : DEFAULT_SORT;
   return f;
 }
 
@@ -124,9 +127,20 @@ export function activeFilterCount(f: JobFilters): number {
 
 /** Normalize a search query string to its canonical form (parse → re-serialize),
  *  so two filter sets that differ only in param order or stale/unknown params
- *  compare equal. Used to detect which saved search matches the current filters. */
+ *  compare equal. Used to detect which saved search matches the current filters.
+ *  Sort never survives (filtersToParams omits the default and canonicalizing a
+ *  saved query drops the view-only `cv` — see savedSearchQuery), so a sort change
+ *  never flips which saved search is active. */
 export function canonicalQuery(query: string): string {
-  return filtersToParams(filtersFromParams(new URLSearchParams(query))).toString();
+  return savedSearchQuery(filtersFromParams(new URLSearchParams(query)));
+}
+
+/** The saved-search / alert target: the filters as a query string with the view-only
+ *  sort dropped. Sort is a per-session preference, not an alert criterion — the
+ *  server-side digest runs a keyword search that can't honor `sort=cv` — so it must
+ *  not be baked into a persisted or shared saved search. */
+export function savedSearchQuery(f: JobFilters): string {
+  return filtersToParams({ ...f, sort: DEFAULT_SORT }).toString();
 }
 
 // ---- per-value sign transitions (pure: FacetState -> FacetState) ----
