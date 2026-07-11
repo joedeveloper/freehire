@@ -108,6 +108,11 @@ type Querier interface {
 	// applied_at set but no stage groups under a NULL stage. The Go layer folds these
 	// rows into the pipeline buckets.
 	CountMyJobsByStage(ctx context.Context, userID int64) ([]CountMyJobsByStageRow, error)
+	// How many distinct jobs the caller first analyzed within the window (created_at is the
+	// first-analysis time — see UpsertUserJobAnalysis). This is the fit-analysis quota
+	// meter: the PK guarantees one row per (user, job), so the row count is the distinct-job
+	// count. A recompute does not add a row, so it never consumes quota.
+	CountRecentUserJobAnalyses(ctx context.Context, arg CountRecentUserJobAnalysesParams) (int64, error)
 	// How many saved searches a user has — the per-user cap is enforced against this in
 	// the service before a create.
 	CountSavedSearches(ctx context.Context, userID int64) (int64, error)
@@ -713,7 +718,10 @@ type Querier interface {
 	UpsertTelegramLink(ctx context.Context, arg UpsertTelegramLinkParams) error
 	// Create-or-replace the cached analysis for a (user, job). The composite PRIMARY KEY
 	// makes it idempotent: a recompute overwrites the analysis, model, and both staleness
-	// stamps and re-bumps created_at. analysis is the sanitized jobfit.Analysis JSON.
+	// stamps. created_at is deliberately NOT re-bumped on conflict, so it records the
+	// FIRST-analysis time — the fit-analysis quota counts distinct jobs a user first
+	// analyzed within a rolling window, and a recompute must not re-age its row into it.
+	// analysis is the sanitized jobfit.Analysis JSON.
 	UpsertUserJobAnalysis(ctx context.Context, arg UpsertUserJobAnalysisParams) error
 	// Create-or-replace the user's one profile. The PRIMARY KEY (user_id) makes this an
 	// idempotent upsert: first save inserts, later saves overwrite specializations/skills/

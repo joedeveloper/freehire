@@ -34,6 +34,14 @@ func (a *API) StreamJobFit(c *fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
+	// Enforce the monthly quota before opening the stream (the fiber ctx is still valid
+	// here, so an over-limit new job returns a real 429 instead of an SSE error). Only a
+	// CV-backed request would run the LLM; without one the stream just reports has_cv.
+	if hasCV {
+		if err := a.enforceFitQuota(c.Context(), userID, job.ID); err != nil {
+			return err
+		}
+	}
 	cvUploadedAt, _ := a.cvUploadedAt(c, userID)
 	profile, _ := a.userProfile.Get(c.Context(), userID)
 

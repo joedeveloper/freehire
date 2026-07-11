@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"time"
 
@@ -16,21 +17,60 @@ import (
 	"github.com/strelov1/freehire/internal/jobmatch"
 )
 
-// jobFitStore reads/writes the per-(user, job) cached fit analysis. *db.Queries
-// satisfies it; a fake backs the DB-less handler tests.
+// fitAnalysisLimit caps how many distinct jobs a user may run the AI fit analysis on
+// within fitAnalysisWindow (a rolling window). A recompute of an already-analyzed job is
+// free — the meter counts distinct jobs, not LLM calls (see enforceFitQuota). Kept as
+// package constants; an env-tunable limit is a trivial future seam.
+const (
+	fitAnalysisLimit  int64 = 10
+	fitAnalysisWindow       = 30 * 24 * time.Hour
+)
+
+// fitLimitMessage is the 429 body when a new-job analysis would exceed the quota,
+// derived from the constants so the numbers can't drift from what's enforced.
+var fitLimitMessage = fmt.Sprintf("Monthly AI fit-analysis limit reached (%d per %d days).",
+	fitAnalysisLimit, int64(fitAnalysisWindow/(24*time.Hour)))
+
+// fitQuota is the caller's fit-analysis usage over the rolling window, surfaced on the
+// read endpoint so the client can show "N/limit" and pre-block a new-job analysis.
+type fitQuota struct {
+	Used      int64 `json:"used"`
+	Limit     int64 `json:"limit"`
+	Remaining int64 `json:"remaining"`
+}
+
+// newFitQuota builds the quota view from the used count, flooring remaining at zero (a
+// user over the cap reports 0 remaining, never a negative).
+func newFitQuota(used int64) fitQuota {
+	remaining := fitAnalysisLimit - used
+	if remaining < 0 {
+		remaining = 0
+	}
+	return fitQuota{Used: used, Limit: fitAnalysisLimit, Remaining: remaining}
+}
+
+// exhausted reports whether the caller has no quota left to start a NEW job's analysis.
+func (q fitQuota) exhausted() bool { return q.Remaining <= 0 }
+
+// jobFitStore reads/writes the per-(user, job) cached fit analysis and meters usage.
+// *db.Queries satisfies it; a fake backs the DB-less handler tests.
 type jobFitStore interface {
 	GetUserJobAnalysis(ctx context.Context, arg db.GetUserJobAnalysisParams) (db.GetUserJobAnalysisRow, error)
 	UpsertUserJobAnalysis(ctx context.Context, arg db.UpsertUserJobAnalysisParams) error
+	CountRecentUserJobAnalyses(ctx context.Context, arg db.CountRecentUserJobAnalysesParams) (int64, error)
 }
 
 // jobFitResponse is the wire shape for the LLM fit analysis. HasCV is false when the
 // caller has no stored CV — the SPA then prompts an upload instead of an empty report.
 // Stale marks a cached analysis whose CV or job changed since (the SPA offers a
-// recompute); Analysis is nil when none is cached or the LLM is unconfigured.
+// recompute); Analysis is nil when none is cached or the LLM is unconfigured. Quota is
+// set on reads (GET) so the SPA can show usage and pre-block a new-job analysis; it is
+// omitted on the compute responses.
 type jobFitResponse struct {
 	HasCV    bool             `json:"has_cv"`
 	Stale    bool             `json:"stale"`
 	Analysis *jobfit.Analysis `json:"analysis"`
+	Quota    *fitQuota        `json:"quota,omitempty"`
 }
 
 // GetJobFit serves the cached fit analysis for one of the caller's jobs, never calling
@@ -48,21 +88,23 @@ func (a *API) GetJobFit(c *fiber.Ctx) error {
 	}
 	cvUploadedAt, hasCV := a.cvUploadedAt(c, userID)
 	if !hasCV {
+		// No CV means no analysis is possible, so usage is moot — skip the count query.
 		return c.JSON(fiber.Map{"data": jobFitResponse{HasCV: false}})
 	}
+	quota := a.fitQuotaFor(c.Context(), userID)
 	row, err := a.jobFitCache.GetUserJobAnalysis(c.Context(), db.GetUserJobAnalysisParams{UserID: userID, JobID: job.ID})
 	if errors.Is(err, pgx.ErrNoRows) {
-		return c.JSON(fiber.Map{"data": jobFitResponse{HasCV: true}})
+		return c.JSON(fiber.Map{"data": jobFitResponse{HasCV: true, Quota: &quota}})
 	}
 	if err != nil {
 		return err
 	}
 	analysis := decodeAnalysis(row.Analysis)
 	if analysis == nil {
-		return c.JSON(fiber.Map{"data": jobFitResponse{HasCV: true}})
+		return c.JSON(fiber.Map{"data": jobFitResponse{HasCV: true, Quota: &quota}})
 	}
 	stale := !stampsFresh(row, cvUploadedAt, job.ContentHash, a.jobFit.ModelID())
-	return c.JSON(fiber.Map{"data": jobFitResponse{HasCV: true, Stale: stale, Analysis: analysis}})
+	return c.JSON(fiber.Map{"data": jobFitResponse{HasCV: true, Stale: stale, Analysis: analysis, Quota: &quota}})
 }
 
 // PostJobFit runs the three-stage fit prompt-chain over the caller's stored CV and the
@@ -84,6 +126,11 @@ func (a *API) PostJobFit(c *fiber.Ctx) error {
 	}
 	if !hasCV {
 		return c.JSON(fiber.Map{"data": jobFitResponse{HasCV: false}})
+	}
+	// Enforce the monthly quota before touching the LLM: a new job over the cap is a 429,
+	// a recompute of an already-analyzed job is always allowed.
+	if err := a.enforceFitQuota(c.Context(), userID, job.ID); err != nil {
+		return err
 	}
 	// Capture the CV upload time up front, so the cache is stamped with the CV that was
 	// actually analyzed even if the user re-uploads mid-analysis (the three-stage chain
@@ -119,6 +166,39 @@ func (a *API) PostJobFit(c *fiber.Ctx) error {
 	}
 	a.cacheAnalysis(c.Context(), userID, job, cvUploadedAt, analysis)
 	return c.JSON(fiber.Map{"data": jobFitResponse{HasCV: true, Stale: false, Analysis: analysis}})
+}
+
+// fitQuotaFor reports the caller's fit-analysis usage over the rolling window. A count
+// error degrades to zero usage (best-effort: a transient DB hiccup must not block a
+// legitimate analysis, and the persisted rows remain the real ceiling).
+func (a *API) fitQuotaFor(ctx context.Context, userID int64) fitQuota {
+	used, err := a.jobFitCache.CountRecentUserJobAnalyses(ctx, db.CountRecentUserJobAnalysesParams{
+		UserID:    userID,
+		CreatedAt: pgtype.Timestamptz{Time: time.Now().Add(-fitAnalysisWindow), Valid: true},
+	})
+	if err != nil {
+		log.Printf("jobfit: count recent analyses for user %d: %v", userID, err)
+		return newFitQuota(0)
+	}
+	return newFitQuota(used)
+}
+
+// enforceFitQuota returns a 429 error when starting a NEW analysis for (userID, jobID)
+// would exceed the caller's quota; it returns nil (allow) otherwise. A recompute — a row
+// already exists for the pair — is always allowed and never metered, so the meter counts
+// distinct jobs rather than LLM calls.
+func (a *API) enforceFitQuota(ctx context.Context, userID, jobID int64) error {
+	_, err := a.jobFitCache.GetUserJobAnalysis(ctx, db.GetUserJobAnalysisParams{UserID: userID, JobID: jobID})
+	if err == nil {
+		return nil // recompute of an already-analyzed pair — free
+	}
+	if !errors.Is(err, pgx.ErrNoRows) {
+		return err // genuine DB error, not "no row"
+	}
+	if a.fitQuotaFor(ctx, userID).exhausted() {
+		return fiber.NewError(fiber.StatusTooManyRequests, fitLimitMessage)
+	}
+	return nil
 }
 
 // cacheAnalysis upserts the analysis stamped with the analyzed CV's upload time, the job

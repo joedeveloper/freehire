@@ -14,6 +14,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"testing"
 	"time"
 
@@ -194,6 +195,197 @@ func TestJobFitEndpoints(t *testing.T) {
 		if gstatus != fiber.StatusOK || gbody.Data.Analysis == nil || gbody.Data.Stale {
 			t.Errorf("GET after compute = status %d stale %v analysis %v, want 200/false/present",
 				gstatus, gbody.Data.Stale, gbody.Data.Analysis)
+		}
+	})
+}
+
+// TestJobFitQuota covers the per-user monthly cap: a new job over the limit is a 429 (no
+// LLM call), a recompute of an already-analyzed job is always allowed, and GET reports
+// usage. It seeds analysis rows directly to place the user at a chosen usage level.
+func TestJobFitQuota(t *testing.T) {
+	pool := startPostgres(t)
+	ctx := context.Background()
+	queries := db.New(pool)
+	iss := auth.NewIssuer("test-secret", time.Hour)
+
+	seedUser := func(t *testing.T, email string) (int64, string) {
+		t.Helper()
+		var id int64
+		if err := pool.QueryRow(ctx, `INSERT INTO users (email) VALUES ($1) RETURNING id`, email).Scan(&id); err != nil {
+			t.Fatalf("seed user: %v", err)
+		}
+		tok, err := iss.Issue(id)
+		if err != nil {
+			t.Fatalf("issue token: %v", err)
+		}
+		return id, tok
+	}
+	seedJob := func(t *testing.T, ext, slug string) int64 {
+		t.Helper()
+		var id int64
+		if err := pool.QueryRow(ctx,
+			`INSERT INTO jobs (source, external_id, url, title, description, public_slug, skills, content_hash)
+			 VALUES ('test',$1,'http://e.test','Go Engineer','Build backends in Go.',$2, ARRAY['go'], 'h')
+			 RETURNING id`, ext, slug).Scan(&id); err != nil {
+			t.Fatalf("seed job %s: %v", slug, err)
+		}
+		return id
+	}
+	// seedAnalysis places a prior analysis row for (user, job) at the given age, so it
+	// counts toward (recent) or outside (old) the rolling window.
+	seedAnalysis := func(t *testing.T, userID, jobID int64, age time.Duration) {
+		t.Helper()
+		if _, err := pool.Exec(ctx,
+			`INSERT INTO user_job_analysis (user_id, job_id, analysis, model, created_at)
+			 VALUES ($1,$2,'{}','seed-model', now() - $3::interval)`,
+			userID, jobID, age.String()); err != nil {
+			t.Fatalf("seed analysis: %v", err)
+		}
+	}
+	storeWithCVFor := func(t *testing.T, userID int64) *resume.Store {
+		t.Helper()
+		s := resume.New(newFakeResumeBlobs(), &fakeResumeRepo{})
+		if _, err := s.Put(ctx, userID, "text/plain", []byte("5y Go.")); err != nil {
+			t.Fatalf("seed CV: %v", err)
+		}
+		return s
+	}
+	appFor := func(store *resume.Store, an *jobfit.Analyzer) *fiber.App {
+		h := &API{
+			pool: pool, queries: queries, issuer: iss,
+			userProfile: userprofile.New(ownedProfile()),
+			resume:      store, jobFit: an, jobFitCache: queries,
+		}
+		app := fiber.New(fiber.Config{ErrorHandler: RenderError})
+		g := auth.RequireAuth(iss)
+		app.Get("/api/v1/jobs/:slug/fit", g, h.GetJobFit)
+		app.Post("/api/v1/jobs/:slug/fit", g, h.PostJobFit)
+		app.Get("/api/v1/jobs/:slug/fit/stream", g, h.StreamJobFit)
+		return app
+	}
+	postFit := func(t *testing.T, app *fiber.App, slug, tok string) (int, fitBody) {
+		t.Helper()
+		req := httptest.NewRequest(fiber.MethodPost, "/api/v1/jobs/"+slug+"/fit", nil)
+		req.AddCookie(&http.Cookie{Name: auth.CookieName, Value: tok})
+		resp, err := app.Test(req)
+		if err != nil {
+			t.Fatalf("POST fit: %v", err)
+		}
+		defer resp.Body.Close()
+		var body fitBody
+		_ = json.NewDecoder(resp.Body).Decode(&body)
+		return resp.StatusCode, body
+	}
+	// fillQuota seeds `n` distinct recently-analyzed jobs for a user (used = n).
+	fillQuota := func(t *testing.T, userID int64, tag string, n int) {
+		t.Helper()
+		for i := 0; i < n; i++ {
+			jid := seedJob(t, tag+"-"+strconv.Itoa(i), tag+"-job-"+strconv.Itoa(i))
+			seedAnalysis(t, userID, jid, time.Hour)
+		}
+	}
+
+	t.Run("new job over the limit is 429 and never calls the LLM", func(t *testing.T) {
+		userID, token := seedUser(t, "over@example.test")
+		fillQuota(t, userID, "over", int(fitAnalysisLimit))
+		seedJob(t, "over-new", "over-new")
+		model := &fitModel{resp: []string{fitStage1, fitStage2, fitStage3}}
+		app := appFor(storeWithCVFor(t, userID), jobfit.NewAnalyzer(llm.NewWithModel(model)))
+
+		status, _ := postFit(t, app, "over-new", token)
+		if status != fiber.StatusTooManyRequests {
+			t.Errorf("status = %d, want 429", status)
+		}
+		if model.n != 0 {
+			t.Errorf("LLM was called %d times, want 0 when over quota", model.n)
+		}
+		var n int
+		_ = pool.QueryRow(ctx, `SELECT count(*) FROM user_job_analysis WHERE user_id=$1`, userID).Scan(&n)
+		if n != int(fitAnalysisLimit) {
+			t.Errorf("cache rows = %d, want %d (nothing persisted on 429)", n, fitAnalysisLimit)
+		}
+	})
+
+	t.Run("recompute of an analyzed job is allowed even at the limit", func(t *testing.T) {
+		userID, token := seedUser(t, "recompute@example.test")
+		fillQuota(t, userID, "rc", int(fitAnalysisLimit))
+		// The last-seeded job is one the user has already analyzed → recompute must run.
+		var createdBefore time.Time
+		if err := pool.QueryRow(ctx,
+			`SELECT created_at FROM user_job_analysis WHERE user_id=$1 ORDER BY created_at LIMIT 1`,
+			userID).Scan(&createdBefore); err != nil {
+			t.Fatalf("read created_at: %v", err)
+		}
+		model := &fitModel{resp: []string{fitStage1, fitStage2, fitStage3}}
+		app := appFor(storeWithCVFor(t, userID), jobfit.NewAnalyzer(llm.NewWithModel(model)))
+
+		status, body := postFit(t, app, "rc-job-0", token)
+		if status != fiber.StatusOK || body.Data.Analysis == nil {
+			t.Fatalf("recompute got status=%d analysis=%v, want 200 + analysis", status, body.Data.Analysis)
+		}
+		// A recompute must NOT re-bump created_at (else it would re-age the row into the
+		// window and mis-count the quota).
+		var createdAfter time.Time
+		_ = pool.QueryRow(ctx,
+			`SELECT created_at FROM user_job_analysis WHERE user_id=$1 AND job_id=(SELECT id FROM jobs WHERE public_slug='rc-job-0')`,
+			userID).Scan(&createdAfter)
+		if !createdAfter.Equal(createdBefore) {
+			t.Errorf("recompute changed created_at (%s → %s); want preserved", createdBefore, createdAfter)
+		}
+	})
+
+	t.Run("under the limit a new job runs and GET reports usage", func(t *testing.T) {
+		userID, token := seedUser(t, "under@example.test")
+		fillQuota(t, userID, "under", int(fitAnalysisLimit)-1) // used = 9
+		seedJob(t, "under-new", "under-new")
+		model := &fitModel{resp: []string{fitStage1, fitStage2, fitStage3}}
+		app := appFor(storeWithCVFor(t, userID), jobfit.NewAnalyzer(llm.NewWithModel(model)))
+
+		// GET before compute: used=9, remaining=1.
+		greq := httptest.NewRequest(fiber.MethodGet, "/api/v1/jobs/under-new/fit", nil)
+		greq.AddCookie(&http.Cookie{Name: auth.CookieName, Value: token})
+		gresp, _ := app.Test(greq)
+		var gbody struct {
+			Data struct {
+				Quota *fitQuota `json:"quota"`
+			} `json:"data"`
+		}
+		_ = json.NewDecoder(gresp.Body).Decode(&gbody)
+		gresp.Body.Close()
+		if gbody.Data.Quota == nil || gbody.Data.Quota.Used != fitAnalysisLimit-1 ||
+			gbody.Data.Quota.Limit != fitAnalysisLimit || gbody.Data.Quota.Remaining != 1 {
+			t.Fatalf("GET quota = %+v, want used=%d limit=%d remaining=1", gbody.Data.Quota, fitAnalysisLimit-1, fitAnalysisLimit)
+		}
+
+		// POST the 10th distinct job succeeds; the next new job is then over the limit.
+		if status, body := postFit(t, app, "under-new", token); status != fiber.StatusOK || body.Data.Analysis == nil {
+			t.Fatalf("10th analysis got status=%d analysis=%v, want 200 + analysis", status, body.Data.Analysis)
+		}
+		seedJob(t, "under-new2", "under-new2")
+		if status, _ := postFit(t, app, "under-new2", token); status != fiber.StatusTooManyRequests {
+			t.Errorf("11th distinct job status = %d, want 429", status)
+		}
+	})
+
+	t.Run("stream over the limit is 429 before opening the stream", func(t *testing.T) {
+		userID, token := seedUser(t, "stream-over@example.test")
+		fillQuota(t, userID, "so", int(fitAnalysisLimit))
+		seedJob(t, "so-new", "so-new")
+		model := &fitModel{resp: []string{fitStage1, fitStage2, fitStage3}}
+		app := appFor(storeWithCVFor(t, userID), jobfit.NewAnalyzer(llm.NewWithModel(model)))
+
+		req := httptest.NewRequest(fiber.MethodGet, "/api/v1/jobs/so-new/fit/stream", nil)
+		req.AddCookie(&http.Cookie{Name: auth.CookieName, Value: token})
+		resp, err := app.Test(req, 5000)
+		if err != nil {
+			t.Fatalf("stream: %v", err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != fiber.StatusTooManyRequests {
+			t.Errorf("stream status = %d, want 429", resp.StatusCode)
+		}
+		if model.n != 0 {
+			t.Errorf("LLM called %d times, want 0 for an over-quota stream", model.n)
 		}
 	})
 }
