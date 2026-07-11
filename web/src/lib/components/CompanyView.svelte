@@ -20,17 +20,12 @@
 
 <CompanyHeader {company} {slug} />
 
-<!-- Full company description, full-width under the header (CompanyHeader shows only the
-     derived tagline). Renders nothing when there's no description. -->
-<div class="mt-4">
-  <CompanyAbout {company} />
-</div>
-
-<!-- Company facts sit atop the jobs sidebar on desktop (passed into JobsView as
-     `sidebarTop`); the sidebar is hidden on mobile, so mirror them here as a card
-     under the header. CompanyFacts renders nothing when there are no facts. -->
-<div class="mt-4 md:hidden">
+<!-- Company facts + About sit atop the jobs sidebar on desktop (passed into JobsView
+     as `sidebarTop`); the sidebar is hidden on mobile, so mirror them here as cards
+     under the header. Both render nothing when the company has no facts/description. -->
+<div class="mt-4 flex flex-col gap-4 md:hidden">
   <CompanyFacts {company} />
+  <CompanyAbout {company} />
 </div>
 
 <div class="mt-4">
@@ -40,6 +35,7 @@
     <JobsView initial={slice} scope={{ company_slug: slug }} excludeFacets={['source']}>
       {#snippet sidebarTop()}
         <CompanyFacts {company} />
+        <CompanyAbout {company} />
       {/snippet}
     </JobsView>
   {:catch}

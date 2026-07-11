@@ -26,7 +26,10 @@
   // non-tech jobs still show a description. metaDescription strips the tags.
   const blurb = $derived(job.enrichment?.summary || metaDescription(job.description ?? '', 220));
   const salary = $derived(job.enrichment ? formatSalary(job.enrichment) : null);
-  const skills = $derived(job.enrichment?.skills ?? []);
+  // Top-level `skills` is the served (deterministic-dictionary) facet; the raw
+  // `enrichment.skills` is kept in the JSONB and NOT served, so it's always absent
+  // here — read the dictionary field so the card's skill chips actually populate.
+  const skills = $derived(job.skills ?? []);
   // How recently it was posted is a key signal, so it leads the header.
   const posted = $derived(timeAgo(job.posted_at));
 
@@ -43,7 +46,7 @@
   <div class="flex items-start justify-between gap-3">
     <div class="flex min-w-0 flex-wrap items-center gap-2">
       <span class="inline-flex items-center gap-1.5 font-semibold">
-        <CompanyLogo name={job.company} />
+        <CompanyLogo name={job.company} size="size-8" />
         {job.company || 'Unknown company'}
       </span>
       {#each tags as tag (tag)}

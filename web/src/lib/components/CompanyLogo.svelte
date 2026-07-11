@@ -3,11 +3,11 @@
   import { logoDevUrl } from '$lib/logo';
 
   // A company's logo from logo.dev's name endpoint. `fallback=404` makes the API
-  // return 404 — instead of a generic monogram — when it has no logo, so the image
-  // fails to load and we show the globe icon instead. The globe therefore covers
-  // both "no logo found" and "request failed" (offline, API down). Shared by the job
-  // row, the job page, and the company page for one look (and by the OG-image card,
-  // via $lib/logo).
+  // return 404 when it has no logo, so the image fails to load and we fall back to
+  // our own monogram (the initial on a colour derived from the name). The globe is
+  // the last resort, only when there's no name to monogram. Shared by the job row,
+  // the job page, and the company page for one look (and by the OG-image card, via
+  // $lib/logo).
   let { name, size = 'size-4' }: { name: string; size?: string } = $props();
 
   let failed = $state(false);
@@ -19,11 +19,19 @@
     void name; // re-run when the company changes
     failed = false;
   });
+
+  // Monogram fallback: the first letter over a colour hashed from the full name, so
+  // a company keeps the same tile everywhere. Drawn as SVG so the glyph scales
+  // crisply with whatever `size` the caller passes (16–64px).
+  const initial = $derived((name.trim()[0] ?? '').toUpperCase());
+  const hue = $derived.by(() => {
+    let h = 0;
+    for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) % 360;
+    return h;
+  });
 </script>
 
-{#if !name || failed}
-  <Globe class="{size} shrink-0 text-muted-foreground" />
-{:else}
+{#if name && !failed}
   <img
     {src}
     alt=""
@@ -31,4 +39,19 @@
     loading="lazy"
     onerror={() => (failed = true)}
   />
+{:else if initial}
+  <svg class="{size} shrink-0" viewBox="0 0 32 32" aria-hidden="true">
+    <rect width="32" height="32" rx="7" fill="hsl({hue} 52% 45%)" />
+    <text
+      x="16"
+      y="16"
+      text-anchor="middle"
+      dominant-baseline="central"
+      fill="#fff"
+      font-size="16"
+      font-weight="600"
+      font-family="inherit">{initial}</text>
+  </svg>
+{:else}
+  <Globe class="{size} shrink-0 text-muted-foreground" />
 {/if}

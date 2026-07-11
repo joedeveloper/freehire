@@ -135,7 +135,13 @@
      sticky left sidebar (salary + actions + metadata) starts level with the title,
      and the description reads in the right column. On mobile everything stacks:
      company → title + apply CTA → metadata → description. -->
-<article class="flex flex-col gap-4 lg:grid lg:grid-cols-[20rem_minmax(0,1fr)] lg:gap-x-6 lg:gap-y-4">
+<!-- Explicit rows: company + header sized to content, the content row flexible so
+     when the sticky sidebar (which spans all three rows) is taller than the right
+     column, the slack collects below the content instead of being spread as gaps
+     between company/header/summary. -->
+<article
+  class="flex flex-col gap-4 lg:grid lg:grid-cols-[20rem_minmax(0,1fr)] lg:grid-rows-[auto_auto_minmax(0,1fr)] lg:gap-x-6 lg:gap-y-4"
+>
   <div class="flex items-center gap-3 lg:col-start-2 lg:row-start-1">
     <CompanyLogo name={job.company} size="size-8" />
     <p class="text-sm text-muted-foreground">
