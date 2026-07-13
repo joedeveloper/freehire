@@ -3,7 +3,6 @@
   import { resolve } from '$app/paths';
   import { afterNavigate, replaceState } from '$app/navigation';
   import { authDialog, openAuthDialog, closeAuthDialog } from '$lib/auth-dialog.svelte';
-  import { cn } from '$lib/utils';
   import AuthDialog from './AuthDialog.svelte';
   import HeaderSearch from './HeaderSearch.svelte';
   import HeaderListSearch from './HeaderListSearch.svelte';
@@ -30,17 +29,6 @@
           ? 'company'
           : null,
   );
-
-  // Jobs/Companies are also surfaced as inline links here — left-aligned beside
-  // the logo, shown only from sm up (mobile keeps them in HeaderMenu, which is
-  // unchanged). The active section is emphasised, matching HeaderMenu's links.
-  const path = $derived(page.url.pathname);
-  const isActive = (href: string) => path === href || path.startsWith(`${href}/`);
-  const navLinkClass = (href: string) =>
-    cn(
-      'rounded-md px-2 py-1.5 text-sm transition-colors hover:bg-accent hover:text-accent-foreground',
-      isActive(href) ? 'font-medium text-foreground' : 'text-muted-foreground',
-    );
 
   // The auth dialog lives at the layout level but its open state is a shared
   // singleton (see auth-dialog.svelte), so deep components — like a job's Save
@@ -90,11 +78,6 @@
       <BrandMark />
       <span class="hidden sm:inline">FreeHire</span>
     </a>
-
-    <nav class="hidden shrink-0 items-center gap-1 sm:flex">
-      <!-- No "Jobs" link: the logo already leads to the homepage feed. -->
-      <a href={resolve('/companies')} class={navLinkClass('/companies')}>Companies</a>
-    </nav>
 
     {#if listKind === 'jobs' || listKind === 'company'}
       <HeaderListSearch placeholder="Search jobs…" />

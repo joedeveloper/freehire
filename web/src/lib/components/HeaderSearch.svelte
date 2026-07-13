@@ -178,7 +178,7 @@
 <div bind:this={wrapEl} class="relative flex-1">
   <!-- Search box -->
   <div
-    class="flex h-9 items-center gap-2 rounded-md border border-border bg-background px-3 text-sm focus-within:ring-2 focus-within:ring-ring"
+    class="flex h-11 items-center gap-2 rounded-md border border-border bg-background px-3 text-sm focus-within:ring-2 focus-within:ring-ring"
   >
     <Search class="size-4 shrink-0 text-muted-foreground" />
     <input
