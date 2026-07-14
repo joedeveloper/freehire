@@ -45,9 +45,9 @@ func TestRefreshCompanySizesFromHeadcount(t *testing.T) {
 		slug string
 		want []string
 	}{
-		{"hc", []string{"201-500"}},       // bucket wins over the {11-50,51-200} union
-		{"nohc", []string{"11-50"}},       // fallback to enrichment union
-		{"tiny", []string{"1-10"}},        // <=10
+		{"hc", []string{"201-500"}},        // bucket wins over the {11-50,51-200} union
+		{"nohc", []string{"11-50"}},        // fallback to enrichment union
+		{"tiny", []string{"1-10"}},         // <=10
 		{"hcnojobs", []string{"501-1000"}}, // bucket even with no jobs
 	}
 	for _, c := range cases {
