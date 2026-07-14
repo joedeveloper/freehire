@@ -69,7 +69,9 @@
   });
 </script>
 
-<header class="border-b border-border">
+<header
+  class="sticky top-0 z-40 border-b border-border bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/70"
+>
   <div class="mx-auto flex h-14 max-w-6xl items-center gap-3 px-4 sm:gap-4">
     <a
       href={resolve('/')}
