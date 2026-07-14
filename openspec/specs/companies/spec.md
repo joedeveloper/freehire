@@ -90,13 +90,14 @@ remote-hiring regions (a subset of `regions`). The `yc_batch`, `yc_status`,
 none. Facet filters SHALL compose with the `q` name search. An absent facet
 parameter SHALL not constrain the list.
 
-The endpoint SHALL additionally accept the repeatable **scalar** facet parameter
-`maturity`, filtering against the company's single-valued `companies.maturity`
-column by **membership**: a company matches when its scalar value is among the
-requested values (OR within the facet), and this facet ANDs with the others and
-with `q` exactly like the array facets. A company whose `maturity` is `NULL`
-(unknown) matches no `maturity` filter. `maturity` values are `government`,
-`startup`, `scaleup`, `enterprise`.
+The endpoint SHALL additionally accept the repeatable **scalar** facet parameters
+`maturity` and `subindustries`, each filtering against a single-valued company
+column (`companies.maturity` / `companies.subindustry`) by **membership**: a company
+matches when its scalar value is among the requested values (OR within the facet),
+and each ANDs with the others and with `q` exactly like the array facets. A company
+whose column is `NULL` matches no value for that facet. `maturity` values are
+`government`, `startup`, `scaleup`, `enterprise`; `subindustries` values are the
+YC subindustry leaves served by `GET /api/v1/companies/subindustries`.
 
 When any filter (`q` or a facet) is applied, the list `meta.total` SHALL report
 the count of companies matching the full filter combination, so pagination over
@@ -161,6 +162,14 @@ the filtered results is correct.
 - **THEN** the response contains only companies whose `maturity` is `startup` **or**
   `scaleup`, excluding any company whose `maturity` is `NULL`, and `meta.total` is
   the count of such companies
+
+#### Scenario: Filtering by the scalar subindustry facet
+
+- **WHEN** a client requests
+  `GET /api/v1/companies?subindustries=Payments&subindustries=Diagnostics`
+- **THEN** the response contains only companies whose `subindustry` is `Payments`
+  **or** `Diagnostics`, excluding any company whose `subindustry` is `NULL`, and
+  `meta.total` is the count of such companies
 
 ### Requirement: Company job counts are denormalized and periodically recomputed
 
@@ -337,4 +346,42 @@ they are eventually consistent with `jobs`.
 - **WHEN** every open job of a company (with no `employee_count`) is closed and the
   recompute runs again
 - **THEN** that company's facet arrays are all set to empty (`'{}'`)
+
+### Requirement: Companies carry a clean YC subindustry classification
+
+The system SHALL store, on each `companies` row, a nullable scalar `subindustry` (`TEXT`)
+holding the leaf of the company's YC subindustry path (e.g. `Industrials -> Manufacturing and
+Robotics` → `Manufacturing and Robotics`). It SHALL be populated by `cmd/import-yc` from the
+directory entry's `subindustry` field and SHALL be distinct from the existing
+`companies.industries` array, which continues to hold the flattened, tag-inclusive display bag
+unchanged. A company with no YC subindustry (a non-YC company, or a YC entry without one) SHALL
+have `subindustry = NULL`. The value SHALL be a clean, human-readable taxonomy leaf, not a free
+tag, so it is safe to offer as a filter option.
+
+#### Scenario: Import stores the subindustry leaf
+
+- **WHEN** `cmd/import-yc` imports a directory entry with `subindustry`
+  `"Industrials -> Manufacturing and Robotics"`
+- **THEN** that company's `companies.subindustry` is `"Manufacturing and Robotics"` and its
+  `companies.industries` display array is unchanged
+
+#### Scenario: A non-YC company has no subindustry
+
+- **WHEN** a company has no matching YC directory entry
+- **THEN** its `companies.subindustry` is `NULL`
+
+### Requirement: The subindustry facet vocabulary is served dynamically with counts
+
+The system SHALL expose `GET /api/v1/companies/subindustries` returning, under `data`, the
+distinct non-`NULL` `companies.subindustry` values each with the count of companies carrying it,
+ordered by count descending then value ascending. This serves the searchable option list for the
+subindustry facet; the counts are unconditional (they do not reflect other active filters — a
+deliberate simplification versus the Meilisearch job facets). Each item SHALL carry `value` and
+`count`.
+
+#### Scenario: Listing available subindustries with counts
+
+- **WHEN** a client requests `GET /api/v1/companies/subindustries`
+- **THEN** the response lists every distinct non-`NULL` subindustry with its company count,
+  most common first
 
