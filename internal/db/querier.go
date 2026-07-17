@@ -187,6 +187,9 @@ type Querier interface {
 	// 404). A second subscription for the same (saved_search, channel) violates the
 	// UNIQUE constraint (surfaced as a 409). Returns the created row.
 	CreateSubscription(ctx context.Context, arg CreateSubscriptionParams) (Subscription, error)
+	// Insert a CV bound to a vacancy (job_id set) — the per-vacancy tailored copy. data is the
+	// sanitized document copied from the base CV. Returns the metadata the detail response needs.
+	CreateTailoredCV(ctx context.Context, arg CreateTailoredCVParams) (CreateTailoredCVRow, error)
 	// Register a new account. email is stored as given (the handler lowercases it);
 	// the unique index on lower(email) rejects duplicates regardless of case. role is
 	// returned so the new account's wire shape carries it (always 'user' at creation).
@@ -318,11 +321,16 @@ type Querier interface {
 	// Record a failed attempt: bump attempts, release the lease, store the error, and
 	// dead-letter (set failed_at) once attempts reach max_attempts.
 	FailEmailClassification(ctx context.Context, arg FailEmailClassificationParams) error
+	// The user's base CV (job_id IS NULL) — their non-tailored résumé, newest edit first. Used
+	// as the seed source when tailoring; returns no row when the user has only tailored CVs or
+	// none at all (the caller then seeds a base from the extracted résumé).
+	GetBaseCVByUser(ctx context.Context, userID int64) (GetBaseCVByUserRow, error)
 	// The board's current cooldown_until (NULL = eligible). Absent row → pgx.ErrNoRows,
 	// which the caller treats as "never seen, eligible".
 	GetBoardCooldown(ctx context.Context, arg GetBoardCooldownParams) (pgtype.Timestamptz, error)
 	// One CV owned by the user, including the full data blob. Owner-scoped: a foreign or
-	// missing id returns no row (the handler maps it to 404).
+	// missing id returns no row (the handler maps it to 404). job_id is NULL for a base CV and
+	// the vacancy id for a tailored copy — the tailoring-context read resolves it to the analysis.
 	GetCVByID(ctx context.Context, arg GetCVByIDParams) (GetCVByIDRow, error)
 	// SELECT * (not an explicit column list) so the generated row stays db.Company as
 	// the table grows columns (e.g. collections); an explicit subset makes sqlc emit a
