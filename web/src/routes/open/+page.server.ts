@@ -59,23 +59,30 @@ async function fetchGithub(fetchImpl: typeof fetch): Promise<GithubStats | null>
   return data;
 }
 
-export const load: PageServerLoad = async ({ fetch, setHeaders }) => {
-  const api = serverApi(fetch);
+// Every figure on the page is a public read (no cookie, identical for all visitors)
+// and moves slowly, so the whole assembled payload is memoized module-side for a
+// short TTL — one build serves every request in the window instead of re-fanning out
+// to six API legs plus GitHub each time. A degraded build (a failed leg → null) is
+// cached too, matching the per-section best-effort semantics; it refreshes on the
+// next miss. (Date.now() is fine here — a server module, not a resumable workflow.)
+const PAGE_TTL_MS = 60 * 1000;
+type OpenPayload = Awaited<ReturnType<typeof buildPayload>>;
+let pageCache: { at: number; data: OpenPayload } | null = null;
+
+async function buildPayload(fetchImpl: typeof fetch) {
+  const api = serverApi(fetchImpl);
   const [jobs, companies, activity, facets, growth, engagement, github] = await Promise.allSettled([
     api.listJobs(1, 0),
     api.listCompanies('', 1, 0),
     api.jobsActivity('day'),
-    api.facetCounts(new URLSearchParams()),
+    api.statsFacets(),
     api.userGrowth(),
     api.engagementStats(),
-    fetchGithub(fetch),
+    fetchGithub(fetchImpl),
   ]);
 
   const value = <T>(r: PromiseSettledResult<T>): T | null =>
     r.status === 'fulfilled' ? r.value : null;
-
-  // The figures move slowly; let the CDN/browser hold the page briefly.
-  setHeaders({ 'cache-control': 'public, max-age=300' });
 
   return {
     scale: {
@@ -83,9 +90,20 @@ export const load: PageServerLoad = async ({ fetch, setHeaders }) => {
       companies: value(companies)?.total ?? null,
     },
     activity: value(activity) ?? [],
-    facets: value(facets)?.facets ?? null,
+    facets: value(facets) ?? null,
     growth: value(growth) ?? [],
     engagement: value(engagement),
     github: value(github),
   };
+}
+
+export const load: PageServerLoad = async ({ fetch, setHeaders }) => {
+  // The figures move slowly; let the CDN/browser hold the page briefly too.
+  setHeaders({ 'cache-control': 'public, max-age=300' });
+
+  if (pageCache && Date.now() - pageCache.at < PAGE_TTL_MS) return pageCache.data;
+
+  const data = await buildPayload(fetch);
+  pageCache = { at: Date.now(), data };
+  return data;
 };
