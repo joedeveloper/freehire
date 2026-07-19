@@ -725,6 +725,13 @@ export function createApi(
     await call(`/api/v1/jobs/${slug}/reminder`, { method: 'DELETE' });
   }
 
+  /** The public slugs of every job the current user has hidden (dismissed). The
+   *  browse UI cross-references this set to exclude hidden jobs from the feed
+   *  without authenticating the public job list. */
+  async function listDismissedSlugs(): Promise<string[]> {
+    return requestData<string[]>('/api/v1/me/tracking/dismissed');
+  }
+
   // --- API keys -------------------------------------------------------------
   //
   // Personal API keys for non-browser access. Management is cookie-only (these
@@ -1260,6 +1267,7 @@ export function createApi(
     updateReminderSettings,
     rescheduleReminder,
     cancelReminder,
+    listDismissedSlugs,
     listApiKeys,
     createApiKey,
     revokeApiKey,
@@ -1333,7 +1341,7 @@ export function createApi(
   };
 }
 
-export type MyJobsFilter = 'all' | 'viewed' | 'saved' | 'applied' | 'board';
+export type MyJobsFilter = 'all' | 'viewed' | 'saved' | 'applied' | 'board' | 'dismissed';
 
 /** The default browser client: global fetch, same-origin, cookie attached. Client
  *  components call methods on it (`api.foo()`); server `load` uses `serverApi(event.fetch)`. */
