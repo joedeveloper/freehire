@@ -461,6 +461,15 @@ var proxiedProviders = map[string]func(HTTPClient) Source{
 	"wantedkr": func(c HTTPClient) Source { return NewWantedKR(c) },
 }
 
+// IsProxied reports whether provider is on the proxied-egress allowlist — the providers
+// ApplyProxyEgress routes through SOURCES_PROXY_URL. Callers outside the board crawl (the
+// single-URL resolve path in cmd/resolve-url) use it to route the same providers through
+// the same proxy.
+func IsProxied(provider string) bool {
+	_, ok := proxiedProviders[provider]
+	return ok
+}
+
 // ApplyProxyEgress rewires the proxiedProviders in registry to egress through the proxy
 // named by SOURCES_PROXY_URL (form http://user:pass@host:port). It is a no-op when the
 // variable is empty (every provider stays direct) and returns an error — for fail-fast at
@@ -483,7 +492,44 @@ func ApplyProxyEgress(registry map[string]Source) error {
 			registry[name] = build(proxied)
 		}
 	}
+	// Fingerprint-proxied providers need BOTH the Chrome fingerprint and the proxy IP, so they
+	// are rewired over a proxied fingerprint transport rather than the standard proxied client.
+	// Build it once, only when one such provider is actually registered, and fail fast if the
+	// transport build fails rather than silently leaving the provider on the blocked direct IP.
+	if anyRegistered(registry, proxiedFingerprintProviders) {
+		fp, err := newProxiedFingerprintHTTP(raw)
+		if err != nil {
+			return err
+		}
+		for name, build := range proxiedFingerprintProviders {
+			if _, ok := registry[name]; ok {
+				registry[name] = build(fp)
+			}
+		}
+	}
 	return nil
+}
+
+// proxiedFingerprintProviders are the fingerprint-client providers whose edge blocks the
+// direct datacenter IP even with a correct Chrome TLS fingerprint, but serves that same
+// fingerprint through the residential proxy — so they need both, unlike proxiedProviders
+// (proxy only) and the direct fingerprint providers (fingerprint only). gulftalent is
+// spike-verified: via the same proxy, curl's JA3 403s while the Chrome JA3 is 200. bayt is
+// deliberately absent — it sits behind a Cloudflare JS challenge that no fingerprint or IP
+// passes.
+var proxiedFingerprintProviders = map[string]func(*fingerprintHTTP) Source{
+	"gulftalent": func(c *fingerprintHTTP) Source { return NewGulfTalent(c) },
+}
+
+// anyRegistered reports whether the registry contains at least one of the named providers,
+// so a transport is built only when it will actually be used.
+func anyRegistered(registry map[string]Source, providers map[string]func(*fingerprintHTTP) Source) bool {
+	for name := range providers {
+		if _, ok := registry[name]; ok {
+			return true
+		}
+	}
+	return false
 }
 
 // redactProxy returns a proxy URL string with any credentials removed, so a malformed

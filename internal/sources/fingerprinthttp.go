@@ -54,6 +54,25 @@ func newFingerprintHTTP() (*fingerprintHTTP, error) {
 	return &fingerprintHTTP{client: client}, nil
 }
 
+// newProxiedFingerprintHTTP builds a Chrome-fingerprint transport that egresses through the
+// proxy at proxyURL — for a source blocked by BOTH its TLS-fingerprint check AND the prod
+// datacenter IP. gulftalent is the case: a correct Chrome fingerprint from the direct
+// datacenter IP still 403s, but the same fingerprint through the residential proxy is served
+// 200 (spike-verified — via the same proxy, curl's JA3 403s while this Chrome JA3 is 200). The
+// proxy dial replaces the SSRF-guarded direct dialer; the target is a fixed trusted host, so the
+// SSRF guard is moot.
+func newProxiedFingerprintHTTP(proxyURL string) (*fingerprintHTTP, error) {
+	client, err := tls_client.NewHttpClient(tls_client.NewNoopLogger(),
+		tls_client.WithTimeoutSeconds(int(fpClientTimeout/time.Second)),
+		tls_client.WithClientProfile(profiles.Chrome_144),
+		tls_client.WithProxyUrl(proxyURL),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("sources: build proxied fingerprint tls-client: %w", err)
+	}
+	return &fingerprintHTTP{client: client}, nil
+}
+
 // get issues a Chrome-shaped GET and returns the bounded response body, erroring on any
 // non-2xx status. Unlike the shared Client, it does not retry: these are low-volume crawls of a
 // single host, a dropped detail page reappears on the next run, and a transient list-fetch failure

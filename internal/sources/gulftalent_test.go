@@ -54,6 +54,23 @@ func TestGulfTalentProvider(t *testing.T) {
 	}
 }
 
+// gulftalent is blocked by both its TLS fingerprint AND the direct datacenter IP, so it must
+// route through the proxied fingerprint transport — not the standard proxied client (which
+// keeps Go's default fingerprint and still 403s) and not the direct fingerprint (blocked by IP).
+func TestGulfTalentIsFingerprintProxied(t *testing.T) {
+	if _, ok := proxiedFingerprintProviders["gulftalent"]; !ok {
+		t.Error("gulftalent must be in proxiedFingerprintProviders (needs Chrome fingerprint AND the proxy IP)")
+	}
+	if _, ok := proxiedProviders["gulftalent"]; ok {
+		t.Error("gulftalent must NOT be in proxiedProviders — the standard proxied client keeps Go's fingerprint, which its edge 403s")
+	}
+	// bayt shares the fingerprint transport but is behind a Cloudflare JS challenge no
+	// fingerprint/IP passes, so it must not be routed here (proxying it would not help).
+	if _, ok := proxiedFingerprintProviders["bayt"]; ok {
+		t.Error("bayt must NOT be in proxiedFingerprintProviders — its Cloudflare JS challenge is unaffected by the proxy")
+	}
+}
+
 func TestGulfTalentJobID(t *testing.T) {
 	cases := map[string]string{
 		"https://www.gulftalent.com/uae/jobs/maintenance-specialist-604168": "604168",
