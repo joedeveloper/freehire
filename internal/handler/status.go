@@ -35,8 +35,10 @@ const (
 
 // providerRollup is the derivation input for one provider: only the facts the
 // status policy needs (board totals and last-success instant), decoupled from the
-// db row so deriveStatus is a pure, unit-testable function. A zero lastSuccess
-// means "never succeeded".
+// db row so deriveStatus is a pure, unit-testable function. healthy counts boards
+// being served (not in an active cooldown), so a board that merely erred once but is
+// still crawled every cycle counts as healthy — only a board the backoff actually
+// sidelined is unhealthy. A zero lastSuccess means "never succeeded".
 type providerRollup struct {
 	total       int64
 	healthy     int64
@@ -66,17 +68,25 @@ func deriveStatus(r providerRollup, now time.Time) providerStatus {
 	}
 }
 
-// overallStatus is the fleet verdict: the worst individual provider status. An
-// empty fleet is operational (nothing is broken).
-func overallStatus(statuses []providerStatus) providerStatus {
-	worst := statusOperational
-	rank := map[providerStatus]int{statusOperational: 0, statusDegraded: 1, statusDown: 2}
-	for _, s := range statuses {
-		if rank[s] > rank[worst] {
-			worst = s
+// fleetStatus is the overall verdict, derived by folding every provider into one
+// fleet-wide rollup — the served fraction across ALL boards and the freshest success —
+// rather than taking the worst single provider. A handful of small blocked providers
+// can't red a fleet that is broadly healthy, while a broad outage (most boards cooled)
+// or a fleet-wide stall (no provider fresh) still surfaces. An empty fleet is
+// operational (nothing is broken).
+func fleetStatus(rolls []providerRollup, now time.Time) providerStatus {
+	if len(rolls) == 0 {
+		return statusOperational
+	}
+	var fleet providerRollup
+	for _, r := range rolls {
+		fleet.total += r.total
+		fleet.healthy += r.healthy
+		if r.lastSuccess.After(fleet.lastSuccess) {
+			fleet.lastSuccess = r.lastSuccess
 		}
 	}
-	return worst
+	return deriveStatus(fleet, now)
 }
 
 // statusProvider is the public, sanitized per-provider entry: board counts,
@@ -112,18 +122,17 @@ func (a *API) IngestStatus(c *fiber.Ctx) error {
 	// aggregator / company page). nil client is safe — only marker assertions run.
 	reg := sources.All(nil)
 	providers := make([]statusProvider, len(rows))
-	statuses := make([]providerStatus, len(rows))
+	rolls := make([]providerRollup, len(rows))
 	for i, r := range rows {
-		st := deriveStatus(providerRollup{
+		rolls[i] = providerRollup{
 			total:       r.TotalBoards,
 			healthy:     r.HealthyBoards,
 			lastSuccess: tsTime(r.LastSuccessAt),
-		}, now)
-		statuses[i] = st
+		}
 		providers[i] = statusProvider{
 			Provider:      r.Provider,
 			Kind:          sources.ProviderKind(reg, r.Provider),
-			Status:        st,
+			Status:        deriveStatus(rolls[i], now),
 			TotalBoards:   r.TotalBoards,
 			HealthyBoards: r.HealthyBoards,
 			CooledBoards:  r.CooledBoards,
@@ -135,7 +144,7 @@ func (a *API) IngestStatus(c *fiber.Ctx) error {
 
 	return c.JSON(fiber.Map{
 		"data": fiber.Map{
-			"overall":      overallStatus(statuses),
+			"overall":      fleetStatus(rolls, now),
 			"generated_at": now.Format(time.RFC3339),
 			"providers":    providers,
 		},

@@ -87,18 +87,19 @@ func TestIngestStatusEndpoint(t *testing.T) {
 			t.Fatalf("seed healthy %s/%s: %v", provider, board, err)
 		}
 	}
-	// A failing board: carries a distinctive error text and board id that must NOT
-	// surface in the public body.
+	// A soft-failing board: erred a couple of times but below the cooldown threshold,
+	// so it is still crawled every cycle — it counts as served (healthy), not sidelined.
+	// Carries a distinctive error text and board id that must NOT surface in the public body.
 	failing := func(provider, board string) {
 		if _, err := pool.Exec(ctx, `
 			INSERT INTO board_health
 			  (provider, board, consecutive_failures, last_error, last_error_at, last_run_at)
-			VALUES ($1, $2, 3, 'SECRET_ERROR_TEXT', now(), now())`, provider, board); err != nil {
+			VALUES ($1, $2, 2, 'SECRET_ERROR_TEXT', now(), now())`, provider, board); err != nil {
 			t.Fatalf("seed failing %s/%s: %v", provider, board, err)
 		}
 	}
-	// A cooled board: failing and currently in an active cooldown window, so it
-	// counts toward both healthy=0 and cooled_boards.
+	// A cooled board: failing and currently in an active cooldown window, so it is
+	// sidelined — it counts toward cooled_boards and NOT toward healthy_boards.
 	cooled := func(provider, board string) {
 		if _, err := pool.Exec(ctx, `
 			INSERT INTO board_health
@@ -108,21 +109,25 @@ func TestIngestStatusEndpoint(t *testing.T) {
 		}
 	}
 
-	// greenhouse: 2/2 healthy, fresh → operational, ingested_total 100.
+	// greenhouse: 2/2 served, fresh → operational, ingested_total 100.
 	healthy("greenhouse", "acme", 40)
 	healthy("greenhouse", "globex", 60)
-	// lever: 4/10 healthy (0.4 frac), fresh success present → degraded.
+	// recruitee: 1 clean + 2 soft-failing (below the cooldown threshold, still crawled),
+	// fresh success present → all 3 served, none sidelined → operational. This is the
+	// regression for "a board that merely erred is not counted unhealthy".
+	healthy("recruitee", "rc-clean", 7)
+	for _, b := range []string{"secret-rc-1", "secret-rc-2"} {
+		failing("recruitee", b)
+	}
+	// lever: 4/10 served (6 in active cooldown), fresh success present → degraded.
 	for _, b := range []string{"lv1", "lv2", "lv3", "lv4"} {
 		healthy("lever", b, 5)
 	}
 	for _, b := range []string{"secret-board-1", "secret-board-2", "secret-board-3", "secret-board-4", "secret-board-5", "secret-board-6"} {
-		failing("lever", b)
+		cooled("lever", b)
 	}
-	// workday: 5/5 failing, 2 of them in active cooldown, no success at all → down.
-	for _, b := range []string{"secret-wd-1", "secret-wd-2", "secret-wd-3"} {
-		failing("workday", b)
-	}
-	for _, b := range []string{"secret-wd-4", "secret-wd-5"} {
+	// workday: 5/5 in active cooldown, no success at all → down.
+	for _, b := range []string{"secret-wd-1", "secret-wd-2", "secret-wd-3", "secret-wd-4", "secret-wd-5"} {
 		cooled("workday", b)
 	}
 	// jobstash: an aggregator adapter — proves provider-kind classification wires
@@ -131,9 +136,12 @@ func TestIngestStatusEndpoint(t *testing.T) {
 
 	env, raw := get(t)
 
-	// Overall = worst(operational, degraded, down) = down.
-	if env.Data.Overall != "down" {
-		t.Errorf("overall = %q, want down", env.Data.Overall)
+	// Overall folds every provider into one fleet rollup: 21 boards, 11 cooled → 10/21
+	// served (~0.48) with a fresh success present → degraded. Note it is NOT down even
+	// though workday is fully down — a single small down provider no longer reds a fleet
+	// with a healthy majority (the whole point of the fleet-aggregate verdict).
+	if env.Data.Overall != "degraded" {
+		t.Errorf("overall = %q, want degraded (fleet aggregate, not worst-provider)", env.Data.Overall)
 	}
 	if env.Data.GeneratedAt == "" {
 		t.Error("generated_at is empty")
@@ -161,20 +169,30 @@ func TestIngestStatusEndpoint(t *testing.T) {
 		t.Errorf("jobstash kind = %q, want aggregator", js.Kind)
 	}
 
+	// recruitee: soft-failing boards (below the cooldown threshold) count as served, so
+	// a provider whose only blemish is a couple of transient errors reads operational.
+	rc, ok := byProvider["recruitee"]
+	if !ok {
+		t.Fatal("recruitee missing from providers")
+	}
+	if rc.Status != "operational" || rc.TotalBoards != 3 || rc.HealthyBoards != 3 || rc.CooledBoards != 0 {
+		t.Errorf("recruitee = %+v, want operational/3/3/0 (soft-fails count served)", rc)
+	}
+
 	lv, ok := byProvider["lever"]
 	if !ok {
 		t.Fatal("lever missing from providers")
 	}
-	if lv.Status != "degraded" || lv.TotalBoards != 10 || lv.HealthyBoards != 4 {
-		t.Errorf("lever = %+v, want degraded/10/4", lv)
+	if lv.Status != "degraded" || lv.TotalBoards != 10 || lv.HealthyBoards != 4 || lv.CooledBoards != 6 {
+		t.Errorf("lever = %+v, want degraded/10/4/6", lv)
 	}
 
 	wd, ok := byProvider["workday"]
 	if !ok {
 		t.Fatal("workday missing from providers")
 	}
-	if wd.Status != "down" || wd.TotalBoards != 5 || wd.HealthyBoards != 0 || wd.CooledBoards != 2 {
-		t.Errorf("workday = %+v, want down/5/0/2 (cooled)", wd)
+	if wd.Status != "down" || wd.TotalBoards != 5 || wd.HealthyBoards != 0 || wd.CooledBoards != 5 {
+		t.Errorf("workday = %+v, want down/5/0/5 (all cooled)", wd)
 	}
 	// A down provider never succeeded, so last_success serializes as null.
 	if wd.LastSuccess != nil {

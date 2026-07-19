@@ -80,7 +80,7 @@ const providerHealthRollup = `-- name: ProviderHealthRollup :many
 SELECT
     provider,
     count(*)                                                         AS total_boards,
-    count(*) FILTER (WHERE consecutive_failures = 0)                 AS healthy_boards,
+    count(*) FILTER (WHERE cooldown_until IS NULL OR cooldown_until <= now()) AS healthy_boards,
     count(*) FILTER (WHERE cooldown_until IS NOT NULL AND cooldown_until > now()) AS cooled_boards,
     max(last_run_at)::timestamptz                                    AS last_run_at,
     max(last_success_at)::timestamptz                                AS last_success_at,
@@ -102,8 +102,11 @@ type ProviderHealthRollupRow struct {
 
 // Per-provider health rollup that backs the public /status page: one row per
 // provider with board counts and freshness. Read-only — it never touches cooldown
-// state. Aggregate-only: it selects no board identifier and no error text, so the
-// public endpoint built on it cannot leak internal detail. ingested_total is
+// state. healthy_boards counts boards being served (NOT in an active cooldown), so a
+// board that merely erred once but is still crawled every cycle counts as healthy and
+// only a board the backoff actually sidelined is unhealthy; healthy_boards + cooled_boards
+// always equals total_boards. Aggregate-only: it selects no board identifier and no error
+// text, so the public endpoint built on it cannot leak internal detail. ingested_total is
 // coalesced/cast to bigint so it reads as a plain int64 (an all-failing provider
 // yields 0, not NULL).
 func (q *Queries) ProviderHealthRollup(ctx context.Context) ([]ProviderHealthRollupRow, error) {
