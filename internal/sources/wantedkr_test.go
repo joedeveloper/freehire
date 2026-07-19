@@ -32,6 +32,12 @@ func TestWantedKRRegisteredAndFilterable(t *testing.T) {
 	}
 }
 
+func TestWantedKRIsProxied(t *testing.T) {
+	if _, ok := proxiedProviders["wantedkr"]; !ok {
+		t.Error("wantedkr must be in proxiedProviders (its API 403s the prod datacenter IP; served 200 via the residential proxy)")
+	}
+}
+
 func TestWantedKRBoardFileValidates(t *testing.T) {
 	cfg, err := LoadConfig("../../sources/wantedkr.yml")
 	if err != nil {

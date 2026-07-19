@@ -451,6 +451,14 @@ var proxiedProviders = map[string]func(HTTPClient) Source{
 	// burst, pacing bounds the total-per-window. NewVagas takes an HTMLGetter, which HTTPClient
 	// satisfies, and the pacer wraps it before NewVagas.
 	"vagas": func(c HTTPClient) Source { return NewVagas(pacedVagasGetter(c)) },
+	// enlizt.me hard-blocks the prod datacenter IP (403 on the board listing even with a
+	// browser User-Agent, so it is IP reputation, not a bot tell), while the residential
+	// proxy IP is served 200. NewEnlizt takes an HTMLGetter, which HTTPClient satisfies.
+	"enlizt": func(c HTTPClient) Source { return NewEnlizt(c) },
+	// wanted.co.kr's job API 403s the prod datacenter IP (again 403 with a browser UA, so
+	// IP-level), while the residential proxy IP is served the full JSON 200. NewWantedKR
+	// takes a JSONGetter, which HTTPClient satisfies.
+	"wantedkr": func(c HTTPClient) Source { return NewWantedKR(c) },
 }
 
 // ApplyProxyEgress rewires the proxiedProviders in registry to egress through the proxy

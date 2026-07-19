@@ -33,6 +33,12 @@ func TestEnliztProvider(t *testing.T) {
 	}
 }
 
+func TestEnliztIsProxied(t *testing.T) {
+	if _, ok := proxiedProviders["enlizt"]; !ok {
+		t.Error("enlizt must be in proxiedProviders (its edge 403s the prod datacenter IP; served 200 via the residential proxy)")
+	}
+}
+
 func TestEnliztFetchListsAndMapsDetail(t *testing.T) {
 	listing := `<html><body>
 		<a href="/vagas/full-stack-280426">Full-Stack</a>
