@@ -46,6 +46,25 @@ FROM board_health
 WHERE consecutive_failures > 0 OR (cooldown_until IS NOT NULL AND cooldown_until > now())
 ORDER BY consecutive_failures DESC, provider, board;
 
+-- name: ListCooledBoards :many
+-- Up to $2 boards currently in an active cooldown for a provider, soonest-to-expire
+-- first — the recovery probe's candidates. The ordering rotates the sample as cooldowns
+-- lapse, so a run does not keep probing the same few boards.
+SELECT board
+FROM board_health
+WHERE provider = $1 AND cooldown_until IS NOT NULL AND cooldown_until > now()
+ORDER BY cooldown_until, board
+LIMIT $2;
+
+-- name: ClearProviderCooldowns :execrows
+-- Clear the active cooldown and failure count for every currently-cooled board of a
+-- provider — applied once a recovery probe proves the provider reachable again, so the
+-- run crawls them this cycle instead of each waiting out its own backoff (up to a day)
+-- after a resolved provider-wide outage. Returns the number of boards cleared.
+UPDATE board_health
+SET cooldown_until = NULL, consecutive_failures = 0
+WHERE provider = $1 AND cooldown_until IS NOT NULL AND cooldown_until > now();
+
 -- name: ProviderHealthRollup :many
 -- Per-provider health rollup that backs the public /status page: one row per
 -- provider with board counts and freshness. Read-only — it never touches cooldown

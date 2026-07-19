@@ -11,6 +11,24 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const clearProviderCooldowns = `-- name: ClearProviderCooldowns :execrows
+UPDATE board_health
+SET cooldown_until = NULL, consecutive_failures = 0
+WHERE provider = $1 AND cooldown_until IS NOT NULL AND cooldown_until > now()
+`
+
+// Clear the active cooldown and failure count for every currently-cooled board of a
+// provider — applied once a recovery probe proves the provider reachable again, so the
+// run crawls them this cycle instead of each waiting out its own backoff (up to a day)
+// after a resolved provider-wide outage. Returns the number of boards cleared.
+func (q *Queries) ClearProviderCooldowns(ctx context.Context, provider string) (int64, error) {
+	result, err := q.db.Exec(ctx, clearProviderCooldowns, provider)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const getBoardCooldown = `-- name: GetBoardCooldown :one
 SELECT cooldown_until
 FROM board_health
@@ -29,6 +47,42 @@ func (q *Queries) GetBoardCooldown(ctx context.Context, arg GetBoardCooldownPara
 	var cooldown_until pgtype.Timestamptz
 	err := row.Scan(&cooldown_until)
 	return cooldown_until, err
+}
+
+const listCooledBoards = `-- name: ListCooledBoards :many
+SELECT board
+FROM board_health
+WHERE provider = $1 AND cooldown_until IS NOT NULL AND cooldown_until > now()
+ORDER BY cooldown_until, board
+LIMIT $2
+`
+
+type ListCooledBoardsParams struct {
+	Provider string `json:"provider"`
+	Limit    int32  `json:"limit"`
+}
+
+// Up to $2 boards currently in an active cooldown for a provider, soonest-to-expire
+// first — the recovery probe's candidates. The ordering rotates the sample as cooldowns
+// lapse, so a run does not keep probing the same few boards.
+func (q *Queries) ListCooledBoards(ctx context.Context, arg ListCooledBoardsParams) ([]string, error) {
+	rows, err := q.db.Query(ctx, listCooledBoards, arg.Provider, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []string{}
+	for rows.Next() {
+		var board string
+		if err := rows.Scan(&board); err != nil {
+			return nil, err
+		}
+		items = append(items, board)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listUnhealthyBoards = `-- name: ListUnhealthyBoards :many

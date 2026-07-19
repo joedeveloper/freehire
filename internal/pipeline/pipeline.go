@@ -6,6 +6,7 @@ package pipeline
 import (
 	"context"
 	"log"
+	"sort"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -72,6 +73,13 @@ type BoardHealth interface {
 	RecordSuccess(ctx context.Context, provider, board string, ingested int) error
 	// RecordFailure counts a failed crawl and cools the board down per the backoff policy.
 	RecordFailure(ctx context.Context, provider, board, errMsg string) error
+	// CooledBoards returns up to limit boards of the provider currently in an active
+	// cooldown — the recovery probe's candidates.
+	CooledBoards(ctx context.Context, provider string, limit int) ([]string, error)
+	// ClearCooldowns clears the active cooldown of every currently-cooled board of the
+	// provider and returns how many were cleared. Called once a probe proves the provider
+	// reachable again.
+	ClearCooldowns(ctx context.Context, provider string) (int, error)
 }
 
 // Stats reports what a run did: Ingested counts saved jobs, Failed counts boards that
@@ -118,6 +126,11 @@ type Runner struct {
 // run in one bounded concurrent pool regardless of provider, so a slow self-pacing
 // provider occupies one slot without blocking the others.
 func (r Runner) Run(ctx context.Context, entries []sources.CompanyEntry) (RunStats, error) {
+	// Half-open the circuit breaker before the crawl: a provider whose boards were mass-
+	// cooled by a since-resolved outage recovers this cycle instead of each board waiting
+	// out its own backoff.
+	r.recoverProviders(ctx, entries)
+
 	var (
 		mu     sync.Mutex
 		byProv = RunStats{}
@@ -167,6 +180,90 @@ func (r Runner) Run(ctx context.Context, entries []sources.CompanyEntry) (RunSta
 	wg.Wait()
 
 	return byProv, ctx.Err()
+}
+
+// maxRecoveryProbes bounds how many cooled boards a provider is probed with before a
+// run: more than one so a single genuinely-dead board among the cooled set does not mask
+// a recovered provider, few enough that the probe stays cheap.
+const maxRecoveryProbes = 3
+
+// recoverProviders is the provider-level circuit breaker's half-open transition. Before
+// the main crawl, for each provider with cooled boards it probes up to maxRecoveryProbes
+// of them through the adapter; the first probe that succeeds proves the provider is
+// reachable again, so it clears the provider's cooldowns and the run crawls the rest this
+// cycle rather than leaving each board to ride out its per-board backoff (up to a day)
+// after a resolved provider-wide outage. Every probe failing leaves the provider cooled,
+// so a still-down provider is never stampeded. A nil BoardHealth port disables it entirely.
+func (r Runner) recoverProviders(ctx context.Context, entries []sources.CompanyEntry) {
+	if r.BoardHealth == nil {
+		return
+	}
+	byProvider := entriesByProvider(entries)
+	for _, provider := range sortedProviders(byProvider) {
+		src, ok := r.Registry[provider]
+		if !ok {
+			continue
+		}
+		boards, err := r.BoardHealth.CooledBoards(ctx, provider, maxRecoveryProbes)
+		if err != nil {
+			log.Printf("ingest: recovery probe %s: list cooled boards: %v", provider, err)
+			continue
+		}
+		if !r.providerAnswers(ctx, src, boards, byProvider[provider]) {
+			continue
+		}
+		cleared, err := r.BoardHealth.ClearCooldowns(ctx, provider)
+		if err != nil {
+			log.Printf("ingest: recovery probe %s: clear cooldowns: %v", provider, err)
+			continue
+		}
+		log.Printf("ingest: %s answered a recovery probe — cleared %d cooled board(s) to crawl this cycle", provider, cleared)
+	}
+}
+
+// providerAnswers fetches each candidate board through the adapter until one succeeds,
+// reporting whether the provider responded. A board absent from this run's entries is
+// skipped (it cannot be probed without its entry), and a cancelled run stops early.
+func (r Runner) providerAnswers(ctx context.Context, src sources.Source, boards []string, entries map[string]sources.CompanyEntry) bool {
+	for _, board := range boards {
+		if ctx.Err() != nil {
+			return false
+		}
+		e, ok := entries[board]
+		if !ok {
+			continue
+		}
+		if _, err := r.fetchBoard(ctx, e, src); err == nil {
+			return true
+		}
+	}
+	return false
+}
+
+// entriesByProvider indexes the run's entries as provider → board → entry, so the
+// recovery probe can find the CompanyEntry for a cooled board id.
+func entriesByProvider(entries []sources.CompanyEntry) map[string]map[string]sources.CompanyEntry {
+	byProvider := make(map[string]map[string]sources.CompanyEntry)
+	for _, e := range entries {
+		boards := byProvider[e.Provider]
+		if boards == nil {
+			boards = make(map[string]sources.CompanyEntry)
+			byProvider[e.Provider] = boards
+		}
+		boards[e.Board] = e
+	}
+	return byProvider
+}
+
+// sortedProviders returns the run's providers deterministically, so recovery probes (and
+// tests) are order-stable.
+func sortedProviders(byProvider map[string]map[string]sources.CompanyEntry) []string {
+	providers := make([]string, 0, len(byProvider))
+	for p := range byProvider {
+		providers = append(providers, p)
+	}
+	sort.Strings(providers)
+	return providers
 }
 
 // ingestBoard fetches and saves one board, returning how many jobs it ingested, whether

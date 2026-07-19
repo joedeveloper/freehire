@@ -68,6 +68,11 @@ type Querier interface {
 	ClaimTelegramPosts(ctx context.Context, arg ClaimTelegramPostsParams) ([]ClaimTelegramPostsRow, error)
 	// Reset a tracked job to the wishlist: drop stage and applied state, keep saved/viewed/notes.
 	ClearJobProgress(ctx context.Context, arg ClearJobProgressParams) (UserJob, error)
+	// Clear the active cooldown and failure count for every currently-cooled board of a
+	// provider — applied once a recovery probe proves the provider reachable again, so the
+	// run crawls them this cycle instead of each waiting out its own backoff (up to a day)
+	// after a resolved provider-wide outage. Returns the number of boards cleared.
+	ClearProviderCooldowns(ctx context.Context, provider string) (int64, error)
 	// Unpublish a board: clear the slug and author label, owner-scoped. Returns the
 	// affected row count: 1 for an owned row (whether or not it was shared — unshare is an
 	// idempotent no-op when already private), 0 when missing or not the caller's (→ 404).
@@ -558,6 +563,10 @@ type Querier interface {
 	ListConnectedGmailUsers(ctx context.Context) ([]ListConnectedGmailUsersRow, error)
 	// The "my contributions" list: one user's contributions, newest first.
 	ListContributionsByUser(ctx context.Context, submittedBy int64) ([]LinkContribution, error)
+	// Up to $2 boards currently in an active cooldown for a provider, soonest-to-expire
+	// first — the recovery probe's candidates. The ordering rotates the sample as cooldowns
+	// lapse, so a run does not keep probing the same few boards.
+	ListCooledBoards(ctx context.Context, arg ListCooledBoardsParams) ([]string, error)
 	// Flat inbox listing, newest first — one row per message (no subject grouping),
 	// soft-deleted messages excluded. Optional filters (each empty/false = no filter):
 	// source narrows to one account; unread hides already-read mail; status narrows to
@@ -779,8 +788,11 @@ type Querier interface {
 	PropagateCollectionsToJobs(ctx context.Context) (int64, error)
 	// Per-provider health rollup that backs the public /status page: one row per
 	// provider with board counts and freshness. Read-only — it never touches cooldown
-	// state. Aggregate-only: it selects no board identifier and no error text, so the
-	// public endpoint built on it cannot leak internal detail. ingested_total is
+	// state. healthy_boards counts boards being served (NOT in an active cooldown), so a
+	// board that merely erred once but is still crawled every cycle counts as healthy and
+	// only a board the backoff actually sidelined is unhealthy; healthy_boards + cooled_boards
+	// always equals total_boards. Aggregate-only: it selects no board identifier and no error
+	// text, so the public endpoint built on it cannot leak internal detail. ingested_total is
 	// coalesced/cast to bigint so it reads as a plain int64 (an all-failing provider
 	// yields 0, not NULL).
 	ProviderHealthRollup(ctx context.Context) ([]ProviderHealthRollupRow, error)

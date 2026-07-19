@@ -99,3 +99,61 @@ func TestBoardHealth_FailureCooldownSelfHeal(t *testing.T) {
 		t.Errorf("after self-heal, unhealthy boards = %d, want 0", len(rows))
 	}
 }
+
+// The recovery-probe queries: CooledBoards lists only a provider's currently-cooled boards
+// (soonest-to-expire first, honoring the limit), and ClearCooldowns clears exactly that
+// provider's cooled boards — a fresh board and another provider's cooled board are both
+// untouched.
+func TestBoardHealth_CooledBoardsAndClear(t *testing.T) {
+	pool := startPostgres(t)
+	ctx := context.Background()
+	h := newBoardHealth(pool)
+
+	cool := func(provider, board string) {
+		t.Helper()
+		for i := 0; i < 3; i++ { // crosses the cooldown threshold
+			if err := h.RecordFailure(ctx, provider, board, "boom"); err != nil {
+				t.Fatalf("RecordFailure %s/%s: %v", provider, board, err)
+			}
+		}
+	}
+	// breezy: b1, b2, b3 cooled in that order; b-ok is fresh (never failed).
+	cool("breezy", "b1")
+	cool("breezy", "b2")
+	cool("breezy", "b3")
+	if err := h.RecordSuccess(ctx, "breezy", "b-ok", 1); err != nil {
+		t.Fatalf("RecordSuccess: %v", err)
+	}
+	// join: an unrelated provider's cooled board, to prove clearing is provider-scoped.
+	cool("join", "j1")
+
+	// The limit caps the sample, soonest-to-expire first — b1, b2 cooled before b3.
+	if got, err := h.CooledBoards(ctx, "breezy", 2); err != nil {
+		t.Fatalf("CooledBoards: %v", err)
+	} else if len(got) != 2 || got[0] != "b1" || got[1] != "b2" {
+		t.Errorf("CooledBoards(breezy, 2) = %v, want [b1 b2]", got)
+	}
+	// Above the count: exactly the three cooled boards, never the fresh one.
+	if got, err := h.CooledBoards(ctx, "breezy", 10); err != nil {
+		t.Fatalf("CooledBoards: %v", err)
+	} else if len(got) != 3 {
+		t.Errorf("CooledBoards(breezy, 10) = %v, want the 3 cooled boards (not b-ok)", got)
+	}
+
+	// Clear breezy's cooldowns: exactly 3 rows, and none of its boards read cooled after.
+	if n, err := h.ClearCooldowns(ctx, "breezy"); err != nil {
+		t.Fatalf("ClearCooldowns: %v", err)
+	} else if n != 3 {
+		t.Errorf("ClearCooldowns(breezy) = %d, want 3", n)
+	}
+	if got, err := h.CooledBoards(ctx, "breezy", 10); err != nil {
+		t.Fatalf("CooledBoards after clear: %v", err)
+	} else if len(got) != 0 {
+		t.Errorf("CooledBoards(breezy) after clear = %v, want none", got)
+	}
+
+	// join's cooled board is untouched — clearing is scoped to the one provider.
+	if _, cooled, err := h.Cooldown(ctx, "join", "j1"); err != nil || !cooled {
+		t.Errorf("join/j1 Cooldown = (_, %v, %v), want still cooled after clearing breezy", cooled, err)
+	}
+}

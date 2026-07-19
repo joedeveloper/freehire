@@ -73,6 +73,18 @@ func (h *boardHealth) RecordFailure(ctx context.Context, provider, board, errMsg
 	})
 }
 
+// CooledBoards returns up to limit boards of the provider currently in an active cooldown.
+func (h *boardHealth) CooledBoards(ctx context.Context, provider string, limit int) ([]string, error) {
+	return h.q.ListCooledBoards(ctx, db.ListCooledBoardsParams{Provider: provider, Limit: int32(limit)})
+}
+
+// ClearCooldowns clears the active cooldown and failure count of every currently-cooled
+// board of the provider, returning how many were cleared.
+func (h *boardHealth) ClearCooldowns(ctx context.Context, provider string) (int, error) {
+	n, err := h.q.ClearProviderCooldowns(ctx, provider)
+	return int(n), err
+}
+
 // logUnhealthyBoards emits one summary line naming every board currently failing or
 // cooled — so an operator sees the ingest fleet's health in the run log without a
 // query. Best-effort: a read error is logged and ignored (it never fails the run).

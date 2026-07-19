@@ -3,17 +3,24 @@ package pipeline
 import (
 	"context"
 	"errors"
+	"sort"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/strelov1/freehire/internal/sources"
 )
 
-// fakeHealth records the outcome calls the Runner makes and serves canned cooldowns.
+// fakeHealth records the outcome calls the Runner makes and serves canned cooldowns. Its
+// cooldowns map is the single source of truth for both the recovery probe's candidates
+// (any board with a future cooldown) and the per-board gate, so ClearCooldowns removing a
+// provider's entries lets the subsequent crawl actually reach those boards — modelling the
+// real DB round-trip end to end.
 type fakeHealth struct {
 	cooldowns map[string]time.Time // "provider/board" → cooldown_until
 	successes []string
 	failures  []string
+	cleared   []string // providers passed to ClearCooldowns, in call order
 }
 
 func (f *fakeHealth) Cooldown(_ context.Context, provider, board string) (time.Time, bool, error) {
@@ -31,24 +38,91 @@ func (f *fakeHealth) RecordFailure(_ context.Context, provider, board, _ string)
 	return nil
 }
 
-// spySource records whether Fetch was called, to prove a cooled board is never crawled.
+// CooledBoards serves up to limit boards of the provider whose canned cooldown is still in
+// the future, soonest-to-expire first — mirroring ListCooledBoards.
+func (f *fakeHealth) CooledBoards(_ context.Context, provider string, limit int) ([]string, error) {
+	type cand struct {
+		board string
+		until time.Time
+	}
+	var cands []cand
+	for k, until := range f.cooldowns {
+		p, board, ok := strings.Cut(k, "/")
+		if !ok || p != provider || !until.After(time.Now()) {
+			continue
+		}
+		cands = append(cands, cand{board, until})
+	}
+	sort.Slice(cands, func(i, j int) bool {
+		if cands[i].until.Equal(cands[j].until) {
+			return cands[i].board < cands[j].board
+		}
+		return cands[i].until.Before(cands[j].until)
+	})
+	boards := make([]string, 0, limit)
+	for _, c := range cands {
+		if len(boards) == limit {
+			break
+		}
+		boards = append(boards, c.board)
+	}
+	return boards, nil
+}
+
+// ClearCooldowns drops the provider's cooldown entries (so the gate then treats those
+// boards as eligible) and records the call.
+func (f *fakeHealth) ClearCooldowns(_ context.Context, provider string) (int, error) {
+	f.cleared = append(f.cleared, provider)
+	n := 0
+	for k := range f.cooldowns {
+		if p, _, ok := strings.Cut(k, "/"); ok && p == provider {
+			delete(f.cooldowns, k)
+			n++
+		}
+	}
+	return n, nil
+}
+
+// boardKeyedSource answers every board except those named in failBoards, which return an
+// error — so a test can place a genuinely-dead board among a provider's cooled set and
+// prove the probe tries past it.
+type boardKeyedSource struct {
+	provider   string
+	failBoards map[string]bool
+}
+
+func (s boardKeyedSource) Provider() string { return s.provider }
+func (s boardKeyedSource) Fetch(_ context.Context, e sources.CompanyEntry) ([]sources.Job, error) {
+	if s.failBoards[e.Board] {
+		return nil, errors.New("board down")
+	}
+	return []sources.Job{{ExternalID: "1", Title: "Dev", Company: e.Company}}, nil
+}
+
+// spySource counts Fetch calls (and can error), so a test can tell a probe fetch from a
+// main-loop crawl of the same board.
 type spySource struct {
 	provider string
-	fetched  *bool
+	fetches  *int
+	err      error
 }
 
 func (s spySource) Provider() string { return s.provider }
-func (s spySource) Fetch(context.Context, sources.CompanyEntry) ([]sources.Job, error) {
-	*s.fetched = true
-	return []sources.Job{{ExternalID: "1", Title: "Dev", Company: "C"}}, nil
+func (s spySource) Fetch(_ context.Context, e sources.CompanyEntry) ([]sources.Job, error) {
+	*s.fetches++
+	if s.err != nil {
+		return nil, s.err
+	}
+	return []sources.Job{{ExternalID: "1", Title: "Dev", Company: e.Company}}, nil
 }
 
-// A board whose cooldown_until is in the future is skipped before its adapter is
-// invoked: Fetch is never called, it is counted Cooled (not Failed), and no outcome
-// is recorded (a skip is not an outcome).
-func TestRunSkipsCooledBoard(t *testing.T) {
-	fetched := false
-	src := spySource{provider: "greenhouse", fetched: &fetched}
+// When the recovery probe fails (the provider is still down), a cooled board stays
+// skipped by the main crawl: it is counted Cooled (not Failed), no outcome is recorded
+// (a skip is not an outcome), and its cooldown is not cleared. The adapter is touched
+// exactly once — by the probe — proving the main loop did not crawl it.
+func TestRunSkipsCooledBoardWhenProviderDown(t *testing.T) {
+	fetches := 0
+	src := spySource{provider: "greenhouse", fetches: &fetches, err: errors.New("provider down")}
 	health := &fakeHealth{cooldowns: map[string]time.Time{
 		"greenhouse/acme": time.Now().Add(6 * time.Hour),
 	}}
@@ -60,14 +134,75 @@ func TestRunSkipsCooledBoard(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	if fetched {
-		t.Error("cooled board must not be fetched")
+	if fetches != 1 {
+		t.Errorf("adapter fetched %d times, want 1 (probe only; the main loop must skip the still-cooled board)", fetches)
 	}
 	if stats.Total().Cooled != 1 || stats.Total().Failed != 0 || stats.Total().Ingested != 0 {
 		t.Errorf("stats = %+v, want Cooled=1 Failed=0 Ingested=0", stats.Total())
 	}
+	if len(health.cleared) != 0 {
+		t.Errorf("a failed probe must not clear cooldowns; cleared=%v", health.cleared)
+	}
 	if len(health.successes) != 0 || len(health.failures) != 0 {
 		t.Errorf("a cooled skip records no outcome; got successes=%v failures=%v", health.successes, health.failures)
+	}
+}
+
+// A provider whose boards were mass-cooled by a since-resolved outage recovers this cycle:
+// the pre-crawl probe reaches a cooled board, clears the provider's cooldowns, and the main
+// loop then crawls the board it would otherwise have skipped. Without recovery this board
+// stays Cooled=1/Ingested=0, so this result is unique to the half-open transition.
+func TestRecoverProbeRecoversProvider(t *testing.T) {
+	fetches := 0
+	src := spySource{provider: "breezy", fetches: &fetches}
+	health := &fakeHealth{cooldowns: map[string]time.Time{
+		"breezy/acme": time.Now().Add(24 * time.Hour),
+	}}
+	r := Runner{Registry: registry(src), Store: &fakeStore{}, BoardHealth: health}
+
+	stats, err := r.Run(context.Background(), []sources.CompanyEntry{
+		{Company: "Acme", Provider: "breezy", Board: "acme"},
+	})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if len(health.cleared) != 1 || health.cleared[0] != "breezy" {
+		t.Errorf("cleared = %v, want [breezy] (a successful probe recovers the provider)", health.cleared)
+	}
+	if stats.Total().Ingested != 1 || stats.Total().Cooled != 0 {
+		t.Errorf("stats = %+v, want Ingested=1 Cooled=0 (recovered board is crawled, not skipped)", stats.Total())
+	}
+}
+
+// One genuinely-dead board among the cooled set must not mask a recovered provider: the
+// probe tries past the dead candidate to a live one, then clears. This exercises
+// maxRecoveryProbes > 1 — with a single probe (the dead board, first by cooldown order)
+// the provider would never recover.
+func TestRecoverProbeTriesPastDeadBoard(t *testing.T) {
+	src := boardKeyedSource{provider: "join", failBoards: map[string]bool{"dead": true}}
+	health := &fakeHealth{cooldowns: map[string]time.Time{
+		"join/dead": time.Now().Add(1 * time.Hour),  // probed first (soonest to expire)
+		"join/live": time.Now().Add(12 * time.Hour), // probed second
+	}}
+	r := Runner{Registry: registry(src), Store: &fakeStore{}, BoardHealth: health}
+
+	stats, err := r.Run(context.Background(), []sources.CompanyEntry{
+		{Company: "Dead", Provider: "join", Board: "dead"},
+		{Company: "Live", Provider: "join", Board: "live"},
+	})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if len(health.cleared) != 1 || health.cleared[0] != "join" {
+		t.Errorf("cleared = %v, want [join] (probe must try past the dead board to the live one)", health.cleared)
+	}
+	// After clearing, the main loop crawls both: the live board ingests, the dead one
+	// fails — but the provider recovered, which the per-board backoff alone could not do.
+	if stats.Total().Ingested != 1 || stats.Total().Cooled != 0 {
+		t.Errorf("stats = %+v, want Ingested=1 Cooled=0", stats.Total())
+	}
+	if len(health.successes) != 1 || health.successes[0] != "join/live" {
+		t.Errorf("successes = %v, want [join/live]", health.successes)
 	}
 }
 
