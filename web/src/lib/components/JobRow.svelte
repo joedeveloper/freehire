@@ -223,7 +223,10 @@
     <p class="mt-2 line-clamp-2 text-sm text-muted-foreground">{blurb}</p>
   {/if}
 
-  <div class="mt-3 flex items-end justify-between gap-3">
+  <!-- pr-9 (when the hide control is present) reserves the bottom-right corner for
+       it — the counterpart to the header's pr-9 for the save button — so the skills
+       tail and the salary never slide under the icon. -->
+  <div class={['mt-3 flex items-end justify-between gap-3', onHide && 'pr-9']}>
     <div class="flex min-w-0 flex-wrap items-center gap-1.5">
       {#each shownSkills as skill (skill)}
         <Badge variant="brand">{skill}</Badge>
@@ -293,8 +296,8 @@
      nowhere else. A quiet icon in the card's bottom-right corner, revealed on hover
      (and on keyboard focus). Touch devices have no hover, so `pointer-coarse` keeps it
      always visible there. It's an overlay sibling of the card link, so hiding never
-     navigates. An opaque background keeps it legible over the salary corner on the
-     minority of cards that show one. -->
+     navigates. No background plate — the bottom row reserves a pr-9 gutter for it, so
+     nothing renders underneath and it reads as a bare icon (mirrors the save button). -->
 {#if onHide}
   <button
     type="button"
@@ -302,7 +305,7 @@
     disabled={hiding}
     aria-label="Hide this job"
     title="Not interested — hide this job"
-    class="absolute bottom-2.5 right-2.5 grid size-8 place-items-center rounded-lg bg-accent text-muted-foreground opacity-0 shadow-sm ring-1 ring-border transition hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100 pointer-coarse:opacity-100 disabled:pointer-events-none disabled:opacity-50"
+    class="absolute bottom-2.5 right-2.5 grid size-8 place-items-center rounded-lg text-muted-foreground opacity-0 transition hover:bg-accent hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100 pointer-coarse:opacity-100 disabled:pointer-events-none disabled:opacity-50"
   >
     <EyeOff class="size-3.5" aria-hidden="true" />
   </button>
