@@ -41,7 +41,7 @@ func run() int {
 	connector := gmailsync.NewConnector(g.ClientID, g.ClientSecret, cfg.FrontendOrigin)
 	store := gmailsync.NewDBStore(db.New(pool))
 
-	if err := gmailsync.NewWorker(store, cipher, connector.ReaderFactory()).RunOnce(ctx); err != nil {
+	if err := gmailsync.NewWorker(store, cipher, connector.ReaderFactory()).WithLearnedDomains(store).RunOnce(ctx); err != nil {
 		log.Printf("gmail-sync: %v", err)
 		return 1
 	}

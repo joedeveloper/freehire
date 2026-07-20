@@ -17,17 +17,22 @@ import (
 const gmailBaseURL = "https://gmail.googleapis.com/gmail/v1/users/me"
 
 // apiReader is the live GmailReader over the Gmail REST API, using a token-bearing
-// HTTP client (minted from the user's refresh token).
+// HTTP client (minted from the user's refresh token). learned holds the promoted
+// self-learning domains to union into the search query.
 type apiReader struct {
-	client *http.Client
+	client  *http.Client
+	learned []string
 }
 
-// NewAPIReader wraps a token-bearing HTTP client as a GmailReader.
-func NewAPIReader(client *http.Client) GmailReader { return &apiReader{client: client} }
+// NewAPIReader wraps a token-bearing HTTP client as a GmailReader, unioning the
+// learned domains into its search query.
+func NewAPIReader(client *http.Client, learned []string) GmailReader {
+	return &apiReader{client: client, learned: learned}
+}
 
 // ListATSMessageIDs pages through the ATS-scoped search, returning all matching ids.
 func (r *apiReader) ListATSMessageIDs(ctx context.Context, afterUnix int64) ([]string, error) {
-	q := BuildQuery(afterUnix)
+	q := BuildQuery(afterUnix, r.learned)
 	var ids []string
 	pageToken := ""
 	for {
@@ -52,6 +57,24 @@ func (r *apiReader) ListATSMessageIDs(ctx context.Context, afterUnix int64) ([]s
 		}
 		pageToken = page.NextPageToken
 	}
+}
+
+// ListThreadMessageIDs returns the ids of every message in a thread.
+func (r *apiReader) ListThreadMessageIDs(ctx context.Context, threadID string) ([]string, error) {
+	u := fmt.Sprintf("%s/threads/%s?format=minimal", gmailBaseURL, url.PathEscape(threadID))
+	var t struct {
+		Messages []struct {
+			ID string `json:"id"`
+		} `json:"messages"`
+	}
+	if err := r.getJSON(ctx, u, &t); err != nil {
+		return nil, err
+	}
+	ids := make([]string, 0, len(t.Messages))
+	for _, m := range t.Messages {
+		ids = append(ids, m.ID)
+	}
+	return ids, nil
 }
 
 // GetMessage fetches one full message and parses it.

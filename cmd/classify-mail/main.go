@@ -50,7 +50,8 @@ func run() int {
 	}
 	defer cleanup()
 
-	runner := maillink.New(newDBStore(pool), mailclassify.NewClassifier(client), client.ModelID())
+	runner := maillink.New(newDBStore(pool), mailclassify.NewClassifier(client), client.ModelID()).
+		WithLearner(newDomainLearner(pool))
 	if err := runner.Run(ctx); err != nil {
 		log.Printf("classify-mail: %v", err)
 		return 1

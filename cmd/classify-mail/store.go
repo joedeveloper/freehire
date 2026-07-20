@@ -10,8 +10,22 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/strelov1/freehire/internal/db"
+	"github.com/strelov1/freehire/internal/gmailsync"
 	"github.com/strelov1/freehire/internal/maillink"
 )
+
+// domainLearner adapts the gmailsync self-learning cache to maillink.Learner: a
+// confidently-classified application email teaches its sender domain toward the
+// sync allowlist (free-mail and already-known senders are skipped inside).
+type domainLearner struct{ store *gmailsync.DBStore }
+
+func newDomainLearner(pool *pgxpool.Pool) domainLearner {
+	return domainLearner{store: gmailsync.NewDBStore(db.New(pool))}
+}
+
+func (l domainLearner) Learn(ctx context.Context, fromAddr string) error {
+	return gmailsync.RecordJobMail(ctx, l.store, fromAddr)
+}
 
 // dbStore adapts the generated queries + connection pool to maillink.Store. The
 // success path (SetEmailClassification + optional stage advance + delete outbox
@@ -44,6 +58,7 @@ func (s *dbStore) ClaimBatch(ctx context.Context, leaseSeconds, batchSize int) (
 			EmailID:  r.EmailID,
 			UserID:   r.UserID,
 			ThreadID: r.ThreadID,
+			FromAddr: r.FromAddr,
 			FromName: r.FromName,
 			Subject:  r.Subject,
 			Body:     r.BodyText,

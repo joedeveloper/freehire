@@ -896,6 +896,13 @@ type Querier interface {
 	// Completion: the post was processed (jobs written, or no vacancy found). Run in
 	// the same transaction as the extracted jobs' UpsertJob calls.
 	MarkTelegramPostExtracted(ctx context.Context, arg MarkTelegramPostExtractedParams) error
+	// Record one confident job-mail sighting for a sender domain, returning its running
+	// count. The classifier calls this whenever it confidently labels an email as
+	// application mail, so a recurring unknown ATS domain accrues hits toward promotion.
+	ObserveLearnedDomain(ctx context.Context, domain string) (int32, error)
+	// Domains whose confident-hit count has reached the promotion threshold; the sync
+	// worker unions these into the Gmail search query.
+	PromotedDomains(ctx context.Context, threshold int32) ([]string, error)
 	// Denormalize each company's curated-collection set onto its jobs, so the search
 	// facet (jobs.collections) reflects current membership. Run by cmd/import-collections
 	// after it writes companies.collections. updated_at is bumped so `reindex --since`

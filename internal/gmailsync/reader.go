@@ -24,6 +24,10 @@ type GmailReader interface {
 	// ListATSMessageIDs returns the ids of ATS messages received after the Unix
 	// watermark (0 = full backfill).
 	ListATSMessageIDs(ctx context.Context, afterUnix int64) ([]string, error)
+	// ListThreadMessageIDs returns the ids of every message in a thread, so replies
+	// that carry no ATS marker (personal recruiters, scheduling) are ingested
+	// alongside the matched message that anchors the thread.
+	ListThreadMessageIDs(ctx context.Context, threadID string) ([]string, error)
 	// GetMessage fetches one message in full.
 	GetMessage(ctx context.Context, id string) (Message, error)
 }

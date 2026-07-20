@@ -319,6 +319,13 @@ type JobSubmission struct {
 	SalaryPeriod   string             `json:"salary_period"`
 }
 
+type LearnedAtsDomain struct {
+	Domain        string             `json:"domain"`
+	ConfidentHits int32              `json:"confident_hits"`
+	FirstSeenAt   pgtype.Timestamptz `json:"first_seen_at"`
+	LastSeenAt    pgtype.Timestamptz `json:"last_seen_at"`
+}
+
 type LinkContribution struct {
 	ID          int64              `json:"id"`
 	SubmittedBy int64              `json:"submitted_by"`

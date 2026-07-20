@@ -117,6 +117,47 @@ func TestRunnerFeedsHTMLOnlyBodyToClassifier(t *testing.T) {
 	}
 }
 
+type fakeLearner struct{ learned []string }
+
+func (l *fakeLearner) Learn(_ context.Context, fromAddr string) error {
+	l.learned = append(l.learned, fromAddr)
+	return nil
+}
+
+func TestRunnerLearnsSenderOfApplicationMail(t *testing.T) {
+	store := &fakeStore{claimed: []Claimed{{
+		OutboxID: 100, EmailID: 200, UserID: 1,
+		FromAddr: "no-reply@newats.example", Subject: "Thanks for applying", Body: "…",
+	}}}
+	cls := &fakeClassifier{out: mailclassify.Classification{Signal: mailclassify.SignalAcknowledgement, Confidence: 0.9}}
+	learner := &fakeLearner{}
+	r := New(store, cls, "test-model").WithLearner(learner)
+
+	if err := r.Run(context.Background()); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if len(learner.learned) != 1 || learner.learned[0] != "no-reply@newats.example" {
+		t.Errorf("learned = %v, want [no-reply@newats.example]", learner.learned)
+	}
+}
+
+func TestRunnerDoesNotLearnNonApplicationMail(t *testing.T) {
+	store := &fakeStore{claimed: []Claimed{{
+		OutboxID: 101, EmailID: 201, UserID: 1,
+		FromAddr: "news@newsletter.example", Subject: "Weekly digest", Body: "…",
+	}}}
+	cls := &fakeClassifier{out: mailclassify.Classification{Signal: mailclassify.SignalOther, Confidence: 0.9}}
+	learner := &fakeLearner{}
+	r := New(store, cls, "test-model").WithLearner(learner)
+
+	if err := r.Run(context.Background()); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if len(learner.learned) != 0 {
+		t.Errorf("learned %v, want none (signal was 'other')", learner.learned)
+	}
+}
+
 func TestRunnerAmbiguousMatchOffersLLMSuggestion(t *testing.T) {
 	store := &fakeStore{
 		apps: []Application{{JobID: 5, Company: "Acme"}, {JobID: 6, Company: "Acme"}},
