@@ -364,6 +364,73 @@ func (q *Queries) ListCompanies(ctx context.Context, arg ListCompaniesParams) ([
 	return items, nil
 }
 
+const listCompaniesForReindex = `-- name: ListCompaniesForReindex :many
+SELECT slug, name, created_at, updated_at, collections, job_count, regions, countries, domains, company_types, company_sizes, industries, year_founded, employee_count, hq_country, organization_type, tagline, company_info, is_reference, company_info_at, remote_regions, yc_batch, yc_status, yc_stage, yc_flags, maturity, subindustry
+FROM companies
+WHERE slug > $1 AND job_count > 0
+ORDER BY slug
+LIMIT $2
+`
+
+type ListCompaniesForReindexParams struct {
+	AfterSlug string `json:"after_slug"`
+	BatchSize int32  `json:"batch_size"`
+}
+
+// Keyset page of hiring companies (job_count > 0) for the companies search reindex,
+// cursored by the slug primary key (first chunk keyed by the empty string, which
+// sorts before every slug). SELECT * so the row stays db.Company as columns grow and
+// search.FromCompany can map every facet. The job_count > 0 scope keeps the index to
+// companies that are actually hiring, matching the /companies list's hiring scope, and
+// rides companies_hiring_job_count_idx instead of scanning the full heap.
+func (q *Queries) ListCompaniesForReindex(ctx context.Context, arg ListCompaniesForReindexParams) ([]Company, error) {
+	rows, err := q.db.Query(ctx, listCompaniesForReindex, arg.AfterSlug, arg.BatchSize)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Company{}
+	for rows.Next() {
+		var i Company
+		if err := rows.Scan(
+			&i.Slug,
+			&i.Name,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.Collections,
+			&i.JobCount,
+			&i.Regions,
+			&i.Countries,
+			&i.Domains,
+			&i.CompanyTypes,
+			&i.CompanySizes,
+			&i.Industries,
+			&i.YearFounded,
+			&i.EmployeeCount,
+			&i.HqCountry,
+			&i.OrganizationType,
+			&i.Tagline,
+			&i.CompanyInfo,
+			&i.IsReference,
+			&i.CompanyInfoAt,
+			&i.RemoteRegions,
+			&i.YcBatch,
+			&i.YcStatus,
+			&i.YcStage,
+			&i.YcFlags,
+			&i.Maturity,
+			&i.Subindustry,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listCompanyCollections = `-- name: ListCompanyCollections :many
 SELECT slug, collections
 FROM companies

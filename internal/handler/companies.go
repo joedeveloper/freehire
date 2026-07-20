@@ -1,7 +1,9 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
+	"log"
 	"net/url"
 
 	"github.com/gofiber/fiber/v2"
@@ -9,7 +11,16 @@ import (
 
 	"github.com/strelov1/freehire/internal/db"
 	"github.com/strelov1/freehire/internal/jobview"
+	"github.com/strelov1/freehire/internal/search"
 )
+
+// companySearcher is the company-search backend the list handler depends on.
+// *search.Client satisfies it; the unit tests inject a fake. A nil companySearcher
+// (Meilisearch unconfigured) routes every request to the Postgres path, as does any
+// search error — see ListCompanies.
+type companySearcher interface {
+	SearchCompanies(ctx context.Context, p search.CompanySearchParams) (search.CompanyResult, error)
+}
 
 // companyDetailResponse is the public shape of a company together with a page of
 // its jobs. Its Jobs field is []jobview.Job, not []db.Job, so the internal job
@@ -113,6 +124,21 @@ func (a *API) ListCompanies(c *fiber.Ctx) error {
 	ycFlags := facetValues(vals, "yc_flags")
 	maturity := facetValues(vals, "maturity")
 	subindustries := facetValues(vals, "subindustries")
+
+	// Company search is served by the Meilisearch companies index when configured and
+	// a filter (q or any facet) is present — it gives relevance-first, typo-tolerant
+	// ranking with job_count as the tiebreaker. The unfiltered catalogue keeps the
+	// Postgres ordering (job_count DESC, name) and its O(1) total estimate, so it is
+	// deliberately not routed to Meili. On ANY Meili error the request falls through to
+	// the Postgres substring path below, so /companies never depends on Meili being up.
+	if a.companySearch != nil && isCompanyFilter(search, collections, regions, countries,
+		domains, companyTypes, companySizes, remoteRegions, ycBatch, ycStatus, ycStage, ycFlags, maturity, subindustries) {
+		rows, total, err := a.companyHitsViaMeili(c.Context(), search, vals, limit, offset)
+		if err == nil {
+			return listResponse(c, rows, total, limit, offset)
+		}
+		log.Printf("companies: meili search fell back to postgres (q=%q): %v", search, err)
+	}
 
 	companies, err := a.queries.ListCompanies(c.Context(), db.ListCompaniesParams{
 		Search:        search,
@@ -256,4 +282,51 @@ func (a *API) GetCompany(c *fiber.Ctx) error {
 		Jobs:              views,
 		ReferralAvailable: referralAvailable,
 	}})
+}
+
+// companyHitsViaMeili runs the ranked company search and projects each hit back onto
+// the db.ListCompaniesRow wire shape, so the Meili path is byte-for-byte compatible
+// with the Postgres path. meta.total is Meilisearch's estimated filtered total, which
+// backs list pagination exactly as CountCompanies does on the Postgres path.
+func (a *API) companyHitsViaMeili(ctx context.Context, query string, vals url.Values, limit, offset int) ([]db.ListCompaniesRow, int64, error) {
+	res, err := a.companySearch.SearchCompanies(ctx, search.CompanySearchParams{
+		Query:  query,
+		Filter: search.CompanyFilterFromValues(vals),
+		Limit:  limit,
+		Offset: offset,
+	})
+	if err != nil {
+		return nil, 0, err
+	}
+	rows := make([]db.ListCompaniesRow, len(res.Hits))
+	for i, h := range res.Hits {
+		rows[i] = companyRowFromDoc(h)
+	}
+	return rows, res.Total, nil
+}
+
+// companyRowFromDoc projects a company search document onto the list wire shape,
+// re-wrapping the unwrapped scalar strings into pgtype.Text (empty → NULL) so the
+// response matches the Postgres path exactly. An absent industries array normalizes
+// to an empty slice so it serializes as [] like the Postgres '{}', not null.
+func companyRowFromDoc(d search.CompanyDocument) db.ListCompaniesRow {
+	industries := d.Industries
+	if industries == nil {
+		industries = []string{}
+	}
+	return db.ListCompaniesRow{
+		Slug:       d.Slug,
+		Name:       d.Name,
+		JobCount:   d.JobCount,
+		Tagline:    pgText(d.Tagline),
+		Industries: industries,
+		HqCountry:  pgText(d.HqCountry),
+	}
+}
+
+// pgText wraps a plain string as a pgtype.Text, treating the empty string as NULL —
+// the inverse of the FromCompany unwrap, so a round-tripped NULL scalar renders as
+// JSON null exactly as the Postgres row would.
+func pgText(s string) pgtype.Text {
+	return pgtype.Text{String: s, Valid: s != ""}
 }

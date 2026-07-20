@@ -629,6 +629,13 @@ type Querier interface {
 	// and company-info backfills; it also lets both reads ride companies_hiring_job_count_idx
 	// (partial index) instead of scanning the full 2.3 GB heap.
 	ListCompanies(ctx context.Context, arg ListCompaniesParams) ([]ListCompaniesRow, error)
+	// Keyset page of hiring companies (job_count > 0) for the companies search reindex,
+	// cursored by the slug primary key (first chunk keyed by the empty string, which
+	// sorts before every slug). SELECT * so the row stays db.Company as columns grow and
+	// search.FromCompany can map every facet. The job_count > 0 scope keeps the index to
+	// companies that are actually hiring, matching the /companies list's hiring scope, and
+	// rides companies_hiring_job_count_idx instead of scanning the full heap.
+	ListCompaniesForReindex(ctx context.Context, arg ListCompaniesForReindexParams) ([]Company, error)
 	// All companies with their current collection membership. cmd/import-collections
 	// reads this to know the existing company slugs (the match target) and each
 	// company's current tags (so it can reconcile only the tags it manages, leaving any

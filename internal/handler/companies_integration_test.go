@@ -10,6 +10,7 @@ package handler
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http/httptest"
 	"path/filepath"
@@ -133,6 +134,80 @@ func TestListCompaniesSearchEndpoint(t *testing.T) {
 			t.Errorf("full list: names=%v, want 3", names)
 		}
 	})
+}
+
+// TestListCompaniesMeiliFallback proves that when the companies searcher errors, the
+// list endpoint degrades to the Postgres substring path rather than surfacing the
+// error — so /companies gains no new failure point from the Meili routing.
+func TestListCompaniesMeiliFallback(t *testing.T) {
+	pool := startPostgres(t)
+	ctx := context.Background()
+	for _, c := range []struct{ slug, name string }{
+		{"acme", "Acme Corp"}, {"acme-labs", "ACME Labs"}, {"globex", "Globex"},
+	} {
+		if _, err := pool.Exec(ctx,
+			`INSERT INTO companies (slug, name, job_count) VALUES ($1, $2, 1)`, c.slug, c.name); err != nil {
+			t.Fatalf("seed %q: %v", c.slug, err)
+		}
+	}
+
+	// A searcher that always errors forces the fallback on every search request.
+	h := &API{pool: pool, queries: db.New(pool), companySearch: &fakeCompanySearcher{err: errors.New("meili down")}}
+	app := fiber.New(fiber.Config{ErrorHandler: RenderError})
+	app.Get("/api/v1/companies", h.ListCompanies)
+
+	resp, err := app.Test(httptest.NewRequest("GET", "/api/v1/companies?q=acme", nil))
+	if err != nil {
+		t.Fatalf("request: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != fiber.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("status = %d, want 200 (fallback should not error): body %s", resp.StatusCode, body)
+	}
+	var body struct {
+		Data []struct {
+			Name string `json:"name"`
+		} `json:"data"`
+		Meta struct {
+			Total float64 `json:"total"`
+		} `json:"meta"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(body.Data) != 2 || body.Meta.Total != 2 {
+		t.Errorf("fallback result = %d rows total=%v, want the 2 Postgres ACME matches", len(body.Data), body.Meta.Total)
+	}
+}
+
+// TestListCompaniesUnfilteredSkipsMeili proves the unfiltered catalogue is served by
+// Postgres (its ordering + O(1) estimate), never routed to Meilisearch, even when a
+// company searcher is wired.
+func TestListCompaniesUnfilteredSkipsMeili(t *testing.T) {
+	pool := startPostgres(t)
+	ctx := context.Background()
+	if _, err := pool.Exec(ctx,
+		`INSERT INTO companies (slug, name, job_count) VALUES ('acme', 'Acme', 1)`); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	fake := &fakeCompanySearcher{}
+	h := &API{pool: pool, queries: db.New(pool), companySearch: fake}
+	app := fiber.New(fiber.Config{ErrorHandler: RenderError})
+	app.Get("/api/v1/companies", h.ListCompanies)
+
+	resp, err := app.Test(httptest.NewRequest("GET", "/api/v1/companies", nil))
+	if err != nil {
+		t.Fatalf("request: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != fiber.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+	if fake.called {
+		t.Error("the unfiltered catalogue must not route to Meilisearch")
+	}
 }
 
 func TestListCompaniesFacetFilterEndpoint(t *testing.T) {

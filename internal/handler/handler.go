@@ -89,6 +89,12 @@ type API struct {
 	// search is the job-search backend. Nil when Meilisearch is unconfigured —
 	// the search endpoint then reports 503 and the rest of the API is unaffected.
 	search searcher
+	// companySearch is the company-search backend backing GET /api/v1/companies,
+	// kept separate from `search` so the companies index stays fully decoupled from
+	// jobs search. Nil when Meilisearch is unconfigured, or on any query error, the
+	// list falls back to the Postgres substring path so /companies never depends on
+	// Meilisearch being up.
+	companySearch companySearcher
 	// facets is the analytics (facet-distribution) backend — the same Meilisearch
 	// client viewed through a narrower interface, kept separate from search so the
 	// two concerns stay decoupled. Nil when unconfigured (endpoint reports 503).
@@ -316,6 +322,7 @@ func Register(app *fiber.App, cfg Config) {
 	if cfg.Search != nil {
 		a.search = cfg.Search
 		a.facets = cfg.Search
+		a.companySearch = cfg.Search
 	}
 
 	// Referral notifications reuse the SES email transport (email is always present) and

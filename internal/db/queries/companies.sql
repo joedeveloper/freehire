@@ -88,6 +88,19 @@ WHERE slug > sqlc.arg(after_slug)
 ORDER BY slug
 LIMIT sqlc.arg(batch_size);
 
+-- name: ListCompaniesForReindex :many
+-- Keyset page of hiring companies (job_count > 0) for the companies search reindex,
+-- cursored by the slug primary key (first chunk keyed by the empty string, which
+-- sorts before every slug). SELECT * so the row stays db.Company as columns grow and
+-- search.FromCompany can map every facet. The job_count > 0 scope keeps the index to
+-- companies that are actually hiring, matching the /companies list's hiring scope, and
+-- rides companies_hiring_job_count_idx instead of scanning the full heap.
+SELECT *
+FROM companies
+WHERE slug > sqlc.arg(after_slug) AND job_count > 0
+ORDER BY slug
+LIMIT sqlc.arg(batch_size);
+
 -- name: CompanySitemapBoundaries :many
 -- The slug ending every full chunk of `chunk_size` companies (ordered by slug),
 -- excluding the final row, so the sitemap index can list each company sub-sitemap's
