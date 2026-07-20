@@ -122,7 +122,7 @@
     aria-label="Filters"
     title="Filters"
     transition:fade={{ duration: 150 }}
-    class="fixed left-0 top-12 z-30 flex items-center rounded-r-xl border border-l-0 border-border bg-secondary py-2.5 pl-2 pr-2.5 text-secondary-foreground shadow-md transition-colors hover:bg-accent md:hidden"
+    class="fixed left-0 top-16 z-30 flex items-center py-2 pl-3 pr-2 text-muted-foreground transition-colors hover:text-foreground md:hidden"
   >
     <SlidersHorizontal class="size-4 shrink-0" />
     {#if active > 0}
@@ -140,7 +140,7 @@
       aria-label="Swipe mode"
       title="Swipe mode"
       transition:fade={{ duration: 150 }}
-      class="fixed right-0 top-12 z-30 flex items-center rounded-l-xl border border-r-0 border-border bg-secondary py-2.5 pl-2.5 pr-2 text-secondary-foreground shadow-md transition-colors hover:bg-accent md:hidden"
+      class="fixed right-0 top-16 z-30 flex items-center py-2 pl-2 pr-3 text-muted-foreground transition-colors hover:text-foreground md:hidden"
     >
       <Layers class="size-4 shrink-0" />
     </button>
