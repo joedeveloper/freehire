@@ -45,6 +45,9 @@ Aggregating **3.4M+ live postings** from **185,000+ companies** across **75+ ATS
 platforms** and a long tail of aggregators and direct feeds — see
 [Sources](#sources) for the full breakdown.
 
+> If freehire saves you time — or you just like the idea of jobs straight from the
+> source — a ⭐ helps other people find it.
+
 ## Stack
 
 - **Go** + [Fiber v2](https://gofiber.io/) — HTTP server
@@ -382,12 +385,15 @@ proxy forwards `/api` to the backend).
 
 ## Contributing
 
-freehire's core is a small pipeline; the extension point is the **source**
-(one entry in a `sources/` board file, or a new adapter in `internal/sources`). New
-contributors: open an issue first — issues and PRs from unapproved accounts are
-auto-closed by default. See [CONTRIBUTING.md](CONTRIBUTING.md) for the workflow
-and [AGENTS.md](AGENTS.md) for the architecture and conventions. Questions and
-ideas go in [Discussions](https://github.com/strelov1/freehire/discussions).
+freehire's core is a small pipeline; the easiest way to help is to **add a
+source** — one entry in a `sources/` board file, or a new adapter in
+`internal/sources`. Questions and ideas are always welcome in
+[Discussions](https://github.com/strelov1/freehire/discussions). Ready to send a
+change? **Open an issue first** — it gets you on the contributor allowlist and
+points you at the right seam. See [CONTRIBUTING.md](CONTRIBUTING.md) for the
+workflow and [AGENTS.md](AGENTS.md) for the architecture and conventions. (Issues
+and PRs from accounts not yet on the allowlist are auto-closed to keep out spam —
+a quick intro issue is all it takes.)
 
 ## Security
 
