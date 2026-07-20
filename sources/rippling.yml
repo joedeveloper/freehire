@@ -7,6 +7,14 @@
   board: 3msservicesllc
 - company: 11:FS Group Ltd
   board: 11fs-group-ltd
+- company: Beehive Industries
+  board: beehive-industries
+- company: Compass Mining
+  board: compass-mining
+- company: Drive Social Media
+  board: drivesocialmedia
+- company: D-Wave Quantum
+  board: d-wave-quantum
 - company: Kevel
   board: kevel-careers
 - company: Klir
@@ -51,6 +59,8 @@
   board: sbdo-pm-holdings-pty-ltd
 - company: Forbes Advisor
   board: forbes-advisor
+- company: Tixr
+  board: tixr
 - company: U.S. Department of the Treasury
   board: ihi-terrasun-solutions-inc
 - company: Echelon Front

@@ -1,6 +1,8 @@
 # workday boards. Provider is the filename; each entry is company + board.
 # board = platform-specific id (see internal/sources/workday.go).
 
+- company: Carbon Health
+  board: carbonhealth.wd1.myworkdayjobs.com/Careers
 - company: Equifax
   board: equifax.wd5.myworkdayjobs.com/External
 - company: Fugro
