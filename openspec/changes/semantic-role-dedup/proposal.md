@@ -1,3 +1,9 @@
+> **STATUS: SHELVED — spike INVALIDATED this approach (2026-07-20).** A prod embedding
+> spike showed cosine within a `(company_slug, stripped-title)` bucket does NOT separate
+> same-role city variants from distinct roles/specialties, and that most of the measured
+> "collapsible" residual is genuinely distinct jobs under a generic title, not dupes. See
+> `design.md` → "Spike verdict". Kept as a record; not for implementation as written.
+
 ## Why
 
 The role-cluster collapse (`ingest-content-dedup`) folds per-city variants of one

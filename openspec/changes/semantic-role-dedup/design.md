@@ -1,3 +1,32 @@
+## Spike verdict (2026-07-20): ❌ INVALIDATED — do not implement as designed
+
+A read-only spike over prod embeddings (`jobs.semantic_embedding`, real[768]; cosine via
+`unnest(a,b)`) killed the embedding-cosine-within-bucket approach:
+
+- **Mixed-specialty buckets** — speechify `software engineer` bucket (the strip ate the
+  `, Data Infrastructure`/`, Platform`/`, iOS` SPECIALTY suffix, not a city): cosine ranges
+  overlap fully — DataInfra avg 0.968 (min 0.87), Platform avg 0.966 (max **0.9919**), iOS
+  avg 0.963. No threshold separates same-specialty from different-specialty → over-merge.
+- **Generic-title buckets** — amazon `software development engineer` (213 rows): cosine to a
+  base ranges **0.83–0.97**. These are genuinely DIFFERENT jobs (AWS/retail/Alexa/… teams)
+  sharing one generic title, NOT dupes. Collapsing them hides real openings; cosine correctly
+  says "different".
+- **No universal threshold:** true dupes (Towa Kraków/Wien = 0.978) sit BELOW a distinct role
+  (speechify Platform = 0.992), so one cosine cut cannot separate dupes from distinct roles.
+
+**Consequence:** the "≈849,871 collapsible cards" figure is misleading — most of that residual
+is genuinely distinct jobs under a generic/over-stripped title, not redundant reposts. An
+embedding-cosine pass on `(company_slug, stripped-title)` buckets would over-merge distinct
+roles — exactly the failure this project set out to avoid. **Not deploying.**
+
+**If revisited, change the signal, not the threshold:** the real dupes (Towa Kraków/Wien)
+differ by only ~120–200 chars out of ~11,000 (>98% identical description text), while distinct
+roles differ substantially. A normalized-description near-duplicate measure (shingling /
+length-ratio / edit-distance on the cleaned description) separates those two far better than the
+boilerplate-dominated embedding. That is a different proposal; this one is shelved.
+
+---
+
 ## Context
 
 `ingest-content-dedup` collapses role clusters keyed on `company_slug + stripped-title
