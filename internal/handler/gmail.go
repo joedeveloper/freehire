@@ -94,7 +94,8 @@ func (a *API) SyncGmail(c *fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
-	worker := gmailsync.NewWorker(gmailsync.NewDBStore(a.queries), a.gmailCipher, a.gmailConnector.ReaderFactory())
+	gmailStore := gmailsync.NewDBStore(a.queries)
+	worker := gmailsync.NewWorker(gmailStore, a.gmailCipher, a.gmailConnector.ReaderFactory()).WithLearnedDomains(gmailStore)
 	// Background context: the sync outlives this request.
 	go worker.SyncUser(context.Background(), gmailsync.Connection{
 		UserID: conn.UserID, Email: conn.Email, Cursor: conn.SyncCursor,

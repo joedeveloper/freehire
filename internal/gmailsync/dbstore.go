@@ -57,3 +57,16 @@ func (s *DBStore) SetSynced(ctx context.Context, userID, cursorUnix int64) error
 func (s *DBStore) SetNeedsReconsent(ctx context.Context, userID int64) error {
 	return s.q.SetGmailStatus(ctx, db.SetGmailStatusParams{UserID: userID, Status: "needs_reconsent"})
 }
+
+// Observe records one confident job-mail sighting for a domain (self-learning
+// cache write side), returning the running count. Implements LearnedDomainStore.
+func (s *DBStore) Observe(ctx context.Context, domain string) (int, error) {
+	hits, err := s.q.ObserveLearnedDomain(ctx, domain)
+	return int(hits), err
+}
+
+// Promoted returns the domains whose confident-hit count has reached the
+// promotion threshold — the read side the sync worker unions into the query.
+func (s *DBStore) Promoted(ctx context.Context) ([]string, error) {
+	return s.q.PromotedDomains(ctx, PromoteThreshold)
+}

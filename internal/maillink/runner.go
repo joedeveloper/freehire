@@ -28,6 +28,7 @@ type Claimed struct {
 	EmailID  int64
 	UserID   int64
 	ThreadID string
+	FromAddr string
 	FromName string
 	Subject  string
 	Body     string // plain-text part; empty for HTML-only mail (e.g. many ATS templates)
@@ -68,10 +69,19 @@ type Classifier interface {
 	Classify(ctx context.Context, in mailclassify.Input) (mailclassify.Classification, error)
 }
 
+// Learner records the sender of a confidently-classified application email so a
+// recurring unknown ATS domain can be learned into the sync allowlist. Optional:
+// a nil learner disables the feedback loop. Kept minimal so maillink stays
+// decoupled from the sync package that implements it.
+type Learner interface {
+	Learn(ctx context.Context, fromAddr string) error
+}
+
 // Runner drains the outbox.
 type Runner struct {
 	store        Store
 	classifier   Classifier
+	learner      Learner
 	model        string
 	cfg          thresholds
 	leaseSeconds int
@@ -90,6 +100,13 @@ func New(store Store, classifier Classifier, model string) *Runner {
 		batchSize:    defaultBatchSize,
 		maxAttempts:  defaultMaxAttempts,
 	}
+}
+
+// WithLearner wires the self-learning ATS-domain feedback loop, returning the
+// runner for chaining.
+func (r *Runner) WithLearner(l Learner) *Runner {
+	r.learner = l
+	return r
 }
 
 // Run enqueues every unclassified email, then drains the outbox wave by wave
@@ -155,7 +172,7 @@ func (r *Runner) process(ctx context.Context, c Claimed) error {
 		advanceTo = stageAdvance(job, cur, cls, r.cfg)
 	}
 
-	return r.store.Save(ctx, c.OutboxID, c.UserID, Result{
+	if err := r.store.Save(ctx, c.OutboxID, c.UserID, Result{
 		EmailID:        c.EmailID,
 		JobID:          job,
 		SuggestedJobID: suggested,
@@ -163,7 +180,19 @@ func (r *Runner) process(ctx context.Context, c Claimed) error {
 		Confidence:     conf,
 		Signal:         cls.Signal,
 		AdvanceStageTo: advanceTo,
-	}, r.model)
+	}, r.model); err != nil {
+		return err
+	}
+
+	// Feed the self-learning cache: a concrete (non-"other") signal means the
+	// classifier recognised application-lifecycle mail, so its sender domain is
+	// worth learning. Best-effort — a learn failure must not fail the email.
+	if r.learner != nil && cls.Signal != "" && cls.Signal != mailclassify.SignalOther {
+		if err := r.learner.Learn(ctx, c.FromAddr); err != nil {
+			log.Printf("maillink: learn %q: %v", c.FromAddr, err)
+		}
+	}
+	return nil
 }
 
 // matchCandidates attaches each application's already-linked thread ids so the

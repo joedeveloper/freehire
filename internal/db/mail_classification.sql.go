@@ -45,7 +45,7 @@ SET claimed_at = now()
 FROM claimable c
 JOIN emails e ON e.id = c.email_id
 WHERE o.id = c.id
-RETURNING o.id, o.email_id, e.user_id, e.thread_id, e.from_name, e.subject, e.body_text, e.body_html
+RETURNING o.id, o.email_id, e.user_id, e.thread_id, e.from_addr, e.from_name, e.subject, e.body_text, e.body_html
 `
 
 type ClaimEmailClassificationBatchParams struct {
@@ -58,6 +58,7 @@ type ClaimEmailClassificationBatchRow struct {
 	EmailID  int64  `json:"email_id"`
 	UserID   int64  `json:"user_id"`
 	ThreadID string `json:"thread_id"`
+	FromAddr string `json:"from_addr"`
 	FromName string `json:"from_name"`
 	Subject  string `json:"subject"`
 	BodyText string `json:"body_text"`
@@ -82,6 +83,7 @@ func (q *Queries) ClaimEmailClassificationBatch(ctx context.Context, arg ClaimEm
 			&i.EmailID,
 			&i.UserID,
 			&i.ThreadID,
+			&i.FromAddr,
 			&i.FromName,
 			&i.Subject,
 			&i.BodyText,

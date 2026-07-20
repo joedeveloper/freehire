@@ -89,10 +89,11 @@ func (c *Connector) HTTPClient(ctx context.Context, refreshToken string) *http.C
 
 // ReaderFactory builds the per-user GmailReader factory the sync Worker needs,
 // minting a token-bearing Gmail client from each user's refresh token — the
-// single source shared by the cron worker and the on-demand sync handler.
+// single source shared by the cron worker and the on-demand sync handler. The
+// learned domains are threaded in per run so the query reflects the current cache.
 func (c *Connector) ReaderFactory() ReaderFactory {
-	return func(ctx context.Context, refreshToken string) GmailReader {
-		return NewAPIReader(c.HTTPClient(ctx, refreshToken))
+	return func(ctx context.Context, refreshToken string, learned []string) GmailReader {
+		return NewAPIReader(c.HTTPClient(ctx, refreshToken), learned)
 	}
 }
 
